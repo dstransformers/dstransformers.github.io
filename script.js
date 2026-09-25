@@ -75,13 +75,19 @@ function readFilesAsDataUrls(files) {
 function generateEnquiryId() {
   const storage = JSON.parse(localStorage.getItem(appConfig.storageKey) || '[]');
   const year = new Date().getFullYear();
-  const highestNumber = storage.reduce((max, item) => {
-    const match = (item.enquiryId || '').match(/DT-(\d{4})-(\d{4})/);
-    if (!match) return max;
-    return Math.max(max, Number(match[2]));
-  }, 0);
+  const startingNumber = 1013;
 
-  return `DT-${year}-${String(highestNumber + 1).padStart(4, '0')}`;
+  const highestNumber = storage.reduce((max, item) => {
+    const rawId = (item.enquiryId || '').trim();
+    const match = rawId.match(/DT-(\d{4})-(\d{5})/);
+
+    if (!match) return max;
+
+    const suffix = Number(match[2] || 0);
+    return Math.max(max, suffix);
+  }, startingNumber - 1);
+
+  return `DT-${year}-${String(highestNumber + 1).padStart(5, '0')}`;
 }
 
 function validateForm(form) {
