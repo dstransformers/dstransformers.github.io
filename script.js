@@ -1,6 +1,8 @@
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrWX_cP6X7vh52AHN0pqz-njTVtPJFd4V7kkpc728I2kNcnnp-Hs7TxJRDPgEfLgCV/exec';
+
 const appConfig = {
-  businessEmail: 'BUSINESS_EMAIL',
-  businessWhatsApp: 'BUSINESS_WHATSAPP_NUMBER',
+  businessEmail: 'ds.transformerelectrical@gmail.com',
+  businessWhatsApp: '919949396530',
   storageKey: 'ds_transformers_enquiries_v1'
 };
 
@@ -181,7 +183,7 @@ function getFormPayload(form) {
     services[services.indexOf('Other')] = otherService;
   }
 
-  return {
+  const enquiry = {
     companyName: form.companyName.value.trim(),
     contactPerson: form.contactPerson.value.trim(),
     mobileNumber: form.mobileNumber.value.trim(),
@@ -205,6 +207,42 @@ function getFormPayload(form) {
     enquiryId: generateEnquiryId(),
     createdAt: new Date().toISOString(),
     status: 'New'
+  };
+
+  const locationValue = enquiry.siteLocation || enquiry.transformerLocationChoice || 'Not specified';
+
+  return {
+    company: enquiry.companyName,
+    contactPerson: enquiry.contactPerson,
+    mobile: enquiry.mobileNumber,
+    whatsapp: enquiry.whatsappNumber,
+    email: enquiry.emailAddress,
+    location: locationValue,
+    capacity: enquiry.transformerCapacity,
+    type: enquiry.transformerType,
+    make: enquiry.transformerMake,
+    age: enquiry.transformerAge,
+    quantity: String(enquiry.transformerQuantity),
+    services: enquiry.serviceRequired,
+    transformerStatus: enquiry.transformerStatus,
+    priority: enquiry.servicePriority,
+    problemDescription: enquiry.problemDescription,
+    transformerLocation: enquiry.transformerLocationChoice,
+    siteLocation: enquiry.siteLocation,
+    workshopServiceLocation: enquiry.workshopServiceLocation,
+    transformerCapacity: enquiry.transformerCapacity,
+    transformerType: enquiry.transformerType,
+    transformerMake: enquiry.transformerMake,
+    transformerAge: enquiry.transformerAge,
+    transformerQuantity: enquiry.transformerQuantity,
+    otherServiceDetail: enquiry.otherServiceDetail,
+    leakageLocation: enquiry.leakageLocation,
+    breakdownTiming: enquiry.breakdownTiming,
+    attachments: enquiry.attachments || [],
+    originalForm: enquiry,
+    enquiryId: enquiry.enquiryId,
+    createdAt: enquiry.createdAt,
+    status: enquiry.status
   };
 }
 
@@ -264,6 +302,20 @@ ${window.location.origin}${window.location.pathname}#quotation-form
   };
 }
 
+function showSubmissionError(message) {
+  const errorBox = document.getElementById('submissionError');
+  if (!errorBox) return;
+  errorBox.textContent = message;
+  errorBox.classList.remove('hidden');
+}
+
+function clearSubmissionError() {
+  const errorBox = document.getElementById('submissionError');
+  if (!errorBox) return;
+  errorBox.textContent = '';
+  errorBox.classList.add('hidden');
+}
+
 function handleSubmitSuccess(enquiry) {
   const successBlock = document.getElementById('quoteSuccess');
   const successId = document.getElementById('successEnquiryId');
@@ -271,7 +323,8 @@ function handleSubmitSuccess(enquiry) {
 
   if (successId) successId.textContent = enquiry.enquiryId;
   if (successBlock) successBlock.classList.remove('hidden');
-  if (form) form.classList.add('hidden');
+  if (form) form.reset();
+  clearSubmissionError();
 
   const formSection = document.getElementById('quotation-form');
   if (formSection) {
@@ -311,26 +364,66 @@ function configureFormInteractions() {
       submitButton.disabled = true;
       submitButton.textContent = 'Submitting...';
     }
+    clearSubmissionError();
 
     try {
       const enquiry = getFormPayload(form);
       const files = await readFilesAsDataUrls(form.photoUpload.files);
       enquiry.attachments = files;
+      enquiry.originalForm.attachments = files;
 
       const storage = JSON.parse(localStorage.getItem(appConfig.storageKey) || '[]');
-      storage.unshift(enquiry);
+      storage.unshift(enquiry.originalForm);
       localStorage.setItem(appConfig.storageKey, JSON.stringify(storage));
 
-      const notifications = buildNotificationMessage(enquiry);
-      console.info('EMAIL_NOTIFICATION', notifications.email);
-      console.info('WHATSAPP_NOTIFICATION', notifications.whatsapp);
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify(enquiry)
+      });
 
-      handleSubmitSuccess(enquiry);
+      const responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok || responseData.success !== true) {
+        throw new Error(
+          responseData.message || 'The enquiry could not be submitted.'
+        );
+      }
+
+      const successId = responseData.enquiryId || enquiry.enquiryId;
+
+      const successBlock = document.getElementById('quoteSuccess');
+      const successNode = document.getElementById('successEnquiryId');
+
+      if (successNode) {
+        successNode.textContent = successId;
+      }
+
+      if (successBlock) {
+        successBlock.classList.remove('hidden');
+      }
+
+      if (form) {
+        form.classList.add('hidden');
+        form.reset();
+      }
+
+      clearSubmissionError();
+      setConditionalFields();
+
+      const formSection = document.getElementById('quotation-form');
+
+      if (formSection) {
+        formSection.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
     } catch (error) {
       console.error('Enquiry submission failed', error);
+      showSubmissionError('The form could not be submitted because the Google Apps Script web app is rejecting the request. Please update the Web App deployment to “Anyone” and use the new deployment URL.');
       const errorNode = document.querySelector('[data-error-for="serviceRequired"]');
       if (errorNode) {
-        errorNode.textContent = 'The enquiry could not be submitted. Please try again.';
+        errorNode.textContent = '';
       }
     } finally {
       if (submitButton) {
