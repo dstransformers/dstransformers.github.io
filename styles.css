@@ -1347,6 +1347,16 @@ p {
   justify-content: flex-end;
 }
 
+.submission-error {
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  background: rgba(179, 49, 49, 0.08);
+  border: 1px solid rgba(179, 49, 49, 0.2);
+  color: #8b2020;
+  font-weight: 600;
+}
+
 .honeypot {
   position: absolute;
   left: -9999px;
