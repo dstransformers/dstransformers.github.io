@@ -1,0 +1,124 @@
+package com.vstms.backend;
+
+import com.vstms.backend.model.TransformerDTO;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/transformers")
+@Validated
+@CrossOrigin(origins = "*")
+public class TransformerController {
+
+    @Autowired
+    private GoogleSheetsService googleSheetsService;
+
+    @GetMapping
+    public PagedResponse<TransformerDTO> getTransformers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) List<String> status,
+            @RequestParam(required = false) List<String> spmCenter,
+            @RequestParam(required = false) List<String> dtrNo,
+            @RequestParam(required = false) List<String> sNo,
+            @RequestParam(required = false) List<Long> tNoteId,
+            @RequestParam(required = false) List<String> type,
+            @RequestParam(required = false) List<Integer> capacity) {
+        return googleSheetsService.getTransformers(page, size, status, spmCenter, dtrNo, sNo, tNoteId, type, capacity);
+    }
+
+    @GetMapping("/summary")
+    public SummaryResponse getSummary() {
+        return googleSheetsService.getSummary();
+    }
+
+    @PostMapping
+    public TransformerDTO createTransformer(@Valid @RequestBody CreateTransformerRequest request) {
+        return googleSheetsService.createTransformer(
+                request.spmCenter(),
+                request.dtrNo(),
+                request.sNo(),
+                request.capacity(),
+                request.type(),
+                request.oilCapacity(),
+                request.tNoteId()
+        );
+    }
+
+    @PatchMapping("/{id}/status")
+    public TransformerDTO updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
+        return googleSheetsService.updateTransformerStatus(id, request.status());
+    }
+
+    @PatchMapping("/{id}/deliver")
+    public TransformerDTO deliverTransformer(@PathVariable Long id, @RequestBody DeliverRequest request) {
+        return googleSheetsService.deliverTransformer(id, request.dcNo());
+    }
+
+    @PatchMapping("/{id}/bill")
+    public TransformerDTO billTransformer(@PathVariable Long id, @RequestBody BillRequest request) {
+        return googleSheetsService.billTransformer(id, request.sapNo());
+    }
+
+    @PutMapping("/{id}")
+    public TransformerDTO updateTransformer(@PathVariable Long id, @Valid @RequestBody UpdateTransformerRequest request) {
+        return googleSheetsService.updateTransformer(
+                id,
+                request.spmCenter(),
+                request.dtrNo(),
+                request.sNo(),
+                request.capacity(),
+                request.type(),
+                request.oilCapacity()
+        );
+    }
+
+    @GetMapping("/{id}")
+    public TransformerDTO getTransformer(@PathVariable Long id) {
+        return googleSheetsService.getTransformerById(id).orElse(null);
+    }
+
+    @GetMapping("/dc/{dcNo}")
+    public List<TransformerDTO> getTransformersByDcNo(@PathVariable String dcNo) {
+        return googleSheetsService.getTransformersByDcNo(dcNo);
+    }
+
+    @GetMapping("/bill/{sapNo}")
+    public List<TransformerDTO> getTransformersBySapNo(@PathVariable String sapNo) {
+        return googleSheetsService.getTransformersBySapNo(sapNo);
+    }
+
+    public record CreateTransformerRequest(
+            @NotBlank String spmCenter,
+            @NotBlank String dtrNo,
+            @NotBlank String sNo,
+            int capacity,
+            @NotBlank String type,
+            double oilCapacity,
+            Long tNoteId
+    ) {}
+
+    public record UpdateTransformerRequest(
+            @NotBlank String spmCenter,
+            @NotBlank String dtrNo,
+            @NotBlank String sNo,
+            int capacity,
+            @NotBlank String type,
+            double oilCapacity
+    ) {}
+
+    public record UpdateStatusRequest(@NotBlank String status) {}
+
+    public record DeliverRequest(@NotBlank String dcNo) {}
+
+    public record BillRequest(@NotBlank String sapNo) {}
+
+    public record PagedResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}
+
+    public record SummaryResponse(long recieve, long assesment, long repairInProgress, long repaired, long delivered, long billed) {}
+}

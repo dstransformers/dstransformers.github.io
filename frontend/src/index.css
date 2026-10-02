@@ -1,0 +1,35 @@
+:root {
+  --text: #273449;
+  --text-h: #0f172a;
+  --bg: #f5f8ff;
+  --border: #dbe4ff;
+  --accent: #5b66ff;
+  --sans: 'Inter', 'Segoe UI', Roboto, sans-serif;
+  font: 16px/1.5 var(--sans);
+  color: var(--text);
+  background: radial-gradient(circle at top right, #e2e8ff 0%, #f8fbff 45%, #f5f8ff 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #cbd5e1;
+    --text-h: #f8fafc;
+    --bg: #060d1b;
+    --border: #243146;
+    --accent: #93c5fd;
+    background: radial-gradient(circle at top right, #0f172a 0%, #081223 45%, #060d1b 100%);
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
