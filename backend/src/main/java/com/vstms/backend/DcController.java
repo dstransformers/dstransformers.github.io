@@ -1,8 +1,10 @@
 package com.vstms.backend;
 
+import com.vstms.backend.model.DcDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -12,42 +14,42 @@ import java.util.List;
 public class DcController {
 
     @Autowired
-    private DcService dcService;
+    private GoogleSheetsService googleSheetsService;
 
     @GetMapping
-    public List<DcEntity> getAllDCs() {
-        return dcService.getAllDCs();
+    public List<DcDTO> getAllDCs() {
+        return googleSheetsService.getAllDCs();
     }
 
     @GetMapping("/{dcNo}")
-    public ResponseEntity<DcEntity> getDCById(@PathVariable String dcNo) {
-        return dcService.getDCById(dcNo)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<DcDTO> getDCById(@PathVariable String dcNo) {
+        return googleSheetsService.getDCById(dcNo)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public DcEntity createDC(@RequestBody DcRequest request) {
-        DcEntity dc = new DcEntity(request.getDcNo(), request.getDate(), request.getSpmCenter(), request.getTotalTransformers());
-        return dcService.saveDC(dc);
+    public DcDTO createDC(@RequestBody DcRequest request) {
+        DcDTO dc = new DcDTO(request.getDcNo(), request.getDate(), request.getSpmCenter(), request.getTotalTransformers());
+        return googleSheetsService.saveDC(dc);
     }
 
     @PutMapping("/{dcNo}")
-    public ResponseEntity<DcEntity> updateDC(@PathVariable String dcNo, @RequestBody DcRequest request) {
-        return dcService.getDCById(dcNo)
-            .map(dc -> {
-                dc.setDate(request.getDate());
-                dc.setSpmCenter(request.getSpmCenter());
-                dc.setTotalTransformers(request.getTotalTransformers());
-                return ResponseEntity.ok(dcService.saveDC(dc));
-            })
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<DcDTO> updateDC(@PathVariable String dcNo, @RequestBody DcRequest request) {
+        return googleSheetsService.getDCById(dcNo)
+                .map(dc -> {
+                    dc.setDate(request.getDate());
+                    dc.setSpmCenter(request.getSpmCenter());
+                    dc.setTotalTransformers(request.getTotalTransformers());
+                    return ResponseEntity.ok(googleSheetsService.saveDC(dc));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{dcNo}")
     public ResponseEntity<Void> deleteDC(@PathVariable String dcNo) {
-        if (dcService.getDCById(dcNo).isPresent()) {
-            dcService.deleteDC(dcNo);
+        if (googleSheetsService.getDCById(dcNo).isPresent()) {
+            googleSheetsService.deleteDC(dcNo);
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
@@ -59,7 +61,6 @@ public class DcController {
         private String spmCenter;
         private int totalTransformers;
 
-        // getters and setters
         public String getDcNo() {
             return dcNo;
         }

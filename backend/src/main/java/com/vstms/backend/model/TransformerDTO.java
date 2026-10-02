@@ -1,54 +1,26 @@
-package com.vstms.backend;
+package com.vstms.backend.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.persistence.*;
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-@Entity
-@Table(name = "transformers")
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-public class TransformerEntity {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class TransformerDTO {
     private Long id;
-
-    @Column(nullable = false, length = 100)
     private String spmCenter;
-
-    @Column(nullable = false, length = 50)
     private String dtrNo;
-
-    @Column(nullable = false, length = 50)
     private String sNo;
-
-    @Column(nullable = false)
     private int capacity;
-
-    @Column(nullable = false, length = 50)
     private String type;
-
-    @Column(nullable = false)
     private double oilCapacity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 40)
-    private JobStatus status;
-
-    @JsonBackReference
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "t_note_id")
-    private TNoteEntity tNote;
-
-    @Column(length = 50)
+    private String status;
+    private Long tNoteId;
     private String dcNo;
-
-    @Column(length = 50)
     private String sapNo;
 
-    protected TransformerEntity() {}
+    public TransformerDTO() {
+    }
 
-    public TransformerEntity(String spmCenter, String dtrNo, String sNo, int capacity, String type, double oilCapacity, JobStatus status, TNoteEntity tNote) {
+    public TransformerDTO(Long id, String spmCenter, String dtrNo, String sNo, int capacity, String type,
+            double oilCapacity, String status, Long tNoteId, String dcNo, String sapNo) {
+        this.id = id;
         this.spmCenter = spmCenter;
         this.dtrNo = dtrNo;
         this.sNo = sNo;
@@ -56,10 +28,11 @@ public class TransformerEntity {
         this.type = type;
         this.oilCapacity = oilCapacity;
         this.status = status;
-        this.tNote = tNote;
+        this.tNoteId = tNoteId;
+        this.dcNo = dcNo;
+        this.sapNo = sapNo;
     }
 
-    // Getters and setters
     public Long getId() {
         return id;
     }
@@ -84,10 +57,12 @@ public class TransformerEntity {
         this.dtrNo = dtrNo;
     }
 
+    @JsonProperty("sNo")
     public String getSNo() {
         return sNo;
     }
 
+    @JsonProperty("sNo")
     public void setSNo(String sNo) {
         this.sNo = sNo;
     }
@@ -116,20 +91,22 @@ public class TransformerEntity {
         this.oilCapacity = oilCapacity;
     }
 
-    public JobStatus getStatus() {
+    public String getStatus() {
         return status;
     }
 
-    public void setStatus(JobStatus status) {
+    public void setStatus(String status) {
         this.status = status;
     }
 
-    public TNoteEntity getTNote() {
-        return tNote;
+    @JsonProperty("tNoteId")
+    public Long getTNoteId() {
+        return tNoteId;
     }
 
-    public void setTNote(TNoteEntity tNote) {
-        this.tNote = tNote;
+    @JsonProperty("tNoteId")
+    public void setTNoteId(Long tNoteId) {
+        this.tNoteId = tNoteId;
     }
 
     public String getDcNo() {

@@ -28,25 +28,6 @@ function getSelectedServices() {
   return Array.from(document.querySelectorAll('input[name="serviceRequired"]:checked')).map((input) => input.value);
 }
 
-function setConditionalFields() {
-  const selectedServices = getSelectedServices();
-  const leakageVisible = selectedServices.includes('Oil Leakage Rectification');
-  const breakdownSelected = selectedServices.includes('Transformer Breakdown Repair') || document.getElementById('transformerStatus')?.value === 'Not working / breakdown';
-
-  const leakageWrap = document.getElementById('leakageLocationWrap');
-  const breakdownWrap = document.getElementById('breakdownTimingWrap');
-  const siteLocationWrap = document.getElementById('siteLocationWrap');
-  const locationChoice = document.getElementById('transformerLocationChoice')?.value;
-
-  leakageWrap?.classList.toggle('hidden', !leakageVisible);
-  breakdownWrap?.classList.toggle('hidden', !breakdownSelected);
-  siteLocationWrap?.classList.toggle('hidden', locationChoice !== 'Customer site');
-
-  const otherServiceField = document.getElementById('serviceOtherField');
-  const otherServiceCheck = document.getElementById('serviceOtherCheck');
-  otherServiceField?.classList.toggle('hidden', !otherServiceCheck?.checked);
-}
-
 function readFilesAsDataUrls(files) {
   if (!files || files.length === 0) {
     return Promise.resolve([]);
@@ -91,103 +72,19 @@ function generateEnquiryId() {
 }
 
 function validateForm(form) {
-  let valid = true;
-
-  const companyName = form.companyName.value.trim();
-  const contactPerson = form.contactPerson.value.trim();
   const mobileNumber = form.mobileNumber.value.trim();
-  const locationChoice = form.transformerLocationChoice.value.trim();
-  const siteLocation = form.siteLocation.value.trim();
-  const transformerCapacity = form.transformerCapacity.value.trim();
-  const transformerType = form.transformerType.value.trim();
-  const transformerQuantity = form.transformerQuantity.value.trim();
-  const workshopServiceLocation = form.workshopServiceLocation.value.trim();
-  const selectedServices = getSelectedServices();
-
-  clearFieldError('companyName');
-  clearFieldError('contactPerson');
   clearFieldError('mobileNumber');
-  clearFieldError('transformerLocationChoice');
-  clearFieldError('siteLocation');
-  clearFieldError('transformerCapacity');
-  clearFieldError('transformerType');
-  clearFieldError('transformerQuantity');
-  clearFieldError('workshopServiceLocation');
-  clearFieldError('serviceRequired');
-  clearFieldError('transformerStatus');
-  clearFieldError('servicePriority');
-
-  if (!companyName) {
-    showFieldError('companyName', 'Please enter the company or organization name.');
-    valid = false;
-  }
-
-  if (!contactPerson) {
-    showFieldError('contactPerson', 'Please enter the contact person name.');
-    valid = false;
-  }
 
   if (!mobileNumber || !mobileRegex.test(mobileNumber)) {
     showFieldError('mobileNumber', 'Please enter a valid 10-digit mobile number.');
-    valid = false;
+    return false;
   }
 
-  if (!locationChoice) {
-    showFieldError('transformerLocationChoice', 'Please select where the transformer is located.');
-    valid = false;
-  }
-
-  if (locationChoice === 'Customer site' && !siteLocation) {
-    showFieldError('siteLocation', 'Please enter the site location.');
-    valid = false;
-  }
-
-  if (!transformerCapacity) {
-    showFieldError('transformerCapacity', 'Please select a transformer capacity.');
-    valid = false;
-  }
-
-  if (!transformerType) {
-    showFieldError('transformerType', 'Please select the transformer type.');
-    valid = false;
-  }
-
-  if (!transformerQuantity || Number(transformerQuantity) < 1) {
-    showFieldError('transformerQuantity', 'Please enter at least 1 transformer.');
-    valid = false;
-  }
-
-  if (!workshopServiceLocation) {
-    showFieldError('workshopServiceLocation', 'Please select where the required work is expected to be carried out.');
-    valid = false;
-  }
-
-  if (selectedServices.length === 0) {
-    const serviceError = document.querySelector('[data-error-for="serviceRequired"]');
-    if (serviceError) serviceError.textContent = 'Please select at least one required service.';
-    valid = false;
-  }
-
-  if (!form.transformerStatus.value) {
-    showFieldError('transformerStatus', 'Please select the current transformer status.');
-    valid = false;
-  }
-
-  if (!form.servicePriority.value) {
-    showFieldError('servicePriority', 'Please select how soon you need assistance.');
-    valid = false;
-  }
-
-  return valid;
+  return true;
 }
 
 function getFormPayload(form) {
   const services = getSelectedServices();
-  const otherService = document.getElementById('otherServiceDetail')?.value.trim();
-
-  if (services.includes('Other') && otherService) {
-    services[services.indexOf('Other')] = otherService;
-  }
 
   const enquiry = {
     companyName: form.companyName.value.trim(),
@@ -195,27 +92,16 @@ function getFormPayload(form) {
     mobileNumber: form.mobileNumber.value.trim(),
     whatsappNumber: form.whatsappNumber.value.trim(),
     emailAddress: form.emailAddress.value.trim(),
-    transformerLocationChoice: form.transformerLocationChoice.value,
-    siteLocation: form.siteLocation.value.trim(),
-    workshopServiceLocation: form.workshopServiceLocation.value,
     transformerCapacity: form.transformerCapacity.value,
-    transformerType: form.transformerType.value,
     transformerMake: form.transformerMake.value.trim(),
-    transformerAge: form.transformerAge.value.trim(),
-    transformerQuantity: Number(form.transformerQuantity.value || 1),
     serviceRequired: services,
-    otherServiceDetail: otherService,
     problemDescription: form.problemDescription.value.trim(),
     transformerStatus: form.transformerStatus.value,
     servicePriority: form.servicePriority.value,
-    leakageLocation: form.leakageLocation.value.trim(),
-    breakdownTiming: form.breakdownTiming.value.trim(),
     enquiryId: generateEnquiryId(),
     createdAt: new Date().toISOString(),
     status: 'New'
   };
-
-  const locationValue = enquiry.siteLocation || enquiry.transformerLocationChoice || 'Not specified';
 
   return {
     company: enquiry.companyName,
@@ -223,27 +109,26 @@ function getFormPayload(form) {
     mobile: enquiry.mobileNumber,
     whatsapp: enquiry.whatsappNumber,
     email: enquiry.emailAddress,
-    location: locationValue,
+    location: '',
     capacity: enquiry.transformerCapacity,
-    type: enquiry.transformerType,
+    type: '',
     make: enquiry.transformerMake,
-    age: enquiry.transformerAge,
-    quantity: String(enquiry.transformerQuantity),
+    age: '',
+    quantity: '1',
     services: enquiry.serviceRequired,
     transformerStatus: enquiry.transformerStatus,
     priority: enquiry.servicePriority,
     problemDescription: enquiry.problemDescription,
-    transformerLocation: enquiry.transformerLocationChoice,
-    siteLocation: enquiry.siteLocation,
-    workshopServiceLocation: enquiry.workshopServiceLocation,
+    transformerLocation: '',
+    siteLocation: '',
+    workshopServiceLocation: '',
     transformerCapacity: enquiry.transformerCapacity,
-    transformerType: enquiry.transformerType,
+    transformerType: '',
     transformerMake: enquiry.transformerMake,
-    transformerAge: enquiry.transformerAge,
-    transformerQuantity: enquiry.transformerQuantity,
-    otherServiceDetail: enquiry.otherServiceDetail,
-    leakageLocation: enquiry.leakageLocation,
-    breakdownTiming: enquiry.breakdownTiming,
+    transformerAge: '',
+    transformerQuantity: 1,
+    leakageLocation: '',
+    breakdownTiming: '',
     attachments: enquiry.attachments || [],
     originalForm: enquiry,
     enquiryId: enquiry.enquiryId,
@@ -271,16 +156,10 @@ Contact Person: ${enquiry.contactPerson}
 Mobile: ${enquiry.mobileNumber}
 WhatsApp: ${enquiry.whatsappNumber || 'Not provided'}
 Email: ${enquiry.emailAddress || 'Not provided'}
-Location: ${enquiry.transformerLocationChoice}
-Site: ${enquiry.siteLocation || 'Not required'}
-Workshop Requirement: ${enquiry.workshopServiceLocation}
 
 Transformer
 Capacity: ${enquiry.transformerCapacity}
-Type: ${enquiry.transformerType}
 Make: ${enquiry.transformerMake || 'Not provided'}
-Age: ${enquiry.transformerAge || 'Not provided'}
-Quantity: ${enquiry.transformerQuantity}
 
 Service Required
 ${servicesList}
@@ -303,7 +182,7 @@ ${window.location.origin}${window.location.pathname}#quotation-form
     },
     whatsapp: {
       to: appConfig.businessWhatsApp,
-      message: `🔔 *NEW TRANSFORMER ENQUIRY*\n\n*Enquiry:* ${enquiry.enquiryId}\n*Company:* ${enquiry.companyName}\n*Contact:* ${enquiry.contactPerson}\n*Phone:* ${enquiry.mobileNumber}\n*Location:* ${enquiry.siteLocation || enquiry.transformerLocationChoice}\n*Transformer:* ${enquiry.transformerCapacity}\n*Problem:* ${shortProblem}\n*Required:*\n${servicesList}\n*Priority:* ${enquiry.servicePriority}\n📷 ${enquiry.attachments?.length || 0} photos uploaded\n\n*View Enquiry:* ${window.location.origin}${window.location.pathname}#quotation-form`
+      message: `🔔 *NEW TRANSFORMER ENQUIRY*\n\n*Enquiry:* ${enquiry.enquiryId}\n*Company:* ${enquiry.companyName}\n*Contact:* ${enquiry.contactPerson}\n*      Phone:* ${enquiry.mobileNumber}\n*Transformer:* ${enquiry.transformerCapacity}\n*Problem:* ${shortProblem}\n*Required:*\n${servicesList}\n*Priority:* ${enquiry.servicePriority}\n📷 ${enquiry.attachments?.length || 0} photos uploaded\n\n*View Enquiry:* ${window.location.origin}${window.location.pathname}#quotation-form`
     }
   };
 }
@@ -341,21 +220,6 @@ function handleSubmitSuccess(enquiry) {
 function configureFormInteractions() {
   const form = document.getElementById('quotationForm');
   if (!form) return;
-
-  const servicesCheckboxes = form.querySelectorAll('input[name="serviceRequired"]');
-  servicesCheckboxes.forEach((checkbox) => {
-    checkbox.addEventListener('change', () => {
-      setConditionalFields();
-      const serviceError = document.querySelector('[data-error-for="serviceRequired"]');
-      if (serviceError && getSelectedServices().length > 0) serviceError.textContent = '';
-    });
-  });
-
-  const statusField = form.querySelector('#transformerStatus');
-  statusField?.addEventListener('change', setConditionalFields);
-
-  const locationField = form.querySelector('#transformerLocationChoice');
-  locationField?.addEventListener('change', setConditionalFields);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -414,8 +278,6 @@ function configureFormInteractions() {
       }
 
       clearSubmissionError();
-      setConditionalFields();
-
       const formSection = document.getElementById('quotation-form');
 
       if (formSection) {
@@ -427,10 +289,6 @@ function configureFormInteractions() {
     } catch (error) {
       console.error('Enquiry submission failed', error);
       showSubmissionError('The form could not be submitted because the Google Apps Script web app is rejecting the request. Please update the Web App deployment to “Anyone” and use the new deployment URL.');
-      const errorNode = document.querySelector('[data-error-for="serviceRequired"]');
-      if (errorNode) {
-        errorNode.textContent = '';
-      }
     } finally {
       if (submitButton) {
         submitButton.disabled = false;
@@ -496,6 +354,28 @@ document.addEventListener('DOMContentLoaded', () => {
     yearNode.textContent = currentYear;
   }
 
-  setConditionalFields();
+  const quoteDialog = document.getElementById('quotation-form');
+  if (quoteDialog instanceof HTMLDialogElement) {
+    document.querySelectorAll('a[href="#quotation-form"]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (!quoteDialog.open) quoteDialog.showModal();
+        quoteDialog.querySelector('input:not([type="hidden"])')?.focus();
+      });
+    });
+
+    quoteDialog.querySelector('.quote-dialog-close')?.addEventListener('click', () => {
+      quoteDialog.close();
+    });
+
+    quoteDialog.addEventListener('click', (event) => {
+      if (event.target === quoteDialog) quoteDialog.close();
+    });
+
+    if (window.location.hash === '#quotation-form') {
+      quoteDialog.showModal();
+    }
+  }
+
   configureFormInteractions();
 });

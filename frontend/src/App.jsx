@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import LandingPage from './LandingPage'
 import './App.css'
 
 const STATUS_ORDER = [
@@ -10,8 +11,47 @@ const STATUS_ORDER = [
   'Billed',
 ]
 
+const indianCurrencyWords = (amount) => {
+  const roundedPaise = Math.round(Number(amount) * 100)
+  const rupees = Math.floor(roundedPaise / 100)
+  const paise = roundedPaise % 100
+  const underThousand = (value) => {
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+    const words = []
+    if (value >= 100) {
+      words.push(`${ones[Math.floor(value / 100)]} Hundred`)
+      value %= 100
+    }
+    if (value >= 20) words.push(`${tens[Math.floor(value / 10)]}${value % 10 ? ` ${ones[value % 10]}` : ''}`)
+    else if (value >= 10) words.push(teens[value - 10])
+    else if (value > 0) words.push(ones[value])
+    return words.join(' ')
+  }
+  const scales = [[1e11, 'Kharab'], [1e9, 'Arab'], [1e7, 'Crore'], [1e5, 'Lakh'], [1e3, 'Thousand']]
+  const toIndianWords = (value) => {
+    if (value === 0) return 'Zero'
+    const parts = []
+    scales.forEach(([divisor, label]) => {
+      const group = Math.floor(value / divisor)
+      if (group > 0) {
+        parts.push(`${group < 1000 ? underThousand(group) : toIndianWords(group)} ${label}`)
+        value %= divisor
+      }
+    })
+    if (value > 0) parts.push(underThousand(value))
+    return parts.join(' ')
+  }
+  const words = `Rupees ${toIndianWords(rupees)}`
+  return paise ? `${words} and ${toIndianWords(paise)} Paise Only` : `${words} Only`
+}
+
 function App() {
-  const [currentTab, setCurrentTab] = useState('transformers')
+  const [currentView, setCurrentView] = useState(() => {
+    return localStorage.getItem('vstms_admin_auth') === 'true' ? 'dashboard' : 'landing'
+  })
+  const [currentTab, setCurrentTab] = useState('quotations')
   const [transformers, setTransformers] = useState([])
   const [transformersLoading, setTransformersLoading] = useState(false)
   const [transformersError, setTransformersError] = useState('')
@@ -76,7 +116,21 @@ function App() {
   const [enquiries, setEnquiries] = useState([])
   const [enquiriesLoading, setEnquiriesLoading] = useState(false)
   const [enquiriesError, setEnquiriesError] = useState('')
+  const [expandedEnquiryId, setExpandedEnquiryId] = useState(null)
   const [showEnquiryForm, setShowEnquiryForm] = useState(false)
+  const [quotations, setQuotations] = useState([])
+  const [quotationConfig, setQuotationConfig] = useState({ settings: {}, capacities: [], services: [], rates: {} })
+  const [quotationsLoading, setQuotationsLoading] = useState(false)
+  const [quotationsError, setQuotationsError] = useState('')
+  const [showQuotationModal, setShowQuotationModal] = useState(false)
+  const [quotationModalMode, setQuotationModalMode] = useState('create')
+  const [activeQuotation, setActiveQuotation] = useState(null)
+  const [quotationDraft, setQuotationDraft] = useState(null)
+  const [quotationModalError, setQuotationModalError] = useState('')
+  const [selectedQuotationService, setSelectedQuotationService] = useState('')
+  const [quotationSaving, setQuotationSaving] = useState(false)
+  const [enquiryColumnFilters, setEnquiryColumnFilters] = useState({})
+  const [quotationColumnFilters, setQuotationColumnFilters] = useState({})
   const [newEnquiry, setNewEnquiry] = useState({
     customerName: '',
     customerPhone: '',
@@ -87,7 +141,6 @@ function App() {
     breakdownTiming: '',
     siteLocation: '',
   })
-  const [enquiryStatusFilter, setEnquiryStatusFilter] = useState([])
 
   const navItems = [
     {
@@ -96,6 +149,15 @@ function App() {
       icon: (
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
           <path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V6c0-1.1-.9-2-2-2zm0 12h-2v2h-2v-2h-2v2h-2v-2h-2v2H8v-2H6v2H4V4h16v12z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'quotations',
+      label: 'Quotations',
+      icon: (
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M6 2h9l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 2v4h4M8 12h8v2H8zm0 4h8v2H8z" />
         </svg>
       ),
     },
@@ -145,6 +207,9 @@ function App() {
     return centers.length === 0 ? '-' : centers.join(', ')
   }
 
+  const hasValidTransformerId = (transformer) =>
+    Number.isInteger(Number(transformer?.id)) && Number(transformer.id) > 0
+
   const [newTNote, setNewTNote] = useState({
     date: new Date().toISOString().split('T')[0],
     numberOfTransformers: 1,
@@ -172,6 +237,7 @@ function App() {
 
   useEffect(() => {
     if (currentTab === 'enquiries') fetchEnquiries()
+    if (currentTab === 'quotations') fetchQuotations()
     if (currentTab === 'tnotes') fetchTNotes()
     if (currentTab === 'dcs') fetchDCs()
     if (currentTab === 'bills') fetchBills()
@@ -183,7 +249,8 @@ function App() {
 
   const formattedDate = (value) => {
     if (!value) return ''
-    return new Date(value).toLocaleDateString()
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
   }
 
   const filteredTNotes = tnotes.filter((tnote) => {
@@ -211,6 +278,47 @@ function App() {
       (billSpmCenterFilter.length === 0 || billSpmCenterFilter.some(filter => (bill.spmCenter || '').toLowerCase().includes(filter.toLowerCase())))
     )
   })
+
+  const enquiryColumns = [
+    { key: 'id', label: 'ID', value: enquiry => String(enquiry.ID || '—') },
+    { key: 'date', label: 'Date', value: enquiry => formattedDate(enquiry.Date) || '—' },
+    { key: 'company', label: 'Company', value: enquiry => enquiry.CustomerName || '—' },
+    { key: 'contact', label: 'Contact Person', value: enquiry => enquiry.ContactPerson || '—' },
+    { key: 'mobile', label: 'Mobile', value: enquiry => enquiry.CustomerPhone || '—' },
+    { key: 'capacity', label: 'Capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
+    { key: 'make', label: 'Make', value: enquiry => enquiry.TransformerMake || '—' },
+    { key: 'services', label: 'Services Required', value: enquiry => enquiry.ServicesRequired || '—' },
+    { key: 'status', label: 'Status', value: enquiry => enquiry.Status || 'NEW' },
+  ]
+  const filteredEnquiries = enquiries.filter(enquiry =>
+    enquiryColumns.every(({ key, value }) => {
+      const selected = enquiryColumnFilters[key] || []
+      return selected.length === 0 || selected.includes(value(enquiry))
+    })
+  )
+
+  const quotationColumns = [
+    { key: 'documentType', label: 'Document Type', value: quotation => quotation.documentType === 'BILL' ? 'Bill' : 'Quotation' },
+    { key: 'number', label: 'Document No.', value: quotation => quotation.quotationNo || '—' },
+    { key: 'date', label: 'Date', value: quotation => formattedDate(quotation.quotationDate) || '—' },
+    { key: 'customer', label: 'Customer', value: quotation => quotation.customerName || '—' },
+    { key: 'mobile', label: 'Mobile', value: quotation => quotation.mobile || '—' },
+    { key: 'capacity', label: 'Capacity', value: quotation => quotation.transformerCapacity || '—' },
+    { key: 'output', label: 'Output', value: quotation => quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG') },
+  ]
+  const filteredQuotations = quotations.filter(quotation =>
+    quotationColumns.every(({ key, value }) => {
+      const selected = quotationColumnFilters[key] || []
+      return selected.length === 0 || selected.includes(value(quotation))
+    })
+  )
+
+  const onEnquiryColumnFilter = (key) => (value) =>
+    setEnquiryColumnFilters(current => ({ ...current, [key]: value }))
+  const onQuotationColumnFilter = (key) => (value) =>
+    setQuotationColumnFilters(current => ({ ...current, [key]: value }))
+
+  const columnOptions = (rows, column) => uniqueValues(rows, column.value)
 
   const transformerOptions = {
     spmCenter: uniqueValues(transformers, (transformer) => transformer.spmCenter),
@@ -258,7 +366,15 @@ function App() {
         throw new Error(`Failed to fetch transformers (${response.status})`)
       }
       const data = await response.json()
-      setTransformers(data.content ?? [])
+      const fetchedTransformers = data.content ?? []
+      const invalidIdCount = fetchedTransformers.filter(transformer => !hasValidTransformerId(transformer)).length
+      setTransformers(fetchedTransformers)
+      if (invalidIdCount > 0) {
+        setTransformersError(
+          `${invalidIdCount} transformer record(s) on this page have missing or invalid IDs. ` +
+          'Stage changes are disabled until their spreadsheet records are corrected.'
+        )
+      }
       setTotalPages(data.totalPages ?? 0)
       setTotalElements(data.totalElements ?? 0)
     } catch (err) {
@@ -285,7 +401,7 @@ function App() {
     setEnquiriesLoading(true)
     setEnquiriesError('')
     try {
-      const response = await fetch('http://localhost:8082/api/enquiries')
+      const response = await fetch('/api/enquiries')
       if (!response.ok) {
         throw new Error(`Failed to fetch enquiries (${response.status})`)
       }
@@ -302,7 +418,7 @@ function App() {
     event.preventDefault()
     setEnquiriesError('')
     try {
-      const response = await fetch('http://localhost:8082/api/enquiries', {
+      const response = await fetch('/api/enquiries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEnquiry),
@@ -370,6 +486,350 @@ function App() {
       setTransformersError('Failed to load Bills')
     } finally {
       setBillLoading(false)
+    }
+  }
+
+  const fetchQuotations = async () => {
+    setQuotationsLoading(true)
+    setQuotationsError('')
+    try {
+      const [configResponse, quotationsResponse] = await Promise.all([
+        fetch('/api/quotations/config'),
+        fetch('/api/quotations'),
+      ])
+      if (!configResponse.ok) throw new Error(`Failed to load quotation defaults (${configResponse.status})`)
+      if (!quotationsResponse.ok) throw new Error(`Failed to load quotations (${quotationsResponse.status})`)
+
+      const [configResult, quotationsResult] = await Promise.all([
+        configResponse.json(),
+        quotationsResponse.json(),
+      ])
+      if (configResult.status !== 'SUCCESS') {
+        throw new Error(configResult.message || 'Failed to load quotation defaults')
+      }
+      if (quotationsResult.status !== 'SUCCESS') {
+        throw new Error(quotationsResult.message || 'Failed to load quotations')
+      }
+      setQuotationConfig(configResult.data)
+      setQuotations(Array.isArray(quotationsResult.data) ? quotationsResult.data : [])
+    } catch (err) {
+      setQuotationsError(err instanceof Error ? err.message : 'Failed to load quotations')
+    } finally {
+      setQuotationsLoading(false)
+    }
+  }
+
+  const openNewQuotation = (documentType = 'QUOTATION') => {
+    setQuotationDraft({
+      documentType,
+      quotationNo: '',
+      customerName: '',
+      customerAddress: '',
+      contactPerson: '',
+      mobile: '',
+      transformerMake: '',
+      transformerCapacity: '',
+      transformerSerialNo: '',
+      transformerLocation: '',
+      quotationDate: new Date().toISOString().split('T')[0],
+      financialYear: quotationConfig.settings['Financial Year'] || '',
+      outputFormat: 'PDF',
+      gstApplicable: false,
+      gstRate: 19,
+      warrantyMonths: '',
+      terms: '',
+      lineItems: [],
+    })
+    setActiveQuotation(null)
+    setQuotationModalError('')
+    setSelectedQuotationService('')
+    setQuotationModalMode('create')
+    setShowQuotationModal(true)
+  }
+
+  const openQuotation = (quotation, mode) => {
+    setActiveQuotation(quotation)
+    setQuotationModalError('')
+    setQuotationDraft({
+      ...quotation,
+      documentType: quotation.documentType || 'QUOTATION',
+      email: '',
+      outputFormat: quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG'),
+      lineItems: quotation.lineItems.map(item => ({
+        ...item,
+        quantity: item.quantity ?? 1,
+        unit: item.unit || (item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil'
+          ? 'litre'
+          : item.service === 'Earth Pit Testing' ? 'pit' : 'unit'),
+      })),
+    })
+    setSelectedQuotationService('')
+    setQuotationModalMode(mode)
+    setShowQuotationModal(true)
+  }
+
+  const updateQuotationDraft = (field, value) => {
+    setQuotationDraft(current => ({ ...current, [field]: value }))
+  }
+
+  const updateQuotationCapacity = (capacity) => {
+    setQuotationDraft(current => ({
+      ...current,
+      transformerCapacity: capacity,
+      lineItems: current.lineItems.map(item => ({
+        ...item,
+        rate: quotationConfig.rates[capacity]?.[item.service] ?? '',
+      })),
+    }))
+  }
+
+  const addQuotationService = () => {
+    if (!selectedQuotationService || !quotationDraft) return
+    if (quotationDraft.lineItems.some(item => item.service === selectedQuotationService)) return
+    const defaultRate = quotationConfig.rates[quotationDraft.transformerCapacity]?.[selectedQuotationService] ?? ''
+    setQuotationDraft(current => ({
+      ...current,
+      lineItems: [
+        ...current.lineItems,
+        {
+          service: selectedQuotationService,
+          description: selectedQuotationService,
+          rate: defaultRate,
+          quantity: current.documentType === 'BILL' ? 1 : undefined,
+          unit: selectedQuotationService === 'Transformer Oil Filtration' || selectedQuotationService === 'New Transformer Oil'
+            ? 'litre'
+            : selectedQuotationService === 'Earth Pit Testing' ? 'pit' : 'unit',
+        },
+      ],
+    }))
+    setSelectedQuotationService('')
+  }
+
+  const updateQuotationLine = (index, field, value) => {
+    setQuotationDraft(current => ({
+      ...current,
+      lineItems: current.lineItems.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item),
+    }))
+  }
+
+  const removeQuotationLine = (service) => {
+    setQuotationDraft(current => ({
+      ...current,
+      lineItems: current.lineItems.filter(item => item.service !== service),
+    }))
+  }
+
+  const printQuotation = (quotation) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      setQuotationModalError('Allow pop-ups for this site to print the quotation.')
+      return
+    }
+
+    const escapeHtml = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+    const quotationDate = quotation.quotationDate
+      ? new Date(`${quotation.quotationDate}T00:00:00`).toLocaleDateString('en-GB')
+      : ''
+    const dateCode = quotation.quotationDate
+      ? `${String(new Date(`${quotation.quotationDate}T00:00:00`).getDate()).padStart(2, '0')}${String(new Date(`${quotation.quotationDate}T00:00:00`).getMonth() + 1).padStart(2, '0')}`
+      : ''
+    const isBill = quotation.documentType === 'BILL'
+    const quotationNumber = quotation.quotationNo || `${isBill ? 'PREVIEW-BILL' : 'PREVIEW'}/${quotation.financialYear || quotationConfig.settings['Financial Year'] || ''}/${dateCode}`
+    const subject = quotation.transformerCapacity
+      ? `${isBill ? 'Bill' : 'Quotation'} for ${quotation.transformerCapacity} Transformer${quotation.transformerMake ? ` - ${quotation.transformerMake}` : ''}`
+      : `${isBill ? 'Bill' : 'Quotation'} for Transformer${quotation.transformerMake ? ` - ${quotation.transformerMake}` : ''}`
+    const customerName = escapeHtml(quotation.customerName || '')
+    const quotationNo = escapeHtml(quotationNumber)
+    const documentTitle = isBill ? 'BILL' : 'QUOTATION'
+    const letterheadUrl = `${window.location.origin}/api/quotations/letterhead`
+    const subtotal = Math.round(quotation.lineItems.reduce((total, item) => total + (isBill ? Number(item.quantity || 0) : 1) * Number(item.rate || 0), 0) * 100) / 100
+    const gstAmount = isBill && quotation.gstApplicable ? Math.round(subtotal * Number(quotation.gstRate || 19)) / 100 : 0
+    const totalAmount = Math.round((subtotal + gstAmount) * 100) / 100
+    const billTerms = String(quotation.terms || '').trim() || [
+      '1. This bill covers only the services and materials expressly listed above.',
+      '2. Any work or materials outside the stated scope require prior written approval and may be charged separately.',
+      '3. The customer shall provide safe access, required shutdowns, permits and site facilities for the agreed work.',
+      '4. Warranty, if stated, applies only to the specified work and is subject to the agreed scope and exclusions.',
+      '5. Any concern regarding this bill should be notified in writing within seven days of receipt.',
+      '6. This document is subject to applicable laws and the jurisdiction agreed between the parties.'
+    ].join('\n')
+    const lineRows = quotation.lineItems.map((item, index) => {
+      const unit = item.unit || (item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil'
+        ? 'litre'
+        : item.service === 'Earth Pit Testing' ? 'pit' : 'unit')
+      const rateUnit = item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil'
+        ? '/litre'
+        : item.service === 'Earth Pit Testing' ? '/pit' : ''
+      const quantity = Number(item.quantity || 0)
+      const amount = quantity * Number(item.rate || 0)
+      return `<tr>
+        <td class="number">${index + 1}</td>
+        <td>${escapeHtml(item.service)}${item.description && item.description !== item.service ? `<br><span>${escapeHtml(item.description)}</span>` : ''}</td>
+        ${isBill ? `<td class="number">${quantity.toLocaleString('en-IN')}</td><td>${escapeHtml(unit)}</td><td class="rate">₹${Number(item.rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td class="rate">₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : `<td class="rate">₹${Number(item.rate || 0).toLocaleString('en-IN')}${rateUnit}</td>`}
+      </tr>`
+    }).join('')
+
+    printWindow.document.open()
+    printWindow.document.write(`<!doctype html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>${documentTitle} ${quotationNo}</title>
+        <style>
+          @page { size: A4 portrait; margin: 0; }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; width: 210mm; min-height: 297mm; color: #172033; font: 10pt Arial, sans-serif; }
+          .letterhead { position: fixed; inset: 0; z-index: -1; width: 210mm; height: 297mm; }
+          main { position: relative; width: 210mm; min-height: 297mm; padding: 53mm 16mm 24mm; }
+          h1 { margin: 0 0 2mm; text-align: center; font-size: 16pt; letter-spacing: 1px; }
+          .meta { margin: 0 0 4mm; text-align: center; font-weight: 700; }
+          .subject { margin: 0 0 3mm; font-size: 10pt; font-weight: 700; }
+          .detail-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 3mm; }
+          .detail-card { min-height: 32mm; padding: 3mm; border: 1px solid #94a3b8; border-radius: 2mm; background: rgba(248, 250, 252, 0.92); }
+          .detail-card h2 { margin: 0 0 2mm; padding-bottom: 1.5mm; border-bottom: 1px solid #cbd5e1; font-size: 8.5pt; }
+          .detail-card p { margin: 0; line-height: 1.45; }
+          .section-title { margin: 3mm 0 1.5mm; font-size: 9pt; font-weight: 700; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; }
+          th, td { border: 1px solid #334155; padding: 1.5mm 2mm; text-align: left; vertical-align: top; }
+          th { background: #e8edf4 !important; font-weight: 700; }
+          th:first-child, td.number { width: 12mm; text-align: center; }
+          th:last-child, td.rate { width: 38mm; text-align: right; white-space: nowrap; }
+          .totals { display: flow-root; width: 100%; margin: 3mm 0 0; padding: 3mm; border: 1px solid #dbe3ed; border-radius: 2mm; background: #f8fafc; }
+          .totals p { display: flex; justify-content: space-between; width: 76mm; margin: 1mm 0 1mm auto; }
+          .totals .grand { padding-top: 1.5mm; border-top: 1px solid #334155; font-size: 11pt; font-weight: 700; }
+          .totals .amount-words { display: block; width: 100%; margin: 1mm 0 0; text-align: left; font-size: 8pt; line-height: 1.35; }
+          .totals .amount-words span { display: block; color: #475569; font-weight: 700; }
+          td span { display: inline-block; margin-top: 1mm; color: #475569; }
+          .closing { display: block; margin-top: 6mm; break-inside: avoid; }
+          .bill-closing { margin-top: 2mm; padding: 3mm; border: 1px solid #dbe3ed; border-radius: 2mm; background: #fff; }
+          .terms { max-width: none; line-height: 1.3; font-size: 7.5pt; }
+          .terms h2 { margin: 0 0 1mm; font-size: 8.5pt; }
+          .terms p { margin: 0 0 1.5mm; }
+          .terms ol { margin: 0; padding-left: 5mm; }
+          .terms li { margin-bottom: 0.8mm; }
+          .signatory { width: 72mm; margin: 7mm 0 0 auto; text-align: right; font-weight: 700; line-height: 1.4; font-size: 8pt; }
+          .bill-closing .signatory { margin-top: 3mm; }
+          .actions { position: fixed; top: 12px; right: 12px; z-index: 2; }
+          .actions button { padding: 10px 16px; border: 0; border-radius: 6px; background: #1e3a5f; color: #fff; font-weight: 700; cursor: pointer; }
+          @media screen {
+            body { margin: 16px auto; background: #e2e8f0; box-shadow: 0 4px 20px #64748b; }
+            .letterhead { position: absolute; }
+          }
+          @media print {
+            html, body, main { width: 210mm; min-height: 297mm; margin: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            .letterhead { position: fixed; }
+            .actions { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <img class="letterhead" src="${letterheadUrl}" alt="">
+        <main>
+          <h1>${documentTitle}</h1>
+          <div class="meta"><b>${isBill ? 'Bill' : 'Quotation'} No.:</b> ${escapeHtml(quotationNumber)} &nbsp; | &nbsp; <b>Date:</b> ${escapeHtml(quotationDate)}</div>
+          <div class="subject">${escapeHtml(subject)}</div>
+          <div class="detail-cards">
+            <section class="detail-card">
+              <h2>CUSTOMER DETAILS</h2>
+              <p><b>Name:</b> ${customerName}<br><b>Contact:</b> ${escapeHtml(quotation.contactPerson || '—')}<br><b>Mobile:</b> ${escapeHtml(quotation.mobile || '—')}<br><b>Email:</b> ${escapeHtml(quotation.email || '—')}<br><b>Address:</b> ${escapeHtml(quotation.customerAddress || '—')}</p>
+            </section>
+            <section class="detail-card">
+              <h2>TRANSFORMER DETAILS</h2>
+              <p><b>Make:</b> ${escapeHtml(quotation.transformerMake || '—')}<br><b>Capacity:</b> ${escapeHtml(quotation.transformerCapacity || '—')}<br><b>Serial No:</b> ${escapeHtml(quotation.transformerSerialNo || '—')}<br><b>Location:</b> ${escapeHtml(quotation.transformerLocation || '—')}</p>
+            </section>
+          </div>
+          <div class="section-title">${isBill ? 'SERVICE BILL' : 'SERVICES / RATES'}</div>
+          <table>
+            <thead><tr><th>#</th><th>Description of Work / Service</th>${isBill ? '<th>Qty</th><th>Unit</th><th>Rate (₹)</th><th>Amount (₹)</th>' : '<th>Rate</th>'}</tr></thead>
+            <tbody>${lineRows}</tbody>
+          </table>
+          ${isBill ? `<div class="totals"><p><span>Subtotal</span><b>₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>${quotation.gstApplicable ? `<p><span>GST (${Number(quotation.gstRate || 19)}%)</span><b>₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>` : ''}<p class="grand"><span>Total Amount</span><strong>₹${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p><p class="amount-words"><span>Amount in words: </span><b>${escapeHtml(indianCurrencyWords(totalAmount))}</b></p></div>` : ''}
+          <div class="closing ${isBill ? 'bill-closing' : ''}">
+            <div class="terms">
+              <h2>WARRANTY</h2>
+              <p>${isBill && quotation.warrantyMonths ? `Warranty valid for ${escapeHtml(quotation.warrantyMonths)} months from completion / commissioning, limited to the specified work.` : 'Warranty, wherever applicable, will be as specified for the respective work.'}</p>
+              <h2>TERMS &amp; CONDITIONS</h2>
+              ${isBill ? `<p>${escapeHtml(billTerms).replace(/\n/g, '<br>')}</p>` : '<ol><li>This quotation is valid for 15 days from the date of issue.</li><li>The scope of work shall be as specified in this quotation.</li><li>Any additional work or materials required beyond the stated scope shall be quoted separately.</li><li>Warranty, wherever applicable, shall be as specified for the respective work.</li><li>Payment terms shall be as mutually agreed between the parties.</li></ol>'}
+            </div>
+            <div class="signatory">Digitally Authorized Signatory<br>M/s D.S. Transformers &amp;<br>Electrical Contractor</div>
+          </div>
+        </main>
+        <div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>
+      </body>
+      </html>`)
+    printWindow.document.close()
+  }
+
+  const saveQuotationDraft = async (event) => {
+    event.preventDefault()
+    if (!quotationDraft) return
+    const documentLabel = quotationDraft.documentType === 'BILL' ? 'bill' : 'quotation'
+    setQuotationsError('')
+    setQuotationModalError('')
+    const invalidRate = quotationDraft.lineItems.find(item => item.rate === '' || !Number.isFinite(Number(item.rate)) || Number(item.rate) < 0)
+    if (invalidRate) {
+      setQuotationModalError(`Enter a valid rate for ${invalidRate.service}.`)
+      return
+    }
+    if (quotationDraft.documentType === 'BILL') {
+      const invalidQuantity = quotationDraft.lineItems.find(item => !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0)
+      if (invalidQuantity) {
+        setQuotationModalError(`Enter a quantity greater than zero for ${invalidQuantity.service}.`)
+        return
+      }
+    }
+    if (quotationDraft.lineItems.length === 0) {
+      setQuotationModalError(`Add at least one service to the ${documentLabel}.`)
+      return
+    }
+
+    setQuotationSaving(true)
+    try {
+      const isEditing = quotationModalMode === 'edit'
+      const response = await fetch('/api/quotations', {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...quotationDraft, email: '' }),
+      })
+      const result = await response.json()
+      if (!response.ok || result.status !== 'SUCCESS') {
+        throw new Error(result.message || `Failed to save ${documentLabel} (${response.status})`)
+      }
+      setShowQuotationModal(false)
+      await fetchQuotations()
+    } catch (err) {
+      setQuotationModalError(err instanceof Error ? err.message : 'Failed to save quotation')
+    } finally {
+      setQuotationSaving(false)
+    }
+  }
+
+  const deleteQuotation = async (quotation) => {
+    const documentLabel = quotation.documentType === 'BILL' ? 'bill' : 'quotation'
+    if (!confirm(`Delete ${documentLabel} ${quotation.quotationNo}? Its generated file will also be moved to trash.`)) return
+    setQuotationsError('')
+    try {
+      const response = await fetch(`/api/quotations/${encodeURIComponent(quotation.quotationNo)}`, { method: 'DELETE' })
+      const result = await response.json()
+      if (!response.ok || result.status !== 'SUCCESS') {
+        throw new Error(result.message || `Failed to delete quotation (${response.status})`)
+      }
+      setQuotations(current => current.filter(item => item.quotationNo !== quotation.quotationNo))
+      if (activeQuotation?.quotationNo === quotation.quotationNo) {
+        setShowQuotationModal(false)
+        setActiveQuotation(null)
+      }
+    } catch (err) {
+      setQuotationsError(err instanceof Error ? err.message : 'Failed to delete quotation')
     }
   }
 
@@ -861,14 +1321,14 @@ function App() {
     }
   }
 
-  const FilterHeader = ({ column, value, onFilter, options = null }) => {
+  const FilterHeader = ({ column, value, onFilter, options = null, resetPage = true }) => {
     const isOpen = openFilterColumn === column
     const searchText = filterSearchText[column] || ''
 
-    const handleFilterChange = (newValue) => {
-      setPage(0)
+    const handleFilterChange = (newValue, closeDropdown = true) => {
+      if (resetPage) setPage(0)
       onFilter(newValue)
-      setOpenFilterColumn(null)
+      if (closeDropdown) setOpenFilterColumn(null)
     }
 
     const visibleOptions = options
@@ -901,7 +1361,7 @@ function App() {
               onChange={(e) => setFilterSearchText((prev) => ({ ...prev, [column]: e.target.value }))}
               autoFocus
             />
-            {column === 'Status' ? (
+            {column === 'Status' && !options ? (
               <div className="filter-options">
                 <button
                   className="btn btn--small btn--ghost"
@@ -918,7 +1378,7 @@ function App() {
                         const newValue = e.target.checked
                           ? [...value, status]
                           : value.filter(s => s !== status)
-                        handleFilterChange(newValue)
+                        handleFilterChange(newValue, false)
                       }}
                     />
                     <span>{status}</span>
@@ -943,7 +1403,7 @@ function App() {
                           const newValue = e.target.checked
                             ? [...value, option]
                             : value.filter(o => o !== option)
-                          handleFilterChange(newValue)
+                          handleFilterChange(newValue, false)
                         }}
                       />
                       <span>{option}</span>
@@ -980,6 +1440,19 @@ function App() {
     )
   }
 
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onAdminLogin={() => {
+          localStorage.setItem('vstms_admin_auth', 'true')
+          setCurrentView('dashboard')
+        }}
+        isAuthenticated={localStorage.getItem('vstms_admin_auth') === 'true'}
+        onGoToDashboard={() => setCurrentView('dashboard')}
+      />
+    )
+  }
+
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
@@ -1007,9 +1480,34 @@ function App() {
 
       <main className="main-shell">
         <header className="hero">
-          <div className="hero__content hero__content--compact">
-            <img src="/logo.svg" alt="DS Transformers logo" className="hero-logo" />
-            <h1>V S Transformers Management System</h1>
+          <div className="hero__content hero__content--compact" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <img src="/logo.svg" alt="DS Transformers logo" className="hero-logo" />
+              <h1>V S Transformers Management System</h1>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => setCurrentView('landing')}
+                style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                title="View the public website"
+              >
+                🌐 Public Website
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  localStorage.removeItem('vstms_admin_auth')
+                  setCurrentView('landing')
+                }}
+                style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', borderRadius: '8px', cursor: 'pointer', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                title="Sign out from admin portal"
+              >
+                🔒 Logout
+              </button>
+            </div>
           </div>
         </header>
 
@@ -1144,48 +1642,381 @@ function App() {
             <table className="jobs-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Date</th>
-                  <th>Customer Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Service Required</th>
-                  <th>Location</th>
-                  <th>Status</th>
+                  {enquiryColumns.map(column => (
+                    <th key={column.key}>
+                      <FilterHeader
+                        column={column.label}
+                        value={enquiryColumnFilters[column.key] || []}
+                        onFilter={onEnquiryColumnFilter(column.key)}
+                        options={columnOptions(enquiries, column)}
+                        resetPage={false}
+                      />
+                    </th>
+                  ))}
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {enquiries.map((enquiry) => (
-                  <tr key={enquiry.ID}>
-                    <td>{enquiry.ID}</td>
-                    <td>{formattedDate(enquiry.Date)}</td>
-                    <td>{enquiry.CustomerName}</td>
-                    <td>{enquiry.CustomerPhone}</td>
-                    <td>{enquiry.CustomerEmail}</td>
-                    <td>{enquiry.ServicesRequired}</td>
-                    <td>{enquiry.TransformerLocation}</td>
-                    <td>
-                      <span className={`tag tag--${(enquiry.Status || 'new').toLowerCase().replace(/\s+/g, '-')}`}>
-                        {enquiry.Status || 'NEW'}
-                      </span>
-                    </td>
-                    <td className="actions-cell">
-                      <button className="btn btn--ghost btn--small" onClick={() => alert(`View Enquiry ${enquiry.ID}`)}>
-                        View
-                      </button>
-                    </td>
-                  </tr>
+                {filteredEnquiries.map((enquiry) => (
+                  <Fragment key={enquiry.ID}>
+                    <tr>
+                      <td>{enquiry.ID}</td>
+                      <td>{formattedDate(enquiry.Date)}</td>
+                      <td>{enquiry.CustomerName || '—'}</td>
+                      <td>{enquiry.ContactPerson || '—'}</td>
+                      <td>{enquiry.CustomerPhone || '—'}</td>
+                      <td>{enquiry.TransformerCapacity || '—'}</td>
+                      <td>{enquiry.TransformerMake || '—'}</td>
+                      <td>{enquiry.ServicesRequired || '—'}</td>
+                      <td>
+                        <span className={`tag tag--${(enquiry.Status || 'new').toLowerCase().replace(/\s+/g, '-')}`}>
+                          {enquiry.Status || 'NEW'}
+                        </span>
+                      </td>
+                      <td className="actions-cell">
+                        <button
+                          className="btn btn--ghost btn--small"
+                          aria-expanded={expandedEnquiryId === enquiry.ID}
+                          onClick={() => setExpandedEnquiryId(current => current === enquiry.ID ? null : enquiry.ID)}
+                        >
+                          {expandedEnquiryId === enquiry.ID ? 'Hide details' : 'View details'}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedEnquiryId === enquiry.ID && (
+                      <tr className="enquiry-details-row">
+                        <td colSpan="10">
+                          <dl className="enquiry-details-grid">
+                            <div><dt>Transformer status</dt><dd>{enquiry.TransformerStatus || '—'}</dd></div>
+                            <div><dt>Assistance timing</dt><dd>{enquiry.ServicePriority || '—'}</dd></div>
+                            <div><dt>Location</dt><dd>{enquiry.TransformerLocation || enquiry.SiteLocation || '—'}</dd></div>
+                            <div><dt>Problem description</dt><dd>{enquiry.ProblemDescription || enquiry.Notes || '—'}</dd></div>
+                            {enquiry.CustomerEmail && <div><dt>Email</dt><dd>{enquiry.CustomerEmail}</dd></div>}
+                            {enquiry.LeakageLocation && <div><dt>Leakage location</dt><dd>{enquiry.LeakageLocation}</dd></div>}
+                            {enquiry.BreakdownTiming && <div><dt>Breakdown timing</dt><dd>{enquiry.BreakdownTiming}</dd></div>}
+                            {enquiry.PhotoLinks && (
+                              <div>
+                                <dt>Photos</dt>
+                                <dd>{String(enquiry.PhotoLinks).split(/\n|,\s*/).filter(Boolean).map((url, index) => (
+                                  <a key={url} href={url} target="_blank" rel="noreferrer">Photo {index + 1}</a>
+                                ))}</dd>
+                              </div>
+                            )}
+                          </dl>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
                 {!enquiriesLoading && enquiries.length === 0 && (
                   <tr>
-                    <td colSpan="9">No enquiries available.</td>
+                    <td colSpan="10">No enquiries available.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
         </section>
+      )}
+
+      {currentTab === 'quotations' && (
+        <section className="panel jobs-panel">
+          <div className="panel-header">
+            <div>
+              <h2>Quotation &amp; Service Bill Management</h2>
+              <p className="quotation-settings-summary">
+                {quotationConfig.settings['Business Name'] || 'D.S. Transformers'} ·
+                {' '}Financial year {quotationConfig.settings['Financial Year'] || '—'} ·
+                {' '}Next number starts at {quotationConfig.settings['Starting Quotation Number'] || '—'}
+              </p>
+            </div>
+            <div className="quotation-header-actions">
+              <button className="btn btn--secondary" onClick={() => openNewQuotation('BILL')} disabled={quotationConfig.capacities.length === 0}>
+                Generate Bill
+              </button>
+              <button className="btn btn--primary" onClick={() => openNewQuotation()} disabled={quotationConfig.capacities.length === 0}>
+                Generate Quotation
+              </button>
+            </div>
+          </div>
+          {quotationsError && <p className="status status--error jobs-feedback" role="alert">{quotationsError}</p>}
+          {quotationsLoading && <p className="status jobs-feedback">Loading quotations and rate defaults...</p>}
+          <div className="jobs-table-wrap">
+            <table className="jobs-table">
+              <thead>
+                <tr>
+                  {quotationColumns.map(column => (
+                    <th key={column.key}>
+                      <FilterHeader
+                        column={column.label}
+                        value={quotationColumnFilters[column.key] || []}
+                        onFilter={onQuotationColumnFilter(column.key)}
+                        options={columnOptions(quotations, column)}
+                        resetPage={false}
+                      />
+                    </th>
+                  ))}
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuotations.map(quotation => (
+                  <tr key={quotation.quotationNo}>
+                    <td>{quotation.documentType === 'BILL' ? 'Bill' : 'Quotation'}</td>
+                    <td>{quotation.quotationNo}</td>
+                    <td>{formattedDate(quotation.quotationDate)}</td>
+                    <td>{quotation.customerName}</td>
+                    <td>{quotation.mobile}</td>
+                    <td>{quotation.transformerCapacity}</td>
+                    <td>{quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG')}</td>
+                    <td className="actions-cell">
+                      <button className="btn btn--ghost btn--small" onClick={() => openQuotation(quotation, 'view')}>View</button>
+                      <button className="btn btn--ghost btn--small" onClick={() => openQuotation(quotation, 'edit')}>Edit</button>
+                      <button className="btn btn--danger btn--small" onClick={() => deleteQuotation(quotation)}>Delete</button>
+                      {(quotation.fileUrl || quotation.pdfUrl) && (
+                        <a className="btn btn--ghost btn--small" href={quotation.fileUrl || quotation.pdfUrl} target="_blank" rel="noreferrer">
+                          Open {quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG')}
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!quotationsLoading && filteredQuotations.length === 0 && (
+                  <tr><td colSpan="8">{quotations.length === 0 ? 'No quotations or service bills available. Generate one to get started.' : 'No documents match the selected filters.'}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {showQuotationModal && quotationDraft && (
+        <div className="quotation-modal-overlay" onClick={() => setShowQuotationModal(false)}>
+          <section
+            className="quotation-modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quotationModalTitle"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <p className="quotation-eyebrow">{quotationDraft.documentType === 'BILL' ? 'Bill' : 'Quotation'}</p>
+                <h2 id="quotationModalTitle">
+                  {quotationModalMode === 'create'
+                    ? `Generate ${quotationDraft.documentType === 'BILL' ? 'Bill' : 'Quotation'}`
+                    : `${quotationModalMode === 'edit' ? 'Edit' : 'View'} ${activeQuotation?.quotationNo || ''}`}
+                </h2>
+              </div>
+              <button type="button" className="modal-close" aria-label="Close quotation" onClick={() => setShowQuotationModal(false)}>×</button>
+            </div>
+
+            {quotationModalError && <p className="status status--error quotation-modal-error" role="alert">{quotationModalError}</p>}
+
+            {quotationModalMode === 'view' ? (
+              <>
+                <div className="quotation-document-header">
+                  <strong>{activeQuotation.documentType === 'BILL' ? 'BILL' : 'QUOTATION'}</strong>
+                  <span>{activeQuotation.documentType === 'BILL' ? 'Bill' : 'Quotation'} No.: {activeQuotation.quotationNo} &nbsp; | &nbsp; Date: {formattedDate(activeQuotation.quotationDate)}</span>
+                </div>
+                <p className="quotation-preview-subject">
+                  {activeQuotation.documentType === 'BILL' ? 'Bill' : 'Quotation'} for {activeQuotation.transformerCapacity} Transformer{activeQuotation.transformerMake ? ` - ${activeQuotation.transformerMake}` : ''}
+                </p>
+                <div className="quotation-preview-panels">
+                  <section className="quotation-preview-panel">
+                    <h3>CUSTOMER DETAILS</h3>
+                    <p><b>Name:</b> {activeQuotation.customerName || '—'}</p>
+                    <p><b>Contact:</b> {activeQuotation.contactPerson || '—'}</p>
+                    <p><b>Mobile:</b> {activeQuotation.mobile || '—'}</p>
+                    <p><b>Email:</b> {activeQuotation.email || '—'}</p>
+                    <p><b>Address:</b> {activeQuotation.customerAddress || '—'}</p>
+                  </section>
+                  <section className="quotation-preview-panel">
+                    <h3>TRANSFORMER DETAILS</h3>
+                    <p><b>Make:</b> {activeQuotation.transformerMake || '—'}</p>
+                    <p><b>Capacity:</b> {activeQuotation.transformerCapacity || '—'}</p>
+                    <p><b>Serial No.:</b> {activeQuotation.transformerSerialNo || '—'}</p>
+                    <p><b>Location:</b> {activeQuotation.transformerLocation || '—'}</p>
+                  </section>
+                </div>
+                <div className="jobs-table-wrap quotation-lines-wrap">
+                  <table className="jobs-table">
+                    <thead><tr><th>#</th><th>Service</th><th>Description of Work / Service</th>{activeQuotation.documentType === 'BILL' ? <><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></> : <th>Rate / Unit</th>}</tr></thead>
+                    <tbody>
+                      {activeQuotation.lineItems.map((item, index) => (
+                        <tr key={`${item.service}-${index}`}>
+                          <td>{index + 1}</td><td>{item.service}</td><td>{item.description}</td>
+                          {activeQuotation.documentType === 'BILL' && <>
+                            <td>{Number(item.quantity || 0).toLocaleString('en-IN')}</td>
+                            <td>{item.unit || 'unit'}</td>
+                            <td>₹{Number(item.rate || 0).toLocaleString('en-IN')}</td>
+                            <td>₹{(Number(item.quantity || 0) * Number(item.rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          </>}
+                          {activeQuotation.documentType !== 'BILL' && <td>₹{Number(item.rate || 0).toLocaleString('en-IN')}{item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil' ? '/litre' : item.service === 'Earth Pit Testing' ? '/pit' : ''}</td>}
+                        </tr>
+                      ))}
+                      {activeQuotation.lineItems.length === 0 && (
+                        <tr><td colSpan={activeQuotation.documentType === 'BILL' ? 7 : 4}>No service details.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {activeQuotation.documentType === 'BILL' && (() => {
+                  const subtotal = Math.round(activeQuotation.lineItems.reduce((total, item) => total + Number(item.quantity || 0) * Number(item.rate || 0), 0) * 100) / 100
+                  const gst = activeQuotation.gstApplicable ? Math.round(subtotal * Number(activeQuotation.gstRate || 19)) / 100 : 0
+                  return <div className="bill-total-summary">
+                    <p className="bill-total-words"><span>Amount in words: </span><strong>{indianCurrencyWords(subtotal + gst)}</strong></p>
+                    <p><span>Subtotal</span><strong>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    {activeQuotation.gstApplicable && <p><span>GST ({Number(activeQuotation.gstRate || 19)}%)</span><strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>}
+                    <p className="bill-grand-total"><span>Total Amount</span><strong>₹{(subtotal + gst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  </div>
+                })()}
+                {activeQuotation.documentType === 'BILL' && <section className="quotation-editor-section bill-view-terms">
+                  <h3>WARRANTY</h3>
+                  <p>{activeQuotation.warrantyMonths ? `Valid for ${activeQuotation.warrantyMonths} months from completion / commissioning, limited to the specified work.` : 'Warranty, wherever applicable, will be as specified for the respective work.'}</p>
+                  <h3>TERMS &amp; CONDITIONS</h3>
+                  <p className="bill-terms-preview">{activeQuotation.terms || '1. This bill covers only the services and materials expressly listed above.\n2. Any work or materials outside the stated scope require prior written approval and may be charged separately.\n3. The customer shall provide safe access, required shutdowns, permits and site facilities for the agreed work.\n4. Warranty, if stated, applies only to the specified work and is subject to the agreed scope and exclusions.\n5. Any concern regarding this bill should be notified in writing within seven days of receipt.\n6. This document is subject to applicable laws and the jurisdiction agreed between the parties.'}</p>
+                  <div className="bill-view-signatory">
+                    <strong>Digitally Authorized Signatory</strong>
+                    <span>M/s D.S. Transformers &amp; Electrical Contractor</span>
+                  </div>
+                </section>}
+                <div className="quotation-modal-actions">
+                  <button className="btn btn--secondary" onClick={() => printQuotation(activeQuotation)}>Print on Local Letterhead</button>
+                  {(activeQuotation.fileUrl || activeQuotation.pdfUrl) && (
+                    <a className="btn btn--primary" href={activeQuotation.fileUrl || activeQuotation.pdfUrl} target="_blank" rel="noreferrer">
+                      Open / Download {activeQuotation.outputFormat || (activeQuotation.pdfUrl ? 'PDF' : 'PNG')}
+                    </a>
+                  )}
+                  <button className="btn btn--ghost" onClick={() => openQuotation(activeQuotation, 'edit')}>Edit {activeQuotation.documentType === 'BILL' ? 'Bill' : 'Quotation'}</button>
+                  <button className="btn btn--danger" onClick={() => deleteQuotation(activeQuotation)}>Delete {activeQuotation.documentType === 'BILL' ? 'Bill' : 'Quotation'}</button>
+                </div>
+              </>
+            ) : (
+              <form className="quotation-editor" onSubmit={saveQuotationDraft}>
+                <section className="quotation-editor-section">
+                  <h3>Customer Details</h3>
+                  <div className="quotation-editor-grid">
+                    <label>Customer Name<input value={quotationDraft.customerName} onChange={event => updateQuotationDraft('customerName', event.target.value)} required /></label>
+                    <label>Customer Address<textarea rows="2" value={quotationDraft.customerAddress} onChange={event => updateQuotationDraft('customerAddress', event.target.value)} /></label>
+                    <label>Contact Person<input value={quotationDraft.contactPerson} onChange={event => updateQuotationDraft('contactPerson', event.target.value)} /></label>
+                    <label>Mobile<input type="tel" value={quotationDraft.mobile} onChange={event => updateQuotationDraft('mobile', event.target.value)} required /></label>
+                    <label>{quotationDraft.documentType === 'BILL' ? 'Bill Date' : 'Quotation Date'}<input type="date" value={quotationDraft.quotationDate} onChange={event => updateQuotationDraft('quotationDate', event.target.value)} required /></label>
+                  </div>
+                </section>
+
+                <section className="quotation-editor-section">
+                  <h3>Transformer Details</h3>
+                  <div className="quotation-editor-grid">
+                    <label>Transformer Make<input value={quotationDraft.transformerMake} onChange={event => updateQuotationDraft('transformerMake', event.target.value)} /></label>
+                    <label>Transformer Capacity
+                      <select value={quotationDraft.transformerCapacity} onChange={event => updateQuotationCapacity(event.target.value)} required>
+                        <option value="">Select capacity</option>
+                        {quotationConfig.capacities.map(capacity => <option key={capacity}>{capacity}</option>)}
+                      </select>
+                    </label>
+                    <label>Transformer Serial No.<input value={quotationDraft.transformerSerialNo} onChange={event => updateQuotationDraft('transformerSerialNo', event.target.value)} /></label>
+                    <label>Transformer Location<input value={quotationDraft.transformerLocation} onChange={event => updateQuotationDraft('transformerLocation', event.target.value)} /></label>
+                  </div>
+                </section>
+
+                <section className="quotation-editor-section">
+                  <h3>Services / Rates</h3>
+                  <div className="quotation-service-picker">
+                    <select value={selectedQuotationService} onChange={event => setSelectedQuotationService(event.target.value)}>
+                      <option value="">Select a service to add</option>
+                      {quotationConfig.services.filter(service => !quotationDraft.lineItems.some(item => item.service === service)).map(service => (
+                        <option key={service} value={service}>{service}</option>
+                      ))}
+                    </select>
+                    <button type="button" className="btn btn--secondary" onClick={addQuotationService} disabled={!selectedQuotationService}>Add Service</button>
+                  </div>
+                  <div className="jobs-table-wrap quotation-lines-wrap">
+                    <table className="jobs-table">
+                      <thead><tr><th>Service</th><th>Description of Work / Service</th>{quotationDraft.documentType === 'BILL' && <><th>Quantity</th><th>Unit</th></>}<th>Rate (₹)</th>{quotationDraft.documentType === 'BILL' && <th>Amount (₹)</th>}<th>Action</th></tr></thead>
+                      <tbody>
+                        {quotationDraft.lineItems.map((item, index) => (
+                          <tr key={item.service}>
+                            <td>{item.service}</td>
+                            <td><input className="quotation-inline-input" value={item.description} onChange={event => updateQuotationLine(index, 'description', event.target.value)} required /></td>
+                            {quotationDraft.documentType === 'BILL' && <>
+                              <td><input className="quotation-inline-input quotation-rate-input" type="number" min="0.01" step="0.01" aria-label={`${item.service} quantity`} value={item.quantity ?? 1} onChange={event => updateQuotationLine(index, 'quantity', event.target.value)} required /></td>
+                              <td><input className="quotation-inline-input" aria-label={`${item.service} unit`} value={item.unit || 'unit'} onChange={event => updateQuotationLine(index, 'unit', event.target.value)} required /></td>
+                            </>}
+                            <td>
+                              <input
+                                className="quotation-inline-input quotation-rate-input"
+                                aria-label={`${item.service} rate${item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil' ? ' per litre' : item.service === 'Earth Pit Testing' ? ' per pit' : ''}`}
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.rate}
+                                onChange={event => updateQuotationLine(index, 'rate', event.target.value)}
+                                required
+                              />
+                              {(item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil') && <small className="quotation-rate-note">Rate per litre</small>}
+                              {item.service === 'Earth Pit Testing' && <small className="quotation-rate-note">Rate per pit</small>}
+                            </td>
+                            {quotationDraft.documentType === 'BILL' && <td>₹{(Number(item.quantity || 0) * Number(item.rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
+                            <td><button type="button" className="btn btn--danger btn--small" onClick={() => removeQuotationLine(item.service)}>Remove</button></td>
+                          </tr>
+                        ))}
+                        {quotationDraft.lineItems.length === 0 && <tr><td colSpan={quotationDraft.documentType === 'BILL' ? 7 : 4}>Select a service above to add it to the document.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+                {quotationDraft.documentType === 'BILL' && (() => {
+                  const subtotal = Math.round(quotationDraft.lineItems.reduce((total, item) => total + Number(item.quantity || 0) * Number(item.rate || 0), 0) * 100) / 100
+                  const gst = quotationDraft.gstApplicable ? Math.round(subtotal * Number(quotationDraft.gstRate || 19)) / 100 : 0
+                  return <>
+                    <section className="quotation-editor-section">
+                      <h3>Bill Summary &amp; Warranty</h3>
+                      <div className="quotation-editor-grid">
+                        <label className="bill-gst-toggle"><input type="checkbox" checked={Boolean(quotationDraft.gstApplicable)} onChange={event => updateQuotationDraft('gstApplicable', event.target.checked)} /> Apply GST at 19% to the total service amount</label>
+                        <label>Warranty period (months)<input type="number" min="0" step="1" value={quotationDraft.warrantyMonths || ''} onChange={event => updateQuotationDraft('warrantyMonths', event.target.value)} placeholder="Leave blank if not applicable" /></label>
+                      </div>
+                      <div className="bill-total-summary">
+                        <p><span>Subtotal</span><strong>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                        {quotationDraft.gstApplicable && <p><span>GST (19%)</span><strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>}
+                        <p className="bill-grand-total"><span>Total Amount</span><strong>₹{(subtotal + gst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                      </div>
+                    </section>
+                    <section className="quotation-editor-section">
+                      <h3>Terms &amp; Conditions</h3>
+                      <textarea className="bill-terms-input" aria-label="Bill terms and conditions" rows="7" value={quotationDraft.terms || ''} onChange={event => updateQuotationDraft('terms', event.target.value)} placeholder="Terms are included automatically if left blank." />
+                    </section>
+                  </>
+                })()}
+                <section className="quotation-editor-section">
+                  <h3>{quotationDraft.documentType === 'BILL' ? 'Bill Output' : 'Quotation Output'}</h3>
+                  <label className="quotation-output-format">
+                    File format
+                    <select value={quotationDraft.outputFormat || 'PDF'} onChange={event => updateQuotationDraft('outputFormat', event.target.value)}>
+                      <option value="PDF">Generate PDF</option>
+                      <option value="PNG">Generate PNG</option>
+                    </select>
+                  </label>
+                  <p className="quotation-financial-year">The quotation will use the letterhead from the configured Google Slides template.</p>
+                </section>
+                <p className="quotation-financial-year">Financial Year: {quotationDraft.financialYear || quotationConfig.settings['Financial Year']}</p>
+                <div className="quotation-modal-actions">
+                  <button type="button" className="btn btn--secondary" onClick={() => printQuotation(quotationDraft)}>
+                    Print Draft on Local Letterhead
+                  </button>
+                  <button type="submit" className="btn btn--primary" disabled={quotationSaving}>
+                    {quotationSaving
+                      ? 'Generating...'
+                      : quotationModalMode === 'edit'
+                        ? `Save Changes & Generate ${quotationDraft.outputFormat || 'PDF'}`
+                        : `Generate ${quotationDraft.outputFormat || 'PDF'}`}
+                  </button>
+                  <button type="button" className="btn btn--ghost" onClick={() => setShowQuotationModal(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
+          </section>
+        </div>
       )}
 
       {currentTab === 'transformers' && (
@@ -1278,8 +2109,8 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {transformers.map((transformer) => (
-                  <tr key={transformer.id}>
+                {transformers.map((transformer, index) => (
+                  <tr key={`${transformer.id}-${index}`}>
                     <td>{transformer.id}</td>
                     <td>{transformer.spmCenter}</td>
                     <td>{transformer.dtrNo}</td>
@@ -1296,7 +2127,8 @@ function App() {
                       <button
                         className="btn btn--ghost btn--small"
                         onClick={() => moveToNextStage(transformer)}
-                        disabled={['Repaired', 'Delivered', 'Billed'].includes(transformer.status)}
+                        disabled={!hasValidTransformerId(transformer) || ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)}
+                        title={!hasValidTransformerId(transformer) ? 'This record has no valid transformer ID.' : undefined}
                       >
                         Move Stage
                       </button>
@@ -1371,7 +2203,7 @@ function App() {
                   <tr key={tnote.id}>
                     <td>{tnote.id}</td>
                     <td>{getTNoteSpmCenter(tnote)}</td>
-                    <td>{new Date(tnote.date).toLocaleDateString()}</td>
+                    <td>{formattedDate(tnote.date) || '—'}</td>
                     <td>{tnote.numberOfTransformers}</td>
                     <td className="actions-cell">
                       <button className="btn btn--ghost btn--small" onClick={() => alert(`View TNote ${tnote.id}`)}>
@@ -1439,7 +2271,7 @@ function App() {
                 {filteredDcs.map((dc) => (
                   <tr key={dc.dcNo}>
                     <td>{dc.dcNo}</td>
-                    <td>{new Date(dc.date).toLocaleDateString()}</td>
+                    <td>{formattedDate(dc.date) || '—'}</td>
                     <td>{dc.spmCenter || '-'}</td>
                     <td>{dc.totalTransformers || 0}</td>
                     <td className="actions-cell">
@@ -1515,13 +2347,14 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dcCandidates.map((transformer) => (
-                      <tr key={transformer.id}>
+                    {dcCandidates.map((transformer, index) => (
+                      <tr key={`${transformer.id}-${index}`}>
                         <td>
                           <input
                             type="checkbox"
                             checked={selectedDCTransformers.includes(transformer.id)}
                             onChange={() => toggleDCSelection(transformer.id)}
+                            disabled={!hasValidTransformerId(transformer)}
                           />
                         </td>
                         <td>{transformer.id}</td>
@@ -1569,7 +2402,7 @@ function App() {
               {dcEditMode ? (
                 <input type="date" value={editDCDate} onChange={(e) => setEditDCDate(e.target.value)} />
               ) : (
-                <input value={new Date(activeDC?.date || '').toLocaleDateString() || ''} disabled />
+                <input value={formattedDate(activeDC?.date)} disabled />
               )}
             </div>
             <div className="modal-actions">
@@ -1598,8 +2431,8 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {dcDetailTransformers.map((transformer) => (
-                    <tr key={transformer.id}>
+                  {dcDetailTransformers.map((transformer, index) => (
+                    <tr key={`${transformer.id}-${index}`}>
                       <td>{transformer.id}</td>
                       <td>{transformer.spmCenter}</td>
                       <td>{transformer.dtrNo}</td>
@@ -1608,7 +2441,7 @@ function App() {
                       <td>{transformer.type}</td>
                       <td>{transformer.status}</td>
                       <td>
-                        <button className="btn btn--ghost btn--small" onClick={() => openEditTransformerModal(transformer)}>
+                        <button className="btn btn--ghost btn--small" onClick={() => openEditTransformerModal(transformer)} disabled={!hasValidTransformerId(transformer)}>
                           Edit
                         </button>
                       </td>
@@ -1710,7 +2543,7 @@ function App() {
               {billEditMode ? (
                 <input type="date" value={editBillDate} onChange={(e) => setEditBillDate(e.target.value)} />
               ) : (
-                <input value={new Date(activeBill?.date || '').toLocaleDateString() || ''} disabled />
+                <input value={formattedDate(activeBill?.date)} disabled />
               )}
             </div>
             <div className="form-group">
@@ -1751,8 +2584,8 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {billDetailTransformers.map((transformer) => (
-                    <tr key={transformer.id}>
+                  {billDetailTransformers.map((transformer, index) => (
+                    <tr key={`${transformer.id}-${index}`}>
                       <td>{transformer.id}</td>
                       <td>{transformer.spmCenter}</td>
                       <td>{transformer.dtrNo}</td>
@@ -1761,7 +2594,7 @@ function App() {
                       <td>{transformer.type}</td>
                       <td>{transformer.status}</td>
                       <td>
-                        <button className="btn btn--ghost btn--small" onClick={() => openEditTransformerModal(transformer)}>
+                        <button className="btn btn--ghost btn--small" onClick={() => openEditTransformerModal(transformer)} disabled={!hasValidTransformerId(transformer)}>
                           Edit
                         </button>
                       </td>
@@ -1822,10 +2655,10 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {filteredBills.map((bill) => (
-                  <tr key={bill.sapNo}>
+                {filteredBills.map((bill, index) => (
+                  <tr key={`${bill.sapNo || 'bill'}-${index}`}>
                     <td>{bill.sapNo}</td>
-                    <td>{new Date(bill.date).toLocaleDateString()}</td>
+                    <td>{formattedDate(bill.date) || '—'}</td>
                     <td>{bill.spmCenter}</td>
                     <td>{bill.totalTransformers}</td>
                     <td>{bill.billAmount ? `₹${bill.billAmount.toLocaleString()}` : '-'}</td>
@@ -1924,13 +2757,14 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {billCandidates.map((transformer) => (
-                      <tr key={transformer.id}>
+                    {billCandidates.map((transformer, index) => (
+                      <tr key={`${transformer.id}-${index}`}>
                         <td>
                           <input
                             type="checkbox"
                             checked={selectedBillTransformers.includes(transformer.id)}
                             onChange={() => toggleBillSelection(transformer.id)}
+                            disabled={!hasValidTransformerId(transformer)}
                           />
                         </td>
                         <td>{transformer.id}</td>

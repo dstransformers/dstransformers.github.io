@@ -1,8 +1,10 @@
 package com.vstms.backend;
 
+import com.vstms.backend.model.BillDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -12,49 +14,49 @@ import java.util.List;
 public class BillController {
 
     @Autowired
-    private BillService billService;
+    private GoogleSheetsService googleSheetsService;
 
     @GetMapping
-    public List<BillEntity> getAllBills() {
-        return billService.getAllBills();
+    public List<BillDTO> getAllBills() {
+        return googleSheetsService.getAllBills();
     }
 
     @GetMapping("/{sapNo}")
-    public ResponseEntity<BillEntity> getBillById(@PathVariable String sapNo) {
-        return billService.getBillById(sapNo)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<BillDTO> getBillById(@PathVariable String sapNo) {
+        return googleSheetsService.getBillById(sapNo)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public BillEntity createBill(@RequestBody BillRequest request) {
-        BillEntity bill = new BillEntity(
-            request.getSapNo(), 
-            request.getDate(),
-            request.getSpmCenter(),
-            request.getTotalTransformers(),
-            request.getBillAmount()
+    public BillDTO createBill(@RequestBody BillRequest request) {
+        BillDTO bill = new BillDTO(
+                request.getSapNo(),
+                request.getDate(),
+                request.getSpmCenter(),
+                request.getTotalTransformers(),
+                request.getBillAmount()
         );
-        return billService.saveBill(bill);
+        return googleSheetsService.saveBill(bill);
     }
 
     @PutMapping("/{sapNo}")
-    public ResponseEntity<BillEntity> updateBill(@PathVariable String sapNo, @RequestBody BillRequest request) {
-        return billService.getBillById(sapNo)
-            .map(bill -> {
-                bill.setDate(request.getDate());
-                bill.setSpmCenter(request.getSpmCenter());
-                bill.setTotalTransformers(request.getTotalTransformers());
-                bill.setBillAmount(request.getBillAmount());
-                return ResponseEntity.ok(billService.saveBill(bill));
-            })
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<BillDTO> updateBill(@PathVariable String sapNo, @RequestBody BillRequest request) {
+        return googleSheetsService.getBillById(sapNo)
+                .map(bill -> {
+                    bill.setDate(request.getDate());
+                    bill.setSpmCenter(request.getSpmCenter());
+                    bill.setTotalTransformers(request.getTotalTransformers());
+                    bill.setBillAmount(request.getBillAmount());
+                    return ResponseEntity.ok(googleSheetsService.saveBill(bill));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{sapNo}")
     public ResponseEntity<Void> deleteBill(@PathVariable String sapNo) {
-        if (billService.getBillById(sapNo).isPresent()) {
-            billService.deleteBill(sapNo);
+        if (googleSheetsService.getBillById(sapNo).isPresent()) {
+            googleSheetsService.deleteBill(sapNo);
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
@@ -64,10 +66,9 @@ public class BillController {
         private String sapNo;
         private LocalDate date;
         private String spmCenter;
-        private Integer totalTransformers;
+        private int totalTransformers;
         private Double billAmount;
 
-        // getters and setters
         public String getSapNo() {
             return sapNo;
         }
@@ -92,11 +93,11 @@ public class BillController {
             this.spmCenter = spmCenter;
         }
 
-        public Integer getTotalTransformers() {
+        public int getTotalTransformers() {
             return totalTransformers;
         }
 
-        public void setTotalTransformers(Integer totalTransformers) {
+        public void setTotalTransformers(int totalTransformers) {
             this.totalTransformers = totalTransformers;
         }
 

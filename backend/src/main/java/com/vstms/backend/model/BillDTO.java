@@ -1,32 +1,18 @@
-package com.vstms.backend;
+package com.vstms.backend.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.persistence.*;
 import java.time.LocalDate;
 
-@Entity
-@Table(name = "bills")
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-public class BillEntity {
-    @Id
-    @Column(nullable = false, length = 50)
+public class BillDTO {
     private String sapNo;
-
-    @Column(nullable = false)
     private LocalDate date;
-
-    @Column(length = 100)
     private String spmCenter;
-
-    @Column
-    private Integer totalTransformers;
-
-    @Column
+    private int totalTransformers;
     private Double billAmount;
 
-    protected BillEntity() {}
+    public BillDTO() {
+    }
 
-    public BillEntity(String sapNo, LocalDate date, String spmCenter, Integer totalTransformers, Double billAmount) {
+    public BillDTO(String sapNo, LocalDate date, String spmCenter, int totalTransformers, Double billAmount) {
         this.sapNo = sapNo;
         this.date = date;
         this.spmCenter = spmCenter;
@@ -34,7 +20,6 @@ public class BillEntity {
         this.billAmount = billAmount;
     }
 
-    // Getters and setters
     public String getSapNo() {
         return sapNo;
     }
@@ -59,11 +44,11 @@ public class BillEntity {
         this.spmCenter = spmCenter;
     }
 
-    public Integer getTotalTransformers() {
+    public int getTotalTransformers() {
         return totalTransformers;
     }
 
-    public void setTotalTransformers(Integer totalTransformers) {
+    public void setTotalTransformers(int totalTransformers) {
         this.totalTransformers = totalTransformers;
     }
 

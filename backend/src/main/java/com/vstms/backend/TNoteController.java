@@ -1,9 +1,12 @@
 package com.vstms.backend;
 
+import com.vstms.backend.model.TNoteDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -12,41 +15,41 @@ import java.util.List;
 public class TNoteController {
 
     @Autowired
-    private TNoteService tNoteService;
+    private GoogleSheetsService googleSheetsService;
 
     @GetMapping
-    public List<TNoteEntity> getAllTNotes() {
-        return tNoteService.getAllTNotes();
+    public List<TNoteDTO> getAllTNotes() {
+        return googleSheetsService.getAllTNotes();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TNoteEntity> getTNoteById(@PathVariable Long id) {
-        return tNoteService.getTNoteById(id)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<TNoteDTO> getTNoteById(@PathVariable Long id) {
+        return googleSheetsService.getTNoteById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public TNoteEntity createTNote(@RequestBody TNoteRequest request) {
-        TNoteEntity tNote = new TNoteEntity(request.getDate(), request.getNumberOfTransformers());
-        return tNoteService.saveTNote(tNote);
+    public TNoteDTO createTNote(@RequestBody TNoteRequest request) {
+        TNoteDTO tNote = new TNoteDTO(null, request.getDate(), request.getNumberOfTransformers(), new ArrayList<>());
+        return googleSheetsService.saveTNote(tNote);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<TNoteEntity> updateTNote(@PathVariable Long id, @RequestBody TNoteRequest request) {
-        return tNoteService.getTNoteById(id)
-            .map(tNote -> {
-                tNote.setDate(request.getDate());
-                tNote.setNumberOfTransformers(request.getNumberOfTransformers());
-                return ResponseEntity.ok(tNoteService.saveTNote(tNote));
-            })
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<TNoteDTO> updateTNote(@PathVariable Long id, @RequestBody TNoteRequest request) {
+        return googleSheetsService.getTNoteById(id)
+                .map(tNote -> {
+                    tNote.setDate(request.getDate());
+                    tNote.setNumberOfTransformers(request.getNumberOfTransformers());
+                    return ResponseEntity.ok(googleSheetsService.saveTNote(tNote));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTNote(@PathVariable Long id) {
-        if (tNoteService.getTNoteById(id).isPresent()) {
-            tNoteService.deleteTNote(id);
+        if (googleSheetsService.getTNoteById(id).isPresent()) {
+            googleSheetsService.deleteTNote(id);
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
@@ -56,7 +59,6 @@ public class TNoteController {
         private LocalDate date;
         private int numberOfTransformers;
 
-        // getters and setters
         public LocalDate getDate() {
             return date;
         }

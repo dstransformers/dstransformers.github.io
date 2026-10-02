@@ -43,6 +43,13 @@
         <div class="header-actions">
           <a class="btn btn-primary" href="#quotation-form">Request a Quotation</a>
           <a class="btn btn-whatsapp" href="https://wa.me/919949396530" target="_blank" rel="noreferrer" aria-label="WhatsApp">WhatsApp</a>
+          <button type="button" class="btn btn-admin-login" id="adminLoginBtn" aria-label="Admin Portal Login">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>Admin Login</span>
+          </button>
         </div>
 
         <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
@@ -616,73 +623,57 @@
         </div>
       </section>
 
-      <section class="section quote-form-section" id="quotation-form">
+      <dialog class="quote-dialog quote-form-section" id="quotation-form" aria-labelledby="quotationTitle">
+        <button class="quote-dialog-close" type="button" aria-label="Close quotation form">×</button>
         <div class="container quote-form-wrap">
           <div class="section-heading">
             <p class="eyebrow eyebrow-accent">Quotation enquiry</p>
-            <h2>Request a Transformer Service Quotation</h2>
+            <h2 id="quotationTitle">Request a Transformer Service Quotation</h2>
             <p>Share your transformer details and service requirement. Our team will review the information and contact you regarding inspection, service requirements and quotation.</p>
           </div>
 
           <form id="quotationForm" class="quote-form" novalidate>
             <div id="submissionError" class="submission-error hidden" role="alert" aria-live="assertive"></div>
             <div class="form-step">
-              <h3>Customer</h3>
+              <h3>Customer details</h3>
               <div class="form-grid">
                 <div class="field">
                   <label for="companyName">Company / Organization Name</label>
-                  <input id="companyName" name="companyName" type="text" placeholder="ABC Industries" required />
+                  <input id="companyName" name="companyName" type="text" placeholder="ABC Industries" autocomplete="organization" />
                   <p class="error-message" data-error-for="companyName"></p>
                 </div>
 
                 <div class="field">
                   <label for="contactPerson">Contact Person</label>
-                  <input id="contactPerson" name="contactPerson" type="text" placeholder="Ramesh Kumar" required />
+                  <input id="contactPerson" name="contactPerson" type="text" placeholder="Ramesh Kumar" autocomplete="name" />
                   <p class="error-message" data-error-for="contactPerson"></p>
                 </div>
 
                 <div class="field">
-                  <label for="mobileNumber">Mobile Number</label>
-                  <input id="mobileNumber" name="mobileNumber" type="tel" inputmode="numeric" placeholder="98XXXXXXXX" required />
+                  <label for="mobileNumber">Mobile Number <span class="required-label">Required</span></label>
+                  <input id="mobileNumber" name="mobileNumber" type="tel" inputmode="numeric" placeholder="10-digit mobile number" autocomplete="tel-national" maxlength="10" aria-describedby="mobileHelp" required />
+                  <small id="mobileHelp">Enter a valid 10-digit Indian mobile number.</small>
                   <p class="error-message" data-error-for="mobileNumber"></p>
                 </div>
 
                 <div class="field">
                   <label for="whatsappNumber">WhatsApp Number</label>
-                  <input id="whatsappNumber" name="whatsappNumber" type="tel" inputmode="numeric" placeholder="98XXXXXXXX" />
+                  <input id="whatsappNumber" name="whatsappNumber" type="tel" inputmode="numeric" placeholder="WhatsApp number (if different)" autocomplete="tel-national" maxlength="10" />
                 </div>
 
                 <div class="field">
                   <label for="emailAddress">Email</label>
-                  <input id="emailAddress" name="emailAddress" type="email" placeholder="customer@example.com" />
-                </div>
-
-                <div class="field">
-                  <label for="transformerLocationChoice">Where is the transformer located?</label>
-                  <select id="transformerLocationChoice" name="transformerLocationChoice" required>
-                    <option value="">Select location</option>
-                    <option>Customer site</option>
-                    <option>Our Mallapur workshop</option>
-                    <option>Transformer needs to be transported to workshop</option>
-                    <option>Not sure</option>
-                  </select>
-                  <p class="error-message" data-error-for="transformerLocationChoice"></p>
-                </div>
-
-                <div class="field hidden conditional-field" id="siteLocationWrap">
-                  <label for="siteLocation">Site Location</label>
-                  <input id="siteLocation" name="siteLocation" type="text" placeholder="Nacharam, Hyderabad" />
-                  <p class="error-message" data-error-for="siteLocation"></p>
+                  <input id="emailAddress" name="emailAddress" type="email" placeholder="customer@example.com" autocomplete="email" />
                 </div>
               </div>
             </div>
 
             <div class="form-step">
-              <h3>Transformer</h3>
+              <h3>Transformer details</h3>
               <div class="form-grid">
                 <div class="field">
                   <label for="transformerCapacity">Transformer Capacity</label>
-                  <select id="transformerCapacity" name="transformerCapacity" required>
+                  <select id="transformerCapacity" name="transformerCapacity">
                     <option value="">Select capacity</option>
                     <option>25 kVA</option>
                     <option>50 kVA</option>
@@ -702,46 +693,15 @@
                 </div>
 
                 <div class="field">
-                  <label for="transformerType">Transformer Type</label>
-                  <select id="transformerType" name="transformerType" required>
-                    <option value="">Select type</option>
-                    <option>Oil-filled</option>
-                    <option>Dry type</option>
-                    <option>Unknown</option>
-                  </select>
-                  <p class="error-message" data-error-for="transformerType"></p>
-                </div>
-
-                <div class="field">
                   <label for="transformerMake">Transformer Make</label>
                   <input id="transformerMake" name="transformerMake" type="text" placeholder="Example: ABB, Siemens" />
-                </div>
-
-                <div class="field">
-                  <label for="transformerAge">Approximate Transformer Age</label>
-                  <input id="transformerAge" name="transformerAge" type="text" placeholder="Example: 8 years" />
-                </div>
-
-                <div class="field">
-                  <label for="transformerQuantity">Number of Transformers</label>
-                  <input id="transformerQuantity" name="transformerQuantity" type="number" min="1" value="1" required />
-                  <p class="error-message" data-error-for="transformerQuantity"></p>
                 </div>
               </div>
             </div>
 
             <div class="form-step">
-              <h3>Service required</h3>
-              <div class="field">
-                <label for="workshopServiceLocation">Where is the required work expected to be carried out?</label>
-                <select id="workshopServiceLocation" name="workshopServiceLocation" required>
-                  <option value="">Select work location</option>
-                  <option>On-site service</option>
-                  <option>Workshop repair</option>
-                  <option>Not sure — please advise</option>
-                </select>
-                <p class="error-message" data-error-for="workshopServiceLocation"></p>
-              </div>
+              <h3>Services required</h3>
+              <p class="form-step-hint">Select all services that apply.</p>
               <div class="checkbox-grid" role="group" aria-label="Select required service">
                 <label class="check-item"><input type="checkbox" name="serviceRequired" value="Transformer Breakdown Repair" /> <span>Transformer Breakdown Repair</span></label>
                 <label class="check-item"><input type="checkbox" name="serviceRequired" value="Transformer Inspection" /> <span>Transformer Inspection</span></label>
@@ -753,17 +713,8 @@
                 <label class="check-item"><input type="checkbox" name="serviceRequired" value="Annual Maintenance" /> <span>Annual Maintenance</span></label>
                 <label class="check-item"><input type="checkbox" name="serviceRequired" value="Preventive Maintenance" /> <span>Preventive Maintenance</span></label>
                 <label class="check-item"><input type="checkbox" name="serviceRequired" value="Transformer Servicing" /> <span>Transformer Servicing</span></label>
-                <label class="check-item" data-other-service>
-                  <input type="checkbox" name="serviceRequired" value="Other" id="serviceOtherCheck" />
-                  <span>Other</span>
-                </label>
+                <label class="check-item"><input type="checkbox" name="serviceRequired" value="Other" /> <span>Other</span></label>
               </div>
-
-              <div class="field inline-other hidden" id="serviceOtherField">
-                <label for="otherServiceDetail">Other service</label>
-                <input id="otherServiceDetail" name="otherServiceDetail" type="text" placeholder="Describe the required service" />
-              </div>
-              <p class="error-message" data-error-for="serviceRequired"></p>
             </div>
 
             <div class="form-step">
@@ -776,7 +727,7 @@
 
                 <div class="field">
                   <label for="transformerStatus">Current Transformer Status</label>
-                  <select id="transformerStatus" name="transformerStatus" required>
+                  <select id="transformerStatus" name="transformerStatus">
                     <option value="">Select status</option>
                     <option>Working normally</option>
                     <option>Working with an issue</option>
@@ -790,7 +741,7 @@
 
                 <div class="field">
                   <label for="servicePriority">How soon do you need assistance?</label>
-                  <select id="servicePriority" name="servicePriority" required>
+                  <select id="servicePriority" name="servicePriority">
                     <option value="">Select priority</option>
                     <option>Emergency / Breakdown</option>
                     <option>As soon as possible</option>
@@ -801,15 +752,6 @@
                   <p class="error-message" data-error-for="servicePriority"></p>
                 </div>
 
-                <div class="field hidden conditional-field" id="leakageLocationWrap">
-                  <label for="leakageLocation">Where is the leakage visible?</label>
-                  <input id="leakageLocation" name="leakageLocation" type="text" placeholder="Example: Near gasket, top cover, bushings" />
-                </div>
-
-                <div class="field hidden conditional-field" id="breakdownTimingWrap">
-                  <label for="breakdownTiming">When did the transformer stop working?</label>
-                  <input id="breakdownTiming" name="breakdownTiming" type="text" placeholder="Example: Yesterday evening / last week" />
-                </div>
               </div>
             </div>
 
@@ -817,7 +759,7 @@
               <h3>Photos and files</h3>
               <div class="field upload-field">
                 <label for="photoUpload">Upload Transformer Photos</label>
-                <input id="photoUpload" name="photoUpload" type="file" accept="image/*,video/*" multiple />
+                <input id="photoUpload" name="photoUpload" type="file" accept="image/*" multiple />
                 <small>Photos of the transformer, nameplate, leakage, damage or fault condition can help our team understand the requirement. Up to 5 images.</small>
               </div>
             </div>
@@ -845,7 +787,7 @@
             </div>
           </div>
         </div>
-      </section>
+      </dialog>
 
       <section class="section workshop-visit">
         <div class="container workshop-visit-grid">
