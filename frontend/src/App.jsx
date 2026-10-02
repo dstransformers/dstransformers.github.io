@@ -72,7 +72,33 @@ function App() {
   const [billCandidates, setBillCandidates] = useState([])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  // Enquiries state
+  const [enquiries, setEnquiries] = useState([])
+  const [enquiriesLoading, setEnquiriesLoading] = useState(false)
+  const [enquiriesError, setEnquiriesError] = useState('')
+  const [showEnquiryForm, setShowEnquiryForm] = useState(false)
+  const [newEnquiry, setNewEnquiry] = useState({
+    customerName: '',
+    customerPhone: '',
+    customerEmail: '',
+    servicesRequired: '',
+    transformerLocation: '',
+    leakageLocation: '',
+    breakdownTiming: '',
+    siteLocation: '',
+  })
+  const [enquiryStatusFilter, setEnquiryStatusFilter] = useState([])
+
   const navItems = [
+    {
+      id: 'enquiries',
+      label: 'Enquiries',
+      icon: (
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V6c0-1.1-.9-2-2-2zm0 12h-2v2h-2v-2h-2v2h-2v-2h-2v2H8v-2H6v2H4V4h16v12z" />
+        </svg>
+      ),
+    },
     {
       id: 'transformers',
       label: 'Transformers',
@@ -145,6 +171,7 @@ function App() {
   }, [openFilterColumn])
 
   useEffect(() => {
+    if (currentTab === 'enquiries') fetchEnquiries()
     if (currentTab === 'tnotes') fetchTNotes()
     if (currentTab === 'dcs') fetchDCs()
     if (currentTab === 'bills') fetchBills()
@@ -251,6 +278,50 @@ function App() {
       setSummary(data)
     } catch (err) {
       setTransformersError(err instanceof Error ? err.message : 'Failed to fetch summary')
+    }
+  }
+
+  const fetchEnquiries = async () => {
+    setEnquiriesLoading(true)
+    setEnquiriesError('')
+    try {
+      const response = await fetch('http://localhost:8082/api/enquiries')
+      if (!response.ok) {
+        throw new Error(`Failed to fetch enquiries (${response.status})`)
+      }
+      const data = await response.json()
+      setEnquiries(data.data || [])
+    } catch (err) {
+      setEnquiriesError(err instanceof Error ? err.message : 'Failed to fetch enquiries')
+    } finally {
+      setEnquiriesLoading(false)
+    }
+  }
+
+  const submitEnquiry = async (event) => {
+    event.preventDefault()
+    setEnquiriesError('')
+    try {
+      const response = await fetch('http://localhost:8082/api/enquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEnquiry),
+      })
+      if (!response.ok) throw new Error('Failed to submit enquiry')
+      setNewEnquiry({
+        customerName: '',
+        customerPhone: '',
+        customerEmail: '',
+        servicesRequired: '',
+        transformerLocation: '',
+        leakageLocation: '',
+        breakdownTiming: '',
+        siteLocation: '',
+      })
+      setShowEnquiryForm(false)
+      await fetchEnquiries()
+    } catch (err) {
+      setEnquiriesError(err instanceof Error ? err.message : 'Failed to submit enquiry')
     }
   }
 
@@ -974,6 +1045,148 @@ function App() {
           <small>Invoice posted after delivery</small>
         </article>
       </section>
+
+      {currentTab === 'enquiries' && (
+        <section className="panel jobs-panel">
+          <div className="panel-header">
+            <h2>Service Enquiries</h2>
+            <button className="btn btn--primary" onClick={() => setShowEnquiryForm(true)}>
+              New Enquiry
+            </button>
+          </div>
+          {enquiriesError && <p className="status status--error jobs-feedback">{enquiriesError}</p>}
+          {enquiriesLoading && <p className="status jobs-feedback">Loading enquiries...</p>}
+          
+          {showEnquiryForm && (
+            <form onSubmit={submitEnquiry} className="enquiry-form">
+              <div className="form-section">
+                <h3>Customer Information</h3>
+                <div className="form-row">
+                  <input
+                    type="text"
+                    placeholder="Customer Name"
+                    className="form-input"
+                    value={newEnquiry.customerName}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, customerName: e.target.value})}
+                    required
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone Number"
+                    className="form-input"
+                    value={newEnquiry.customerPhone}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, customerPhone: e.target.value})}
+                    required
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email Address"
+                    className="form-input"
+                    value={newEnquiry.customerEmail}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, customerEmail: e.target.value})}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h3>Service Details</h3>
+                <div className="form-row">
+                  <input
+                    type="text"
+                    placeholder="Service Required"
+                    className="form-input"
+                    value={newEnquiry.servicesRequired}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, servicesRequired: e.target.value})}
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder="Transformer Location"
+                    className="form-input"
+                    value={newEnquiry.transformerLocation}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, transformerLocation: e.target.value})}
+                  />
+                </div>
+                <div className="form-row">
+                  <input
+                    type="text"
+                    placeholder="Leakage Location (if any)"
+                    className="form-input"
+                    value={newEnquiry.leakageLocation}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, leakageLocation: e.target.value})}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Breakdown Timing"
+                    className="form-input"
+                    value={newEnquiry.breakdownTiming}
+                    onChange={(e) => setNewEnquiry({...newEnquiry, breakdownTiming: e.target.value})}
+                  />
+                </div>
+                <textarea
+                  placeholder="Site Location / Additional Details"
+                  className="form-input form-textarea"
+                  value={newEnquiry.siteLocation}
+                  onChange={(e) => setNewEnquiry({...newEnquiry, siteLocation: e.target.value})}
+                  rows="3"
+                />
+              </div>
+
+              <div className="form-actions">
+                <button type="submit" className="btn btn--primary">Submit Enquiry</button>
+                <button type="button" className="btn btn--ghost" onClick={() => setShowEnquiryForm(false)}>Cancel</button>
+              </div>
+            </form>
+          )}
+
+          <div className="jobs-table-wrap">
+            <table className="jobs-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Date</th>
+                  <th>Customer Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Service Required</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enquiries.map((enquiry) => (
+                  <tr key={enquiry.ID}>
+                    <td>{enquiry.ID}</td>
+                    <td>{formattedDate(enquiry.Date)}</td>
+                    <td>{enquiry.CustomerName}</td>
+                    <td>{enquiry.CustomerPhone}</td>
+                    <td>{enquiry.CustomerEmail}</td>
+                    <td>{enquiry.ServicesRequired}</td>
+                    <td>{enquiry.TransformerLocation}</td>
+                    <td>
+                      <span className={`tag tag--${(enquiry.Status || 'new').toLowerCase().replace(/\s+/g, '-')}`}>
+                        {enquiry.Status || 'NEW'}
+                      </span>
+                    </td>
+                    <td className="actions-cell">
+                      <button className="btn btn--ghost btn--small" onClick={() => alert(`View Enquiry ${enquiry.ID}`)}>
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!enquiriesLoading && enquiries.length === 0 && (
+                  <tr>
+                    <td colSpan="9">No enquiries available.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {currentTab === 'transformers' && (
         <section className="panel jobs-panel">
