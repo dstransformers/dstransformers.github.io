@@ -46,7 +46,7 @@ const SHEET_HEADERS = {
 };
 
 const DEFAULT_QUOTATION_SETTINGS = [
-  ['Business Name', 'D.S. TRANSFORMERS & ELECTRICAL CONTRACTOR'],
+  ['Business Name', 'M/s. D.S. TRANSFORMERS & ELECTRICAL CONTRACTOR'],
   ['Business Email', 'ds.transformerelectrical@gmail.com'],
   ['WhatsApp', '919949396530'],
   ['Financial Year', '26-27'],
@@ -1099,7 +1099,9 @@ function setQuotationTableColumnWidths_(presentationId, layout) {
     const nextTranslateY = Number(transform.translateY || 0) + tableHeightDelta;
     const nextBottom = nextTranslateY + Number(element.size.height.magnitude) * scaleY;
     if (objectId === layout.signatoryObjectId && nextBottom > layout.maximumContentBottom) {
-      throw new Error('The bill content exceeds the available A4 page space after the service table expands. Shorten long service descriptions or bill terms and try again.');
+      throw new Error(layout.isBill
+        ? 'The service table expanded beyond the available A4 bill layout. Shorten service descriptions or reduce service rows.'
+        : 'The service table expanded beyond the available A4 quotation layout. Shorten service descriptions or reduce service rows.');
     }
     moveRequests.push({
       updatePageElementTransform: {
@@ -1195,8 +1197,10 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const top = Math.min(140, pageHeight * 0.166);
   const signatoryHeight = Math.min(38, Math.max(32, pageHeight * 0.045));
   const termsHeight = Math.min(90, Math.max(65, pageHeight * 0.107));
-  const closingGap = isBill ? 4 : Math.min(6, pageHeight * 0.008);
-  const bottomMargin = isBill ? 42 : Math.min(90, Math.max(42, pageHeight * 0.107));
+  const closingGap = Math.min(6, pageHeight * 0.008);
+  const bottomMargin = isBill
+    ? 150
+    : Math.min(90, Math.max(42, pageHeight * 0.107));
   const signatoryTop = pageHeight - bottomMargin - signatoryHeight;
   const termsTop = signatoryTop - closingGap - termsHeight;
   const date = quotationDateLabel_(quotation.quotationDate);
@@ -1255,8 +1259,9 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   setQuotationText_(slide, isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', margin, serviceTop, contentWidth, 18, 10, true);
   const tableTop = serviceTop + 21;
   const billTotalsHeight = 58;
-  const billTableTotalsGap = 4;
-  const billTermsGap = 4;
+  const billTableTotalsGap = 6;
+  const tableReflowAllowance = 24;
+  const billTermsGap = 8;
   const billHeadingAndWarrantyHeight = 43;
   const billTerms = isBill
     ? String(quotation.terms || '').trim() || [
@@ -1283,7 +1288,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   }
   const table = slide.insertTable(quotation.lineItems.length + 1, isBill ? 6 : 3, margin, tableTop, contentWidth, tableHeight);
   const columnWidths = isBill
-    ? [32, contentWidth - 273, 36, 40, 78, 87]
+    ? [32, contentWidth - 257, 32, 36, 70, 87]
     : [32, contentWidth - 155, 123];
 
   const headers = isBill ? ['#', 'Description of Work / Service', 'Qty', 'Unit', 'Rate (₹)', 'Amount (₹)'] : ['#', 'Description of Work / Service', 'Rate'];
@@ -1291,7 +1296,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     const cell = table.getCell(0, column);
     cell.getText().setText(header);
     cell.getFill().setSolidFill('#1e3a5f');
-    cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(isBill ? 7.5 : 8).setForegroundColor('#ffffff').setBold(true);
+    cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(8).setForegroundColor('#ffffff').setBold(true);
     cell.getText().getParagraphStyle().setParagraphAlignment(isBill && column >= 4 ? SlidesApp.ParagraphAlignment.END : SlidesApp.ParagraphAlignment.START);
   });
 
@@ -1314,7 +1319,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     values.forEach((value, column) => {
       const cell = table.getCell(row, column);
       cell.getText().setText(value);
-      cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(isBill ? 6.5 : 7.5).setForegroundColor('#172033');
+      cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(7.5).setForegroundColor('#172033');
       cell.getText().getParagraphStyle().setParagraphAlignment(isBill && column >= 4 ? SlidesApp.ParagraphAlignment.END : SlidesApp.ParagraphAlignment.START);
     });
   });
@@ -1384,7 +1389,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     termsPanel.getBorder().setWeight(0.75);
     belowTableObjectIds.push(termsPanel.getObjectId());
     billSignatoryTop = termsPanelTop + termsPanelHeight + closingGap;
-    if (tableTop + renderedTableHeight > tableBottom ||
+    if (tableTop + renderedTableHeight > tableBottom + tableReflowAllowance ||
         billSignatoryTop + signatoryHeight > pageHeight - bottomMargin) {
       throw new Error('There are too many service rows or terms to fit above the digital signatory. Reduce the service rows or shorten the terms.');
     }
@@ -1440,7 +1445,11 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     initialTableHeight: table.getHeight(),
     belowTableObjectIds,
     signatoryObjectId: signatory.getObjectId(),
-    maximumContentBottom: (pageHeight - bottomMargin) * 12700
+    isBill,
+    maximumContentBottom: Math.min(
+      pageHeight - 24,
+      isBill ? pageHeight - bottomMargin + tableReflowAllowance : pageHeight - 24
+    ) * 12700
   };
 }
 

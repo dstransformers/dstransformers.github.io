@@ -548,13 +548,43 @@ function App() {
     setShowQuotationModal(true)
   }
 
+  const openQuotationFromEnquiry = (enquiry) => {
+    const requestedServices = String(enquiry.ServicesRequired || '').toLocaleLowerCase()
+    const transformerCapacity = quotationConfig.capacities.find(
+      capacity => capacity.toLocaleLowerCase() === String(enquiry.TransformerCapacity || '').trim().toLocaleLowerCase()
+    ) || ''
+    const matchingServices = quotationConfig.services.filter(
+      service => requestedServices.includes(service.toLocaleLowerCase())
+    )
+    const problemDescription = String(enquiry.ProblemDescription || enquiry.Notes || '').trim()
+
+    openNewQuotation()
+    setCurrentTab('quotations')
+    setQuotationDraft(current => ({
+      ...current,
+      customerName: enquiry.CustomerName || '',
+      customerAddress: enquiry.SiteLocation || '',
+      contactPerson: enquiry.ContactPerson || '',
+      mobile: enquiry.CustomerPhone || '',
+      email: enquiry.CustomerEmail || '',
+      transformerMake: enquiry.TransformerMake || '',
+      transformerCapacity,
+      transformerLocation: enquiry.TransformerLocation || enquiry.SiteLocation || '',
+      lineItems: matchingServices.map((service, index) => ({
+        service,
+        description: index === 0 && problemDescription ? problemDescription : service,
+        rate: quotationConfig.rates[transformerCapacity]?.[service] ?? '',
+      })),
+    }))
+  }
+
   const openQuotation = (quotation, mode) => {
     setActiveQuotation(quotation)
     setQuotationModalError('')
     setQuotationDraft({
       ...quotation,
       documentType: quotation.documentType || 'QUOTATION',
-      email: '',
+      email: quotation.email || '',
       outputFormat: quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG'),
       lineItems: quotation.lineItems.map(item => ({
         ...item,
@@ -704,10 +734,10 @@ function App() {
           th { background: #e8edf4 !important; font-weight: 700; }
           th:first-child, td.number { width: 12mm; text-align: center; }
           th:last-child, td.rate { width: 38mm; text-align: right; white-space: nowrap; }
-          .totals { display: flow-root; width: 100%; margin: 3mm 0 0; padding: 3mm; border: 1px solid #dbe3ed; border-radius: 2mm; background: #f8fafc; }
+          .totals { display: flow-root; width: 100%; margin: 1mm 0 0; padding: 3mm; border: 1px solid #dbe3ed; border-radius: 2mm; background: #f8fafc; }
           .totals p { display: flex; justify-content: space-between; width: 76mm; margin: 1mm 0 1mm auto; }
           .totals .grand { padding-top: 1.5mm; border-top: 1px solid #334155; font-size: 11pt; font-weight: 700; }
-          .totals .amount-words { display: block; width: 100%; margin: 1mm 0 0; text-align: left; font-size: 8pt; line-height: 1.35; }
+          .totals .amount-words { display: block; width: 100%; margin: 0.5mm 0 0; text-align: left; font-size: 8pt; line-height: 1.35; }
           .totals .amount-words span { display: block; color: #475569; font-weight: 700; }
           td span { display: inline-block; margin-top: 1mm; color: #475569; }
           .closing { display: block; margin-top: 6mm; break-inside: avoid; }
@@ -770,6 +800,28 @@ function App() {
     printWindow.document.close()
   }
 
+  const shareQuotationOnWhatsApp = (quotation) => {
+    const documentLabel = quotation.documentType === 'BILL' ? 'Service bill' : 'Quotation'
+    const fileUrl = quotation.fileUrl || quotation.pdfUrl
+    const recipientName = [quotation.contactPerson, quotation.customerName]
+      .find(name => typeof name === 'string' && name.trim())
+    if (!fileUrl) {
+      setQuotationsError(`Generate the ${documentLabel.toLowerCase()} file before sharing it.`)
+      return
+    }
+
+    const message = [
+      recipientName ? `Dear ${recipientName.trim()},` : 'Hello,',
+      '',
+      `Please find your ${documentLabel.toLowerCase()}${quotation.quotationNo ? ` ${quotation.quotationNo}` : ''} from D.S. Transformers.`,
+      `Transformer: ${[quotation.transformerCapacity, quotation.transformerMake].filter(Boolean).join(' - ') || '—'}`,
+      `Date: ${formattedDate(quotation.quotationDate) || '—'}`,
+      ''
+    ].join('\n')
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+  }
+
   const saveQuotationDraft = async (event) => {
     event.preventDefault()
     if (!quotationDraft) return
@@ -799,7 +851,7 @@ function App() {
       const response = await apiFetch('/api/quotations', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...quotationDraft, email: '' }),
+        body: JSON.stringify(quotationDraft),
       })
       const result = await response.json()
       if (!response.ok || result.status !== 'SUCCESS') {
@@ -1482,17 +1534,16 @@ function App() {
 
       <main className="main-shell">
         <header className="hero">
-          <div className="hero__content hero__content--compact" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="hero__content hero__content--compact dashboard-header">
+            <div className="dashboard-brand">
               <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="DS Transformers logo" className="hero-logo" />
               <h1>V S Transformers Management System</h1>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="dashboard-header-actions">
               <button
                 type="button"
                 className="btn btn--secondary"
                 onClick={() => setShowPublicSite(true)}
-                style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                 title="View the public website"
               >
                 🌐 Public Website
@@ -1501,7 +1552,7 @@ function App() {
                 type="button"
                 className="btn btn--ghost"
                 onClick={() => signOut(auth)}
-                style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', borderRadius: '8px', cursor: 'pointer', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                aria-label="Sign out from admin portal"
                 title="Sign out from admin portal"
               >
                 🔒 Logout
@@ -1510,38 +1561,40 @@ function App() {
           </div>
         </header>
 
-        <section className="kpis">
-        <article className="card">
-          <p>Recieved</p>
-          <h3>{summary.recieve}</h3>
-          <small>New inward entries</small>
-        </article>
-        <article className="card">
-          <p>Assesment</p>
-          <h3>{summary.assesment}</h3>
-          <small>Fault verification pending</small>
-        </article>
-        <article className="card">
-          <p>Repair In Progress</p>
-          <h3>{summary.repairInProgress}</h3>
-          <small>Workshop jobs in progress</small>
-        </article>
-        <article className="card">
-          <p>Repaired</p>
-          <h3>{summary.repaired}</h3>
-          <small>Ready for dispatch planning</small>
-        </article>
-        <article className="card">
-          <p>Delivered</p>
-          <h3>{summary.delivered}</h3>
-          <small>Customer handover completed</small>
-        </article>
-        <article className="card">
-          <p>Billed</p>
-          <h3>{summary.billed}</h3>
-          <small>Invoice posted after delivery</small>
-        </article>
-      </section>
+        {currentTab !== 'enquiries' && currentTab !== 'quotations' && (
+          <section className="kpis">
+            <article className="card">
+              <p>Recieved</p>
+              <h3>{summary.recieve}</h3>
+              <small>New inward entries</small>
+            </article>
+            <article className="card">
+              <p>Assesment</p>
+              <h3>{summary.assesment}</h3>
+              <small>Fault verification pending</small>
+            </article>
+            <article className="card">
+              <p>Repair In Progress</p>
+              <h3>{summary.repairInProgress}</h3>
+              <small>Workshop jobs in progress</small>
+            </article>
+            <article className="card">
+              <p>Repaired</p>
+              <h3>{summary.repaired}</h3>
+              <small>Ready for dispatch planning</small>
+            </article>
+            <article className="card">
+              <p>Delivered</p>
+              <h3>{summary.delivered}</h3>
+              <small>Customer handover completed</small>
+            </article>
+            <article className="card">
+              <p>Billed</p>
+              <h3>{summary.billed}</h3>
+              <small>Invoice posted after delivery</small>
+            </article>
+          </section>
+        )}
 
       {currentTab === 'enquiries' && (
         <section className="panel jobs-panel">
@@ -1638,7 +1691,7 @@ function App() {
           )}
 
           <div className="jobs-table-wrap">
-            <table className="jobs-table">
+            <table className="jobs-table enquiries-table">
               <thead>
                 <tr>
                   {enquiryColumns.map(column => (
@@ -1672,14 +1725,41 @@ function App() {
                           {enquiry.Status || 'NEW'}
                         </span>
                       </td>
-                      <td className="actions-cell">
-                        <button
-                          className="btn btn--ghost btn--small"
-                          aria-expanded={expandedEnquiryId === enquiry.ID}
-                          onClick={() => setExpandedEnquiryId(current => current === enquiry.ID ? null : enquiry.ID)}
-                        >
-                          {expandedEnquiryId === enquiry.ID ? 'Hide details' : 'View details'}
-                        </button>
+                      <td className="actions-cell enquiry-actions-cell">
+                        <div className="enquiry-row-actions">
+                          <button
+                            className="btn btn--primary btn--small btn--icon"
+                            aria-label="Generate quotation from enquiry"
+                            onClick={() => openQuotationFromEnquiry(enquiry)}
+                            title="Generate a quotation from this enquiry"
+                          >
+                            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <path d="M14 2v6h6M8 13h8M8 17h5"/>
+                              <path d="M17 12v6M14 15h6"/>
+                            </svg>
+                          </button>
+                          <button
+                            className="btn btn--ghost btn--small btn--icon"
+                            aria-expanded={expandedEnquiryId === enquiry.ID}
+                            aria-label={`${expandedEnquiryId === enquiry.ID ? 'Hide' : 'View'} enquiry details`}
+                            title={expandedEnquiryId === enquiry.ID ? 'Hide details' : 'View details'}
+                            onClick={() => setExpandedEnquiryId(current => current === enquiry.ID ? null : enquiry.ID)}
+                          >
+                            {expandedEnquiryId === enquiry.ID ? (
+                              <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 3l18 18"/>
+                                <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                                <path d="M9.9 5.2A11 11 0 0 1 12 5c6.4 0 10 7 10 7a15 15 0 0 1-3 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10 10 0 0 0 4-.8"/>
+                              </svg>
+                            ) : (
+                              <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {expandedEnquiryId === enquiry.ID && (
@@ -1768,13 +1848,28 @@ function App() {
                     <td>{quotation.transformerCapacity}</td>
                     <td>{quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG')}</td>
                     <td className="actions-cell">
-                      <button className="btn btn--ghost btn--small" onClick={() => openQuotation(quotation, 'view')}>View</button>
-                      <button className="btn btn--ghost btn--small" onClick={() => openQuotation(quotation, 'edit')}>Edit</button>
-                      <button className="btn btn--danger btn--small" onClick={() => deleteQuotation(quotation)}>Delete</button>
+                      <button className="btn btn--ghost btn--small btn--icon" aria-label={`View ${quotation.documentType === 'BILL' ? 'bill' : 'quotation'}`} title="View" onClick={() => openQuotation(quotation, 'view')}>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                      <button className="btn btn--ghost btn--small btn--icon" aria-label={`Edit ${quotation.documentType === 'BILL' ? 'bill' : 'quotation'}`} title="Edit" onClick={() => openQuotation(quotation, 'edit')}>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="m16.5 3.5 4 4L8 20l-5 1 1-5L16.5 3.5Z"/></svg>
+                      </button>
+                      <button className="btn btn--danger btn--small btn--icon" aria-label={`Delete ${quotation.documentType === 'BILL' ? 'bill' : 'quotation'}`} title="Delete" onClick={() => deleteQuotation(quotation)}>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+                      </button>
                       {(quotation.fileUrl || quotation.pdfUrl) && (
-                        <a className="btn btn--ghost btn--small" href={quotation.fileUrl || quotation.pdfUrl} target="_blank" rel="noreferrer">
-                          Open {quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG')}
-                        </a>
+                        <>
+                          <a className="btn btn--ghost btn--small" href={quotation.fileUrl || quotation.pdfUrl} target="_blank" rel="noreferrer">
+                            Open {quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG')}
+                          </a>
+                          <button className="btn btn--secondary btn--small" onClick={() => shareQuotationOnWhatsApp(quotation)}>
+                            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+                              <circle cx="12" cy="12" r="12" fill="#25D366"/>
+                              <path d="M19.5 11.7a7.5 7.5 0 0 1-11.1 6.6L5 19.2l.9-3.3a7.5 7.5 0 1 1 13.6-4.2Z" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round"/>
+                              <path d="M9.1 8.4c-.2-.4-.4-.4-.6-.4H8c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.8 2.8 4.4 3.7 2.2.8 2.6.6 3.1.6.5-.1 1.6-.7 1.8-1.3.2-.7.2-1.2.1-1.3-.1-.1-.3-.2-.7-.4-.3-.2-1.6-.8-1.9-.9-.2-.1-.4-.2-.6.2-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.2-1.1-.4-2.1-1.3-.8-.7-1.3-1.6-1.5-1.9-.1-.3 0-.4.1-.6l.5-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5Z" fill="#fff"/>
+                            </svg>
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -1880,14 +1975,26 @@ function App() {
                   </div>
                 </section>}
                 <div className="quotation-modal-actions">
-                  <button className="btn btn--secondary" onClick={() => printQuotation(activeQuotation)}>Print on Local Letterhead</button>
                   {(activeQuotation.fileUrl || activeQuotation.pdfUrl) && (
-                    <a className="btn btn--primary" href={activeQuotation.fileUrl || activeQuotation.pdfUrl} target="_blank" rel="noreferrer">
-                      Open / Download {activeQuotation.outputFormat || (activeQuotation.pdfUrl ? 'PDF' : 'PNG')}
-                    </a>
+                    <>
+                      <a className="btn btn--primary" href={activeQuotation.fileUrl || activeQuotation.pdfUrl} target="_blank" rel="noreferrer">
+                        Open / Download {activeQuotation.outputFormat || (activeQuotation.pdfUrl ? 'PDF' : 'PNG')}
+                      </a>
+                      <button className="btn btn--secondary" onClick={() => shareQuotationOnWhatsApp(activeQuotation)}>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+                          <circle cx="12" cy="12" r="12" fill="#25D366"/>
+                          <path d="M19.5 11.7a7.5 7.5 0 0 1-11.1 6.6L5 19.2l.9-3.3a7.5 7.5 0 1 1 13.6-4.2Z" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round"/>
+                          <path d="M9.1 8.4c-.2-.4-.4-.4-.6-.4H8c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.8 2.8 4.4 3.7 2.2.8 2.6.6 3.1.6.5-.1 1.6-.7 1.8-1.3.2-.7.2-1.2.1-1.3-.1-.1-.3-.2-.7-.4-.3-.2-1.6-.8-1.9-.9-.2-.1-.4-.2-.6.2-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.2-1.1-.4-2.1-1.3-.8-.7-1.3-1.6-1.5-1.9-.1-.3 0-.4.1-.6l.5-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5Z" fill="#fff"/>
+                        </svg>
+                      </button>
+                    </>
                   )}
-                  <button className="btn btn--ghost" onClick={() => openQuotation(activeQuotation, 'edit')}>Edit {activeQuotation.documentType === 'BILL' ? 'Bill' : 'Quotation'}</button>
-                  <button className="btn btn--danger" onClick={() => deleteQuotation(activeQuotation)}>Delete {activeQuotation.documentType === 'BILL' ? 'Bill' : 'Quotation'}</button>
+                  <button className="btn btn--ghost btn--icon" aria-label={`Edit ${activeQuotation.documentType === 'BILL' ? 'bill' : 'quotation'}`} title="Edit" onClick={() => openQuotation(activeQuotation, 'edit')}>
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="m16.5 3.5 4 4L8 20l-5 1 1-5L16.5 3.5Z"/></svg>
+                  </button>
+                  <button className="btn btn--danger btn--icon" aria-label={`Delete ${activeQuotation.documentType === 'BILL' ? 'bill' : 'quotation'}`} title="Delete" onClick={() => deleteQuotation(activeQuotation)}>
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+                  </button>
                 </div>
               </>
             ) : (
@@ -1899,6 +2006,7 @@ function App() {
                     <label>Customer Address<textarea rows="2" value={quotationDraft.customerAddress} onChange={event => updateQuotationDraft('customerAddress', event.target.value)} /></label>
                     <label>Contact Person<input value={quotationDraft.contactPerson} onChange={event => updateQuotationDraft('contactPerson', event.target.value)} /></label>
                     <label>Mobile<input type="tel" value={quotationDraft.mobile} onChange={event => updateQuotationDraft('mobile', event.target.value)} required /></label>
+                    <label>Email<input type="email" value={quotationDraft.email || ''} onChange={event => updateQuotationDraft('email', event.target.value)} /></label>
                     <label>{quotationDraft.documentType === 'BILL' ? 'Bill Date' : 'Quotation Date'}<input type="date" value={quotationDraft.quotationDate} onChange={event => updateQuotationDraft('quotationDate', event.target.value)} required /></label>
                   </div>
                 </section>
@@ -1999,9 +2107,6 @@ function App() {
                 </section>
                 <p className="quotation-financial-year">Financial Year: {quotationDraft.financialYear || quotationConfig.settings['Financial Year']}</p>
                 <div className="quotation-modal-actions">
-                  <button type="button" className="btn btn--secondary" onClick={() => printQuotation(quotationDraft)}>
-                    Print Draft on Local Letterhead
-                  </button>
                   <button type="submit" className="btn btn--primary" disabled={quotationSaving}>
                     {quotationSaving
                       ? 'Generating...'

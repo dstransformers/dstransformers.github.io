@@ -60,8 +60,21 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
       setShowLoginModal(false);
       onAdminLogin();
-    } catch {
-      setLoginError('Sign-in failed. Check your email and password or contact the system administrator.');
+    } catch (error) {
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        ? error.code
+        : '';
+      const messages = {
+        'auth/invalid-credential': 'Firebase rejected these credentials. Check the email and password, and confirm this account exists in the configured Firebase project.',
+        'auth/user-not-found': 'No Firebase Authentication account was found for this email in the configured project.',
+        'auth/wrong-password': 'The password was not accepted. Check it or reset the account password in Firebase Authentication.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/user-disabled': 'This Firebase Authentication account is disabled. Enable it in Firebase Authentication or contact the administrator.',
+        'auth/operation-not-allowed': 'Email/password sign-in is disabled. Enable the Email/Password provider in Firebase Authentication.',
+        'auth/too-many-requests': 'Firebase temporarily blocked sign-in attempts. Wait before trying again or reset the account password.',
+        'auth/network-request-failed': 'A network error interrupted sign-in. Check your connection and try again.',
+      };
+      setLoginError(messages[errorCode] || `Sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase account and provider settings.`);
     } finally {
       setLoginLoading(false);
     }
@@ -674,7 +687,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 </svg>
               </div>
               <h3 className="admin-modal-title">VSTMS Admin Portal</h3>
-              <p className="admin-modal-subtitle">Vendor Service Transformer Management System</p>
+              <p className="admin-modal-subtitle">D.S Transformer Management System</p>
             </div>
 
             <div className="admin-modal-body">
@@ -684,30 +697,33 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 </div>
               )}
 
+              <button
+                type="button"
+                className="admin-google-btn"
+                onClick={handleGoogleLogin}
+                disabled={loginLoading}
+              >
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" transform="translate(0 4)"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.75 7.18l7.73 6C44.43 37.96 46.98 31.85 46.98 24.55Z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.9 23.9 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -4)"/>
+                </svg>
+                <span>{loginLoading ? 'Signing in...' : 'Sign in with Google'}</span>
+              </button>
+
+              <div className="admin-login-divider" aria-hidden="true">
+                <span>or sign in with email</span>
+              </div>
+
               <form onSubmit={handleLoginSubmit}>
-                <button
-                  type="button"
-                  className="admin-google-btn"
-                  onClick={handleGoogleLogin}
-                  disabled={loginLoading}
-                >
-                  <svg aria-hidden="true" viewBox="0 0 48 48" width="20" height="20">
-                    <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.9 6.1-15Z"/>
-                    <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z"/>
-                    <path fill="#FBBC05" d="M12.6 27.7a12 12 0 0 1 0-7.4V15H5.8a20 20 0 0 0 0 18l6.8-5.3Z"/>
-                    <path fill="#EA4335" d="M24 11.9c3 0 5.7 1 7.8 3.1l5.9-5.9A19.7 19.7 0 0 0 24 4 20 20 0 0 0 5.8 15l6.8 5.3c1.6-4.8 6.1-8.4 11.4-8.4Z"/>
-                  </svg>
-                  {loginLoading ? 'Signing in...' : 'Sign in with Google'}
-                </button>
-
-                <div className="admin-login-divider">or sign in with email</div>
-
                 <div className="form-field" style={{ marginBottom: '1.2rem' }}>
                   <label htmlFor="adminEmail">Admin email</label>
                   <input
                     id="adminEmail"
                     type="email"
                     required
+                    autoFocus
                     autoComplete="username"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
