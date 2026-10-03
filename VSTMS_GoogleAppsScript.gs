@@ -1013,7 +1013,7 @@ function requireA4QuotationPresentation_(presentation) {
   return { width, height };
 }
 
-function addQuotationSignatory_(slide, left, top, width, height) {
+function addQuotationSignatory_(slide, left, top, width, height, fontSize) {
   const signatory = slide.insertTextBox(
     'Digitally Authorized Signatory\nM/s D.S. Transformers &\nElectrical Contractor',
     left,
@@ -1024,21 +1024,21 @@ function addQuotationSignatory_(slide, left, top, width, height) {
   const text = signatory.getText();
   text.getTextStyle()
     .setFontFamily('Arial')
-    .setFontSize(8)
+    .setFontSize(fontSize || 8)
     .setForegroundColor('#172033')
     .setBold(true);
   text.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.END);
   return signatory;
 }
 
-function addQuotationInfoBox_(slide, heading, details, left, top, width, height) {
+function addQuotationInfoBox_(slide, heading, details, left, top, width, height, isBill) {
   const box = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, left, top, width, height);
   box.getFill().setSolidFill('#F8FAFC');
   box.getBorder().getLineFill().setSolidFill('#CBD5E1');
   box.getBorder().setWeight(1);
 
-  setQuotationText_(slide, heading, left + 9, top + 7, width - 18, 15, 8, true);
-  setQuotationText_(slide, details, left + 9, top + 25, width - 18, height - 32, 8, false);
+  setQuotationText_(slide, heading, left + 7, top + 5, width - 14, 13, 8, true);
+  setQuotationText_(slide, details, left + 7, top + 18, width - 14, height - 21, 7, false);
 }
 
 function setQuotationTableColumnWidths_(presentationId, layout) {
@@ -1195,16 +1195,16 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const margin = Math.min(42, pageWidth * 0.07);
   const contentWidth = pageWidth - margin * 2;
   const top = Math.min(140, pageHeight * 0.166);
-  const signatoryHeight = Math.min(38, Math.max(32, pageHeight * 0.045));
-  const termsHeight = Math.min(90, Math.max(65, pageHeight * 0.107));
-  const closingGap = Math.min(6, pageHeight * 0.008);
-  const bottomMargin = Math.min(90, Math.max(42, pageHeight * 0.107));
+  const signatoryHeight = isBill ? 30 : 28;
+  const termsHeight = isBill ? 62 : 58;
+  const closingGap = 4;
+  const bottomMargin = isBill ? 42 : 150;
   const signatoryTop = pageHeight - bottomMargin - signatoryHeight;
   const termsTop = signatoryTop - closingGap - termsHeight;
   const date = quotationDateLabel_(quotation.quotationDate);
   const subject = `${isBill ? 'Bill' : 'Quotation'} for ${quotation.transformerCapacity} Transformer${quotation.transformerMake ? ` - ${quotation.transformerMake}` : ''}`;
 
-  setQuotationText_(slide, isBill ? 'SERVICE BILL' : 'QUOTATION', margin, top, contentWidth, 26, 18, true, SlidesApp.ParagraphAlignment.CENTER);
+  setQuotationText_(slide, isBill ? 'SERVICE BILL' : 'QUOTATION', margin, top, contentWidth, 26, 20, true, SlidesApp.ParagraphAlignment.CENTER);
   setQuotationText_(
     slide,
     `${isBill ? 'Bill' : 'Quotation'} No.: ${quotation.quotationNo}  |  Date: ${date}`,
@@ -1212,17 +1212,17 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     top + 28,
     contentWidth,
     18,
-    9,
+    10,
     true,
     SlidesApp.ParagraphAlignment.CENTER
   );
 
   const subjectTop = top + 53;
-  setQuotationText_(slide, subject, margin, subjectTop, contentWidth, 19, 10, true);
+  setQuotationText_(slide, subject, margin, subjectTop, contentWidth, 19, 11, true);
   const boxTop = subjectTop + 24;
   const boxGap = 12;
   const boxWidth = (contentWidth - boxGap) / 2;
-  const boxHeight = Math.min(90, Math.max(74, pageHeight * 0.107));
+  const boxHeight = 74;
   addQuotationInfoBox_(
     slide,
     'CUSTOMER DETAILS',
@@ -1236,7 +1236,8 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     margin,
     boxTop,
     boxWidth,
-    boxHeight
+    boxHeight,
+    isBill
   );
   addQuotationInfoBox_(
     slide,
@@ -1250,17 +1251,18 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     margin + boxWidth + boxGap,
     boxTop,
     boxWidth,
-    boxHeight
+    boxHeight,
+    isBill
   );
 
-  const serviceTop = boxTop + boxHeight + 11;
-  setQuotationText_(slide, isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', margin, serviceTop, contentWidth, 18, 10, true);
-  const tableTop = serviceTop + 21;
-  const billTotalsHeight = 58;
-  const billTableTotalsGap = 6;
-  const tableReflowAllowance = 24;
-  const billTermsGap = 8;
-  const billHeadingAndWarrantyHeight = 43;
+  const serviceTop = boxTop + boxHeight + 7;
+  setQuotationText_(slide, isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', margin, serviceTop, contentWidth, 18, 11, true);
+  const tableTop = serviceTop + 18;
+  const billTotalsHeight = 52;
+  const billTableTotalsGap = 0;
+  const tableReflowAllowance = 120;
+  const billTermsGap = 5;
+  const billHeadingAndWarrantyHeight = 38;
   const billTerms = isBill
     ? String(quotation.terms || '').trim() || [
       '1. This bill covers only the services and materials expressly listed above.',
@@ -1271,15 +1273,15 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       '6. This document is subject to applicable laws and the jurisdiction agreed between the parties.'
     ].join('\n')
     : '';
-  const termsLineCapacity = Math.max(40, Math.floor(contentWidth / 4));
+  const termsLineCapacity = Math.max(40, Math.floor(contentWidth / 3.2));
   const termsLineCount = isBill
     ? billTerms.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / termsLineCapacity)), 0)
     : 0;
-  const billTermsTextHeight = Math.max(18, termsLineCount * 9);
+  const billTermsTextHeight = Math.max(18, termsLineCount * 6.5);
   const tableBottom = isBill
     ? signatoryTop - closingGap - billTermsTextHeight - billHeadingAndWarrantyHeight - billTermsGap - billTotalsHeight - billTableTotalsGap
     : termsTop - 10;
-  const rowHeight = isBill ? 14.25 : 16.5;
+  const rowHeight = 14;
   const tableHeight = (quotation.lineItems.length + 1) * rowHeight;
   if (tableTop + tableHeight > tableBottom) {
     throw new Error('There are too many service rows to fit above the warranty and signatory. Remove some services and try again.');
@@ -1287,7 +1289,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const table = slide.insertTable(quotation.lineItems.length + 1, isBill ? 6 : 3, margin, tableTop, contentWidth, tableHeight);
   const columnWidths = isBill
     ? [32, contentWidth - 257, 32, 36, 70, 87]
-    : [32, contentWidth - 155, 123];
+    : [32, contentWidth - 132, 100];
 
   const headers = isBill ? ['#', 'Description of Work / Service', 'Qty', 'Unit', 'Rate (₹)', 'Amount (₹)'] : ['#', 'Description of Work / Service', 'Rate'];
   headers.forEach((header, column) => {
@@ -1317,7 +1319,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     values.forEach((value, column) => {
       const cell = table.getCell(row, column);
       cell.getText().setText(value);
-      cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(7.5).setForegroundColor('#172033');
+      cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(7).setForegroundColor('#172033');
       cell.getText().getParagraphStyle().setParagraphAlignment(isBill && column >= 4 ? SlidesApp.ParagraphAlignment.END : SlidesApp.ParagraphAlignment.START);
     });
   });
@@ -1326,7 +1328,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const belowTableObjectIds = [];
   if (isBill) {
     const renderedTableHeight = table.getHeight();
-    const totalsTop = tableTop + renderedTableHeight + billTableTotalsGap;
+    const totalsTop = tableTop + renderedTableHeight + billTableTotalsGap - 8;
     const totalsPanel = slide.insertShape(
       SlidesApp.ShapeType.RECTANGLE,
       margin,
@@ -1349,7 +1351,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       margin + contentWidth * 0.55,
       totalsTop,
       contentWidth * 0.45,
-      40,
+      36,
       8,
       true,
       SlidesApp.ParagraphAlignment.END
@@ -1360,18 +1362,19 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       `Amount in words: ${indianCurrencyWords_(grandTotal)}`,
       margin,
       totalsTop,
-      contentWidth * 0.52,
+      contentWidth * 0.54,
       billTotalsHeight,
-      7.5,
+      9,
       true,
       SlidesApp.ParagraphAlignment.START
     );
     belowTableObjectIds.push(amountWordsShape.getObjectId());
     const warrantyHeadingTop = totalsTop + billTotalsHeight + billTermsGap;
-    const panelPadding = 8;
-    const warrantyTextTop = warrantyHeadingTop + 12;
-    const termsHeadingTop = warrantyTextTop + 15;
-    const termsTextTop = termsHeadingTop + 10;
+    const panelPadding = 6;
+    const warrantyHeadingTextTop = warrantyHeadingTop + 4;
+    const warrantyTextTop = warrantyHeadingTop + 13;
+    const termsHeadingTop = warrantyTextTop + 16;
+    const termsTextTop = termsHeadingTop + 9;
     const termsTextHeight = billTermsTextHeight;
     const termsPanelTop = warrantyHeadingTop - 4;
     const termsPanelHeight = termsTextTop + termsTextHeight + panelPadding - termsPanelTop;
@@ -1388,11 +1391,11 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     belowTableObjectIds.push(termsPanel.getObjectId());
     billSignatoryTop = termsPanelTop + termsPanelHeight + closingGap;
     if (tableTop + renderedTableHeight > tableBottom + tableReflowAllowance ||
-        billSignatoryTop + signatoryHeight > pageHeight - bottomMargin) {
+        billSignatoryTop + signatoryHeight > pageHeight - 2) {
       throw new Error('There are too many service rows or terms to fit above the digital signatory. Reduce the service rows or shorten the terms.');
     }
 
-    belowTableObjectIds.push(setQuotationText_(slide, 'WARRANTY', margin + panelPadding, warrantyHeadingTop, contentWidth - panelPadding * 2, 10, 7.5, true).getObjectId());
+    belowTableObjectIds.push(setQuotationText_(slide, 'WARRANTY', margin + panelPadding, warrantyHeadingTextTop, contentWidth - panelPadding * 2, 9, 7, true).getObjectId());
     belowTableObjectIds.push(setQuotationText_(
       slide,
       quotation.warrantyMonths
@@ -1401,12 +1404,12 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       margin + panelPadding,
       warrantyTextTop,
       contentWidth - panelPadding * 2,
-      13,
-      7.5,
+      15,
+      7,
       false
     ).getObjectId());
-    belowTableObjectIds.push(setQuotationText_(slide, 'TERMS & CONDITIONS', margin + panelPadding, termsHeadingTop, contentWidth - panelPadding * 2, 10, 7.5, true).getObjectId());
-    belowTableObjectIds.push(setQuotationText_(slide, billTerms, margin + panelPadding, termsTextTop, contentWidth - panelPadding * 2, termsTextHeight, 7.5, false).getObjectId());
+    belowTableObjectIds.push(setQuotationText_(slide, 'TERMS & CONDITIONS', margin + panelPadding, termsHeadingTop, contentWidth - panelPadding * 2, 10, 7, true).getObjectId());
+    belowTableObjectIds.push(setQuotationText_(slide, billTerms, margin + panelPadding, termsTextTop, contentWidth - panelPadding * 2, termsTextHeight, 6.5, false).getObjectId());
   } else {
     const termsShape = setQuotationText_(
       slide,
@@ -1424,7 +1427,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       termsTop,
       contentWidth,
       termsHeight,
-      7.5,
+      6.5,
       false
     );
     belowTableObjectIds.push(termsShape.getObjectId());
@@ -1434,7 +1437,8 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     margin + contentWidth * 0.48,
     billSignatoryTop,
     contentWidth * 0.52,
-    signatoryHeight
+    signatoryHeight,
+    9
   );
   belowTableObjectIds.push(signatory.getObjectId());
   return {
@@ -1444,10 +1448,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     belowTableObjectIds,
     signatoryObjectId: signatory.getObjectId(),
     isBill,
-    maximumContentBottom: Math.min(
-      pageHeight - 24,
-      isBill ? pageHeight - bottomMargin + tableReflowAllowance : pageHeight - 24
-    ) * 12700
+    maximumContentBottom: (pageHeight - 2) * 12700
   };
 }
 
