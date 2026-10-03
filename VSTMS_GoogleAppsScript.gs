@@ -1198,9 +1198,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const signatoryHeight = Math.min(38, Math.max(32, pageHeight * 0.045));
   const termsHeight = Math.min(90, Math.max(65, pageHeight * 0.107));
   const closingGap = Math.min(6, pageHeight * 0.008);
-  const bottomMargin = isBill
-    ? 150
-    : Math.min(90, Math.max(42, pageHeight * 0.107));
+  const bottomMargin = Math.min(90, Math.max(42, pageHeight * 0.107));
   const signatoryTop = pageHeight - bottomMargin - signatoryHeight;
   const termsTop = signatoryTop - closingGap - termsHeight;
   const date = quotationDateLabel_(quotation.quotationDate);
