@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/quotations")
-@CrossOrigin(origins = "*")
 public class QuotationController {
 
     @Autowired

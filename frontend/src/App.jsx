@@ -1,5 +1,8 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, useSyncExternalStore } from 'react'
 import LandingPage from './LandingPage'
+import { signOut } from 'firebase/auth'
+import { auth, getAuthSnapshot, subscribeToAuth } from './firebase'
+import { apiFetch } from './api'
 import './App.css'
 
 const STATUS_ORDER = [
@@ -48,9 +51,8 @@ const indianCurrencyWords = (amount) => {
 }
 
 function App() {
-  const [currentView, setCurrentView] = useState(() => {
-    return localStorage.getItem('vstms_admin_auth') === 'true' ? 'dashboard' : 'landing'
-  })
+  const [showPublicSite, setShowPublicSite] = useState(false)
+  const authUser = useSyncExternalStore(subscribeToAuth, getAuthSnapshot, getAuthSnapshot)
   const [currentTab, setCurrentTab] = useState('quotations')
   const [transformers, setTransformers] = useState([])
   const [transformersLoading, setTransformersLoading] = useState(false)
@@ -221,9 +223,10 @@ function App() {
   const [newBill, setNewBill] = useState({ sapNo: '', date: new Date().toISOString().split('T')[0], spmCenter: '', totalTransformers: 0, billAmount: 0 })
 
   useEffect(() => {
+    if (!authUser) return
     fetchTransformers()
     fetchSummary()
-  }, [page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, typeFilter, capacityFilter])
+  }, [authUser, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, typeFilter, capacityFilter])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -236,12 +239,13 @@ function App() {
   }, [openFilterColumn])
 
   useEffect(() => {
+    if (!authUser) return
     if (currentTab === 'enquiries') fetchEnquiries()
     if (currentTab === 'quotations') fetchQuotations()
     if (currentTab === 'tnotes') fetchTNotes()
     if (currentTab === 'dcs') fetchDCs()
     if (currentTab === 'bills') fetchBills()
-  }, [currentTab])
+  }, [authUser, currentTab])
 
   const uniqueValues = (items, accessor) =>
     [...new Set(items.map(accessor).filter((value) => value !== undefined && value !== null && value !== ''))]
@@ -361,7 +365,7 @@ function App() {
         type: Array.isArray(typeFilter) && typeFilter.length > 0 ? typeFilter.join(',') : '',
         capacity: Array.isArray(capacityFilter) && capacityFilter.length > 0 ? capacityFilter.join(',') : '',
       })
-      const response = await fetch(`/api/transformers?${params.toString()}`)
+      const response = await apiFetch(`/api/transformers?${params.toString()}`)
       if (!response.ok) {
         throw new Error(`Failed to fetch transformers (${response.status})`)
       }
@@ -386,7 +390,7 @@ function App() {
 
   const fetchSummary = async () => {
     try {
-      const response = await fetch('/api/transformers/summary')
+      const response = await apiFetch('/api/transformers/summary')
       if (!response.ok) {
         throw new Error(`Failed to fetch summary (${response.status})`)
       }
@@ -401,7 +405,7 @@ function App() {
     setEnquiriesLoading(true)
     setEnquiriesError('')
     try {
-      const response = await fetch('/api/enquiries')
+      const response = await apiFetch('/api/enquiries')
       if (!response.ok) {
         throw new Error(`Failed to fetch enquiries (${response.status})`)
       }
@@ -418,7 +422,7 @@ function App() {
     event.preventDefault()
     setEnquiriesError('')
     try {
-      const response = await fetch('/api/enquiries', {
+      const response = await apiFetch('/api/enquiries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEnquiry),
@@ -445,10 +449,7 @@ function App() {
     setTnoteLoading(true)
     setTnoteError('')
     try {
-      let response = await fetch('/api/tnotes')
-      if (!response.ok) {
-        response = await fetch('http://localhost:8082/api/tnotes')
-      }
+      const response = await apiFetch('/api/tnotes')
       if (!response.ok) {
         throw new Error(`Failed to fetch tnotes (${response.status})`)
       }
@@ -464,7 +465,7 @@ function App() {
   const fetchDCs = async () => {
     setDcLoading(true)
     try {
-      const response = await fetch('/api/dcs')
+      const response = await apiFetch('/api/dcs')
       if (!response.ok) throw new Error('Failed to fetch dcs')
       const data = await response.json()
       setDcs(Array.isArray(data) ? data : [])
@@ -478,7 +479,7 @@ function App() {
   const fetchBills = async () => {
     setBillLoading(true)
     try {
-      const response = await fetch('/api/bills')
+      const response = await apiFetch('/api/bills')
       if (!response.ok) throw new Error('Failed to fetch bills')
       const data = await response.json()
       setBills(Array.isArray(data) ? data : [])
@@ -494,8 +495,8 @@ function App() {
     setQuotationsError('')
     try {
       const [configResponse, quotationsResponse] = await Promise.all([
-        fetch('/api/quotations/config'),
-        fetch('/api/quotations'),
+        apiFetch('/api/quotations/config'),
+        apiFetch('/api/quotations'),
       ])
       if (!configResponse.ok) throw new Error(`Failed to load quotation defaults (${configResponse.status})`)
       if (!quotationsResponse.ok) throw new Error(`Failed to load quotations (${quotationsResponse.status})`)
@@ -795,7 +796,7 @@ function App() {
     setQuotationSaving(true)
     try {
       const isEditing = quotationModalMode === 'edit'
-      const response = await fetch('/api/quotations', {
+      const response = await apiFetch('/api/quotations', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...quotationDraft, email: '' }),
@@ -818,7 +819,7 @@ function App() {
     if (!confirm(`Delete ${documentLabel} ${quotation.quotationNo}? Its generated file will also be moved to trash.`)) return
     setQuotationsError('')
     try {
-      const response = await fetch(`/api/quotations/${encodeURIComponent(quotation.quotationNo)}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/quotations/${encodeURIComponent(quotation.quotationNo)}`, { method: 'DELETE' })
       const result = await response.json()
       if (!response.ok || result.status !== 'SUCCESS') {
         throw new Error(result.message || `Failed to delete quotation (${response.status})`)
@@ -836,7 +837,7 @@ function App() {
   const updateTransformerStatus = async (transformerId, nextStatus) => {
     setTransformersError('')
     try {
-      const response = await fetch(`/api/transformers/${transformerId}/status`, {
+      const response = await apiFetch(`/api/transformers/${transformerId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -887,7 +888,7 @@ function App() {
     }
 
     try {
-      const tnoteResponse = await fetch('/api/tnotes', {
+      const tnoteResponse = await apiFetch('/api/tnotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -899,7 +900,7 @@ function App() {
       const createdTNote = await tnoteResponse.json()
 
       for (const transformer of tnoteTransformers) {
-        await fetch('/api/transformers', {
+        await apiFetch('/api/transformers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -925,7 +926,7 @@ function App() {
   const deleteTNote = async (id) => {
     if (!confirm('Delete this TNote and all associated transformers?')) return
     try {
-      const response = await fetch(`/api/tnotes/${id}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/tnotes/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete TNote')
       setTnotes((prev) => prev.filter((t) => t.id !== id))
       await fetchTransformers()
@@ -939,7 +940,7 @@ function App() {
     event.preventDefault()
     setTransformersError('')
     try {
-      const response = await fetch('/api/dcs', {
+      const response = await apiFetch('/api/dcs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDC),
@@ -956,7 +957,7 @@ function App() {
   const deleteDC = async (dcNo) => {
     if (!confirm('Delete this DC?')) return
     try {
-      const response = await fetch(`/api/dcs/${dcNo}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/dcs/${dcNo}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete DC')
       setDcs((prev) => prev.filter((d) => d.dcNo !== dcNo))
     } catch (err) {
@@ -968,7 +969,7 @@ function App() {
     event.preventDefault()
     setTransformersError('')
     try {
-      const response = await fetch('/api/bills', {
+      const response = await apiFetch('/api/bills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBill),
@@ -985,7 +986,7 @@ function App() {
   const deleteBill = async (sapNo) => {
     if (!confirm('Delete this Bill?')) return
     try {
-      const response = await fetch(`/api/bills/${sapNo}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/bills/${sapNo}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete Bill')
       setBills((prev) => prev.filter((b) => b.sapNo !== sapNo))
     } catch (err) {
@@ -995,7 +996,7 @@ function App() {
 
   const loadDCCandidates = async () => {
     try {
-      const response = await fetch('/api/transformers?status=Repaired&page=0&size=100')
+      const response = await apiFetch('/api/transformers?status=Repaired&page=0&size=100')
       if (!response.ok) throw new Error('Failed to load repaired transformers')
       const data = await response.json()
       setDcCandidates(data.content ?? [])
@@ -1006,7 +1007,7 @@ function App() {
 
   const loadBillCandidates = async () => {
     try {
-      const response = await fetch('/api/transformers?status=Delivered&page=0&size=100')
+      const response = await apiFetch('/api/transformers?status=Delivered&page=0&size=100')
       if (!response.ok) throw new Error('Failed to load delivered transformers')
       const data = await response.json()
       setBillCandidates(data.content ?? [])
@@ -1025,8 +1026,8 @@ function App() {
     setTransformersError('')
     try {
       const [dcRes, transformersRes] = await Promise.all([
-        fetch(`/api/dcs/${dcNo}`),
-        fetch(`/api/transformers/dc/${dcNo}`),
+        apiFetch(`/api/dcs/${dcNo}`),
+        apiFetch(`/api/transformers/dc/${dcNo}`),
       ])
       if (!dcRes.ok) throw new Error('Failed to load DC details')
       if (!transformersRes.ok) throw new Error('Failed to load DC transformers')
@@ -1055,7 +1056,7 @@ function App() {
     event.preventDefault()
     if (!activeDC?.dcNo) return
     try {
-      const response = await fetch(`/api/dcs/${activeDC.dcNo}`, {
+      const response = await apiFetch(`/api/dcs/${activeDC.dcNo}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dcNo: activeDC.dcNo, date: editDCDate }),
@@ -1088,7 +1089,7 @@ function App() {
     event.preventDefault()
     if (!editingTransformer) return
     try {
-      const response = await fetch(`/api/transformers/${editingTransformer.id}`, {
+      const response = await apiFetch(`/api/transformers/${editingTransformer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1115,8 +1116,8 @@ function App() {
     setTransformersError('')
     try {
       const [billRes, transformersRes] = await Promise.all([
-        fetch(`/api/bills/${sapNo}`),
-        fetch(`/api/transformers/bill/${sapNo}`),
+        apiFetch(`/api/bills/${sapNo}`),
+        apiFetch(`/api/transformers/bill/${sapNo}`),
       ])
       if (!billRes.ok) throw new Error('Failed to load bill details')
       if (!transformersRes.ok) throw new Error('Failed to load bill transformers')
@@ -1145,7 +1146,7 @@ function App() {
     event.preventDefault()
     if (!activeBill?.sapNo) return
     try {
-      const response = await fetch(`/api/bills/${activeBill.sapNo}`, {
+      const response = await apiFetch(`/api/bills/${activeBill.sapNo}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sapNo: activeBill.sapNo, date: editBillDate }),
@@ -1195,14 +1196,14 @@ function App() {
         ...newDC,
         totalTransformers: selectedDCTransformers.length,
       }
-      const response = await fetch('/api/dcs', {
+      const response = await apiFetch('/api/dcs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dcRequest),
       })
       if (!response.ok) throw new Error('Failed to create DC')
       for (const id of selectedDCTransformers) {
-        const deliverRes = await fetch(`/api/transformers/${id}/deliver`, {
+        const deliverRes = await apiFetch(`/api/transformers/${id}/deliver`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dcNo: newDC.dcNo }),
@@ -1240,14 +1241,14 @@ function App() {
         ...newBill,
         totalTransformers: selectedBillTransformers.length
       }
-      const response = await fetch('/api/bills', {
+      const response = await apiFetch('/api/bills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(billData),
       })
       if (!response.ok) throw new Error('Failed to create Bill')
       for (const id of selectedBillTransformers) {
-        const billRes = await fetch(`/api/transformers/${id}/bill`, {
+        const billRes = await apiFetch(`/api/transformers/${id}/bill`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sapNo: newBill.sapNo }),
@@ -1286,7 +1287,7 @@ function App() {
     const dcNo = prompt('Enter DC No:')
     if (!dcNo) return
     try {
-      const response = await fetch(`/api/transformers/${transformer.id}/deliver`, {
+      const response = await apiFetch(`/api/transformers/${transformer.id}/deliver`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dcNo }),
@@ -1307,7 +1308,7 @@ function App() {
     const sapNo = prompt('Enter SAP No:')
     if (!sapNo) return
     try {
-      const response = await fetch(`/api/transformers/${transformer.id}/bill`, {
+      const response = await apiFetch(`/api/transformers/${transformer.id}/bill`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sapNo }),
@@ -1440,15 +1441,16 @@ function App() {
     )
   }
 
-  if (currentView === 'landing') {
+  if (authUser === undefined) {
+    return <div className="auth-loading" role="status">Checking admin access...</div>
+  }
+
+  if (!authUser || showPublicSite) {
     return (
       <LandingPage
-        onAdminLogin={() => {
-          localStorage.setItem('vstms_admin_auth', 'true')
-          setCurrentView('dashboard')
-        }}
-        isAuthenticated={localStorage.getItem('vstms_admin_auth') === 'true'}
-        onGoToDashboard={() => setCurrentView('dashboard')}
+        onAdminLogin={() => setShowPublicSite(false)}
+        isAuthenticated={Boolean(authUser)}
+        onGoToDashboard={() => setShowPublicSite(false)}
       />
     )
   }
@@ -1460,7 +1462,7 @@ function App() {
           <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((prev) => !prev)} aria-label="Toggle sidebar">
             {sidebarCollapsed ? '>' : '<'}
           </button>
-          <img src="/logo.svg" alt="DS Transformers logo" className="sidebar-logo" />
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="DS Transformers logo" className="sidebar-logo" />
           {!sidebarCollapsed && <span className="sidebar-title">V S Transformers</span>}
         </div>
         <nav className="sidebar-nav">
@@ -1482,14 +1484,14 @@ function App() {
         <header className="hero">
           <div className="hero__content hero__content--compact" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <img src="/logo.svg" alt="DS Transformers logo" className="hero-logo" />
+              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="DS Transformers logo" className="hero-logo" />
               <h1>V S Transformers Management System</h1>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <button
                 type="button"
                 className="btn btn--secondary"
-                onClick={() => setCurrentView('landing')}
+                onClick={() => setShowPublicSite(true)}
                 style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                 title="View the public website"
               >
@@ -1498,10 +1500,7 @@ function App() {
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={() => {
-                  localStorage.removeItem('vstms_admin_auth')
-                  setCurrentView('landing')
-                }}
+                onClick={() => signOut(auth)}
                 style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', borderRadius: '8px', cursor: 'pointer', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                 title="Sign out from admin portal"
               >
@@ -1727,7 +1726,6 @@ function App() {
               <p className="quotation-settings-summary">
                 {quotationConfig.settings['Business Name'] || 'D.S. Transformers'} ·
                 {' '}Financial year {quotationConfig.settings['Financial Year'] || '—'} ·
-                {' '}Next number starts at {quotationConfig.settings['Starting Quotation Number'] || '—'}
               </p>
             </div>
             <div className="quotation-header-actions">

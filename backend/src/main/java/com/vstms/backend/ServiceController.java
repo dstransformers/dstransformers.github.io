@@ -15,7 +15,6 @@ import java.util.HashMap;
  */
 @RestController
 @RequestMapping("/api/services")
-@CrossOrigin(origins = "*")
 public class ServiceController {
     
     @Autowired
