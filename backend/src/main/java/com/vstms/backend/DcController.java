@@ -10,7 +10,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/dcs")
-@CrossOrigin(origins = "*")
 public class DcController {
 
     @Autowired

@@ -99,6 +99,7 @@
 
 .main-shell {
   flex: 1;
+  min-width: 0;
   padding: 24px 28px;
 }
 
@@ -112,11 +113,12 @@
 .panel {
   border: 1px solid var(--border);
   border-radius: 18px;
-  background: linear-gradient(160deg, rgba(135, 97, 255, 0.1), rgba(56, 189, 248, 0.08));
-  backdrop-filter: blur(6px);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
 }
 
 .hero__content {
+  background: linear-gradient(135deg, #fff 0%, #f7f8ff 100%);
   position: relative;
   display: flex;
   justify-content: center;
@@ -125,8 +127,8 @@
 }
 
 .hero-logo {
-  position: absolute;
-  left: 20px;
+  position: static;
+  flex: 0 0 40px;
   width: 40px;
   height: 40px;
   border-radius: 12px;
@@ -141,27 +143,73 @@ h1 {
 }
 
 .btn {
-  border: 0;
-  border-radius: 10px;
-  padding: 10px 16px;
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 9px 14px;
   font-weight: 600;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:focus-visible,
+.nav-item:focus-visible,
+.sidebar-toggle:focus-visible,
+.tabs button:focus-visible,
+.filter-icon-btn:focus-visible {
+  outline: 3px solid rgba(91, 102, 255, 0.3);
+  outline-offset: 2px;
 }
 
 .btn:disabled {
-  opacity: 0.7;
+  opacity: 0.58;
   cursor: not-allowed;
 }
 
 .btn--primary {
   color: #fff;
-  background: linear-gradient(90deg, #5b66ff, #7c3aed);
+  background: #5149d8;
+  box-shadow: 0 2px 5px rgba(81, 73, 216, 0.18);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #4338ca;
+  box-shadow: 0 4px 10px rgba(81, 73, 216, 0.22);
+}
+
+.btn--secondary {
+  color: #334155;
+  background: #f1f5f9;
+  border-color: #dbe3ed;
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: #e8eef5;
+  border-color: #cbd5e1;
 }
 
 .btn--ghost {
-  color: var(--text-h);
-  background: rgba(122, 133, 255, 0.12);
-  border: 1px solid rgba(122, 133, 255, 0.25);
+  color: #334155;
+  background: #fff;
+  border-color: #dbe3ed;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  color: #312e81;
+  background: #f5f5ff;
+  border-color: #c7c9ff;
 }
 
 .hero__content--compact {
@@ -170,6 +218,44 @@ h1 {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.dashboard-header {
+  min-width: 0;
+  justify-content: space-between;
+}
+
+.dashboard-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.dashboard-brand h1 {
+  min-width: 0;
+  font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+  line-height: 1.2;
+  text-align: left;
+}
+
+.dashboard-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dashboard-header-actions .btn--ghost {
+  color: #b42318;
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.dashboard-header-actions .btn--ghost:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
 }
 
 .kpis {
@@ -181,6 +267,12 @@ h1 {
 
 .card {
   padding: 18px;
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.075);
 }
 
 .card p {
@@ -200,6 +292,7 @@ h1 {
 .panel {
   padding: 22px;
   text-align: left;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.055);
 }
 
 .panel h2 {
@@ -278,13 +371,45 @@ h1 {
 }
 
 .jobs-table-wrap {
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .jobs-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.92rem;
+}
+
+.enquiries-table {
+  min-width: 940px;
+}
+
+.enquiries-table th,
+.enquiries-table td {
+  white-space: nowrap;
+}
+
+.enquiries-table td:nth-child(8) {
+  min-width: 170px;
+  max-width: 260px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.enquiries-table td.enquiry-actions-cell {
+  display: table-cell;
+  min-width: 94px;
+  white-space: nowrap;
+}
+
+.enquiry-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
 .jobs-table th,
@@ -959,14 +1084,36 @@ h1 {
 }
 
 .actions-cell {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.jobs-table td.actions-cell {
+  display: table-cell;
+}
+
+.actions-cell .btn + .btn {
+  margin-left: 6px;
 }
 
 .btn--small {
-  padding: 7px 11px;
-  font-size: 0.82rem;
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.8rem;
+}
+
+.btn--icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 9px;
+}
+
+.btn--icon svg {
+  display: block;
 }
 
 .tag {
@@ -1021,12 +1168,33 @@ h1 {
 }
 
 @media (max-width: 980px) {
+  .main-shell {
+    min-width: 0;
+  }
+
   .kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .filters-row {
     grid-template-columns: 1fr;
+  }
+
+  .create-job-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .create-job-form > button {
+    grid-column: 1 / -1;
+  }
+
+  .transformer-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .transformer-row > button {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 }
 
@@ -1057,23 +1225,25 @@ h1 {
 }
 
 .tabs button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  background: rgba(122, 133, 255, 0.12);
-  color: var(--text-h);
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f1f5f9;
+  color: #475569;
   cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
+  font-weight: 600;
+  transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .tabs button:hover {
-  background: rgba(122, 133, 255, 0.24);
+  background: #e8eef5;
 }
 
 .tabs button.active {
-  background: linear-gradient(90deg, #5b66ff, #7c3aed);
+  background: #5149d8;
   color: white;
+  box-shadow: 0 2px 6px rgba(81, 73, 216, 0.22);
 }
 
 /* Panel header */
@@ -1205,22 +1375,19 @@ h1 {
 }
 
 .modal-actions button {
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  font-weight: 500;
+  min-height: 40px;
 }
 
 /* Button styles */
 .btn--danger {
-  background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: #fff5f5;
+  color: #b42318;
+  border: 1px solid #fecaca;
 }
 
 .btn--danger:hover {
-  background: rgba(239, 68, 68, 0.24);
+  background: #fee2e2;
+  border-color: #fca5a5;
 }
 
 /* Responsive modal */
@@ -1387,6 +1554,10 @@ h1 {
     box-sizing: border-box;
   }
 
+  #root {
+    min-width: 0;
+  }
+
   .sidebar,
   .sidebar.collapsed {
     position: sticky;
@@ -1480,13 +1651,34 @@ h1 {
     padding: 14px;
   }
 
+  .dashboard-brand {
+    width: 100%;
+  }
+
+  .dashboard-brand h1 {
+    font-size: clamp(1.05rem, 4.8vw, 1.35rem);
+  }
+
+  .dashboard-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .dashboard-header-actions .btn {
+    width: 100%;
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 0.8rem;
+  }
+
   .hero__content > div:first-child {
     min-width: 0;
     gap: 10px !important;
   }
 
   .hero-logo {
-    position: static;
     flex: 0 0 34px;
     width: 34px;
     height: 34px;
@@ -1589,12 +1781,24 @@ h1 {
   .form-input,
   .form-group input,
   .form-group select,
-  .form-group textarea {
+  .form-group textarea,
+  .quotation-editor-grid input,
+  .quotation-editor-grid select,
+  .quotation-editor-grid textarea,
+  .quotation-service-picker select,
+  .quotation-inline-input,
+  .quotation-output-format select {
     box-sizing: border-box;
     width: 100%;
     max-width: 100%;
     min-height: 42px;
     font-size: 16px;
+  }
+
+  .app-shell button,
+  .landing-root button,
+  .landing-root .landing-btn {
+    min-height: 44px;
   }
 
   .jobs-table-wrap {
@@ -1609,18 +1813,34 @@ h1 {
     font-size: 0.82rem;
   }
 
+  .enquiries-table {
+    min-width: 940px;
+  }
+
   .jobs-table th,
   .jobs-table td {
     padding: 9px 8px;
   }
 
   .actions-cell {
-    min-width: 150px;
-    gap: 6px;
+    min-width: 0;
   }
 
   .actions-cell .btn {
     min-height: 36px;
+  }
+
+  .enquiries-table td.enquiry-actions-cell {
+    min-width: 94px;
+  }
+
+  .btn--icon {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  .enquiry-row-actions {
+    gap: 5px;
   }
 
   .enquiry-details-grid {
@@ -1767,4 +1987,11 @@ h1 {
     padding-right: 11px;
     padding-left: 11px;
   }
+}
+.auth-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: #1f2937;
+  font-weight: 600;
 }

@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { auth, firebaseConfigured } from './firebase';
+import { apiUrl } from './api';
 import './LandingPage.css';
 
 export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashboard }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
-  const [loginUsername, setLoginUsername] = useState('admin');
-  const [loginPassword, setLoginPassword] = useState('admin');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -42,20 +45,70 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     };
   }, [showQuotationModal]);
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoginError('');
     setLoginLoading(true);
 
-    setTimeout(() => {
-      if (loginUsername === 'admin' && loginPassword === 'admin') {
-        setShowLoginModal(false);
-        onAdminLogin();
-      } else {
-        setLoginError('Invalid credentials. Default is admin / admin');
-      }
+    if (!firebaseConfigured || !auth) {
+      setLoginError('Admin sign-in is not configured yet. Please contact the system administrator.');
       setLoginLoading(false);
-    }, 300);
+      return;
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      setShowLoginModal(false);
+      onAdminLogin();
+    } catch (error) {
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        ? error.code
+        : '';
+      const messages = {
+        'auth/invalid-credential': 'Firebase rejected these credentials. Check the email and password, and confirm this account exists in the configured Firebase project.',
+        'auth/user-not-found': 'No Firebase Authentication account was found for this email in the configured project.',
+        'auth/wrong-password': 'The password was not accepted. Check it or reset the account password in Firebase Authentication.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/user-disabled': 'This Firebase Authentication account is disabled. Enable it in Firebase Authentication or contact the administrator.',
+        'auth/operation-not-allowed': 'Email/password sign-in is disabled. Enable the Email/Password provider in Firebase Authentication.',
+        'auth/too-many-requests': 'Firebase temporarily blocked sign-in attempts. Wait before trying again or reset the account password.',
+        'auth/network-request-failed': 'A network error interrupted sign-in. Check your connection and try again.',
+      };
+      setLoginError(messages[errorCode] || `Sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase account and provider settings.`);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoginError('');
+    setLoginLoading(true);
+
+    if (!firebaseConfigured || !auth) {
+      setLoginError('Admin sign-in is not configured yet. Please contact the system administrator.');
+      setLoginLoading(false);
+      return;
+    }
+
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      setShowLoginModal(false);
+      onAdminLogin();
+    } catch (error) {
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        ? error.code
+        : '';
+      const messages = {
+        'auth/unauthorized-domain': 'This website domain is not authorized in Firebase. Add it under Authentication → Settings → Authorized domains.',
+        'auth/operation-not-allowed': 'Google sign-in is disabled. Enable the Google provider under Firebase Authentication → Sign-in method.',
+        'auth/popup-blocked': 'The browser blocked the Google sign-in popup. Allow popups for this site and try again.',
+        'auth/popup-closed-by-user': 'The Google sign-in window was closed before sign-in finished. Try again and complete sign-in.',
+        'auth/network-request-failed': 'A network error interrupted Google sign-in. Check your connection and try again.',
+      };
+      setLoginError(messages[errorCode] || `Google sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase provider and authorized domain settings.`);
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const handleQuoteSubmit = async (e) => {
@@ -76,7 +129,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
         reader.onerror = () => reject(new Error(`Unable to read ${photo.name}. Please choose the photo again.`));
         reader.readAsDataURL(photo);
       })));
-      const response = await fetch('/api/enquiries', {
+      const response = await fetch(apiUrl('/api/enquiries'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -634,31 +687,47 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 </svg>
               </div>
               <h3 className="admin-modal-title">VSTMS Admin Portal</h3>
-              <p className="admin-modal-subtitle">Vendor Service Transformer Management System</p>
+              <p className="admin-modal-subtitle">D.S Transformer Management System</p>
             </div>
 
             <div className="admin-modal-body">
-              <div className="admin-credential-hint">
-                <span>Default Credentials:</span>
-                <strong>Username: admin | Password: admin</strong>
-              </div>
-
               {loginError && (
                 <div className="admin-error-box">
                   {loginError}
                 </div>
               )}
 
+              <button
+                type="button"
+                className="admin-google-btn"
+                onClick={handleGoogleLogin}
+                disabled={loginLoading}
+              >
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" transform="translate(0 4)"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.75 7.18l7.73 6C44.43 37.96 46.98 31.85 46.98 24.55Z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.9 23.9 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -4)"/>
+                </svg>
+                <span>{loginLoading ? 'Signing in...' : 'Sign in with Google'}</span>
+              </button>
+
+              <div className="admin-login-divider" aria-hidden="true">
+                <span>or sign in with email</span>
+              </div>
+
               <form onSubmit={handleLoginSubmit}>
                 <div className="form-field" style={{ marginBottom: '1.2rem' }}>
-                  <label>Admin Username</label>
+                  <label htmlFor="adminEmail">Admin email</label>
                   <input
-                    type="text"
+                    id="adminEmail"
+                    type="email"
                     required
                     autoFocus
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    placeholder="admin"
+                    autoComplete="username"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="name@example.com"
                   />
                 </div>
 
@@ -667,6 +736,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   <input
                     type="password"
                     required
+                    autoComplete="current-password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"

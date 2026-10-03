@@ -12,7 +12,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/transformers")
 @Validated
-@CrossOrigin(origins = "*")
 public class TransformerController {
 
     @Autowired

@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/tnotes")
-@CrossOrigin(origins = "*")
 public class TNoteController {
 
     @Autowired
