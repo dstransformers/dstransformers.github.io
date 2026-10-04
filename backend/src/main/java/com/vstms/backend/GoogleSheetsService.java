@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.vstms.backend.model.BillDTO;
@@ -72,8 +73,9 @@ public class GoogleSheetsService {
                 .build();
     }
 
-    private static ObjectMapper createObjectMapper() {
+    static ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         SimpleModule dateCompatibility = new SimpleModule();
         dateCompatibility.addDeserializer(LocalDate.class, new JsonDeserializer<>() {
             private final Pattern spreadsheetDate = Pattern.compile("^([A-Za-z]{3} [A-Za-z]{3} \\d{1,2} \\d{4})");
@@ -360,7 +362,8 @@ public class GoogleSheetsService {
         return Optional.ofNullable(transformerCache.get(id));
     }
 
-    public TransformerDTO createTransformer(String spmCenter, String dtrNo, String sNo, int capacity, String type, double oilCapacity, Long tNoteId, String intakeType) {
+    public TransformerDTO createTransformer(String spmCenter, String dtrNo, String sNo, int capacity, String type,
+            double oilCapacity, Long tNoteId, String intakeType, String requestId) {
         Long nextId = transformerCache.keySet().stream().max(Long::compareTo).orElse(0L) + 1;
         TransformerDTO dto = new TransformerDTO(nextId, spmCenter, dtrNo, sNo, capacity, type, oilCapacity, "Recieved", tNoteId, null, null);
         dto.setIntakeType(intakeType);
@@ -370,12 +373,16 @@ public class GoogleSheetsService {
         }
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "ADD_TRANSFORMER");
-        payload.put("payload", dto);
+        Map<String, Object> request = objectMapper.convertValue(dto, new TypeReference<Map<String, Object>>() {});
+        request.put("requestId", requestId);
+        payload.put("payload", request);
         Map<String, Object> res = postToAppsScript(payload);
 
         if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
             TransformerDTO created = objectMapper.convertValue(res.get("data"), TransformerDTO.class);
-            if (created != null && created.getId() != null) {
+            if (created != null && created.getId() != null && created.getId() > 0
+                    && Objects.equals(dtrNo, created.getDtrNo())
+                    && Objects.equals(sNo, created.getSNo())) {
                 if (tNoteId != null && !Objects.equals(tNoteId, created.getTNoteId())) {
                     throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                             "Transformer was created without the requested TNote association. Verify the Apps Script deployment before retrying.");
@@ -754,19 +761,20 @@ public class GoogleSheetsService {
         if ("SUCCESS".equals(res.get("status")) && res.get("data") instanceof List<?> list) {
             List<TNoteDTO> dtos = new ArrayList<>();
             for (Object item : list) {
-                TNoteDTO dto = objectMapper.convertValue(item, TNoteDTO.class);
-                if (dto != null && dto.getId() != null) {
-                    dtos.add(dto);
-                    tnoteCache.put(dto.getId(), dto);
+                TNoteDTO dto = normalizeTNoteTransformers(
+                        objectMapper.convertValue(item, TNoteDTO.class));
+                if (dto == null || dto.getId() == null || dto.getId() <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Apps Script returned a TNote without a valid ID.");
                 }
+                dtos.add(dto);
+                tnoteCache.put(dto.getId(), dto);
             }
             return dtos;
         }
 
-        ensureCacheSeeded();
-        return new ArrayList<>(tnoteCache.values()).stream()
-                .sorted(Comparator.comparing(TNoteDTO::getId))
-                .toList();
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                String.valueOf(res.getOrDefault("message", "Failed to fetch TNotes from Apps Script.")));
     }
 
     public Optional<TNoteDTO> getTNoteById(Long id) {
@@ -778,13 +786,34 @@ public class GoogleSheetsService {
         Map<String, Object> res = postToAppsScript(payload);
 
         if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
-            TNoteDTO dto = objectMapper.convertValue(res.get("data"), TNoteDTO.class);
-            if (dto != null) {
-                tnoteCache.put(dto.getId(), dto);
-                return Optional.of(dto);
+            TNoteDTO dto = normalizeTNoteTransformers(
+                    objectMapper.convertValue(res.get("data"), TNoteDTO.class));
+            if (dto == null || dto.getId() == null || dto.getId() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Apps Script returned a TNote without a valid ID.");
             }
+            tnoteCache.put(dto.getId(), dto);
+            return Optional.of(dto);
         }
-        return Optional.ofNullable(tnoteCache.get(id));
+        if ("NOT_FOUND".equals(res.get("status"))) return Optional.empty();
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                String.valueOf(res.getOrDefault("message", "Failed to fetch TNote from Apps Script.")));
+    }
+
+    static TNoteDTO normalizeTNoteTransformers(TNoteDTO tNote) {
+        if (tNote == null) return null;
+
+        Map<Long, TransformerDTO> uniqueTransformers = new LinkedHashMap<>();
+        for (TransformerDTO transformer : tNote.getTransformers()) {
+            if (transformer == null || transformer.getId() == null || transformer.getId() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Apps Script returned a TNote with a transformer that has no valid ID.");
+            }
+            uniqueTransformers.putIfAbsent(transformer.getId(), transformer);
+        }
+        tNote.setTransformers(new ArrayList<>(uniqueTransformers.values()));
+        tNote.setNumberOfTransformers(uniqueTransformers.size());
+        return tNote;
     }
 
     public TNoteDTO saveTNote(TNoteDTO tNote) {
@@ -799,10 +828,14 @@ public class GoogleSheetsService {
 
         if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
             TNoteDTO created = objectMapper.convertValue(res.get("data"), TNoteDTO.class);
-            if (created != null && created.getId() != null) {
+            if (created != null && created.getId() != null && created.getId() > 0
+                    && Objects.equals(tNote.getTNoteNo(), created.getTNoteNo())
+                    && (tNote.getDate() == null || Objects.equals(tNote.getDate(), created.getDate()))) {
                 tnoteCache.put(created.getId(), created);
                 return created;
             }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Apps Script returned an incomplete TNote after writing. Verify the record before retrying.");
         }
         throw new ResponseStatusException(
                 HttpStatus.BAD_GATEWAY,
@@ -816,7 +849,7 @@ public class GoogleSheetsService {
         Map<String, Object> res = postToAppsScript(payload);
         if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
             TNoteDTO updated = objectMapper.convertValue(res.get("data"), TNoteDTO.class);
-            if (updated != null && updated.getId() != null) {
+            if (updated != null && updated.getId() != null && updated.getId() > 0) {
                 tnoteCache.put(updated.getId(), updated);
                 return updated;
             }

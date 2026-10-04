@@ -60,7 +60,8 @@ public class TransformerController {
                 request.type(),
                 request.oilCapacity(),
                 request.tNoteId(),
-                request.intakeType()
+                request.intakeType(),
+                request.requestId()
         );
     }
 
@@ -125,7 +126,8 @@ public class TransformerController {
             @NotBlank String type,
             double oilCapacity,
             Long tNoteId,
-            String intakeType
+            String intakeType,
+            String requestId
     ) {}
 
     public record UpdateTransformerRequest(

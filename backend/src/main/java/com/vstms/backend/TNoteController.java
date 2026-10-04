@@ -47,17 +47,13 @@ public class TNoteController {
 
     @PutMapping("/{id}")
     public ResponseEntity<TNoteDTO> updateTNote(@PathVariable Long id, @RequestBody TNoteRequest request) {
-        return googleSheetsService.getTNoteById(id)
-                .map(tNote -> {
-                    if (request.getTNoteNo() == null || request.getTNoteNo().isBlank()) {
-                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TNote number is required.");
-                    }
-                    tNote.setTNoteNo(request.getTNoteNo().trim());
-                    tNote.setDate(request.getDate());
-                    tNote.setNumberOfTransformers(request.getNumberOfTransformers());
-                    return ResponseEntity.ok(googleSheetsService.updateTNote(tNote));
-                })
-                .orElse(ResponseEntity.notFound().build());
+        if (request.getTNoteNo() == null || request.getTNoteNo().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TNote number is required.");
+        }
+        TNoteDTO tNote = new TNoteDTO(id, request.getDate(), request.getNumberOfTransformers(), new ArrayList<>());
+        tNote.setTNoteNo(request.getTNoteNo().trim());
+        tNote.setAttachments(request.getAttachments());
+        return ResponseEntity.ok(googleSheetsService.updateTNote(tNote));
     }
 
     @DeleteMapping("/{id}")

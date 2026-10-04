@@ -37,7 +37,7 @@ const SHEET_HEADERS = {
   Enquiries: ['ID', 'Date', 'CustomerName', 'CustomerPhone', 'CustomerEmail', 'ServicesRequired', 'TransformerLocation', 'LeakageLocation', 'BreakdownTiming', 'SiteLocation', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt', 'ContactPerson', 'TransformerCapacity', 'TransformerMake', 'TransformerStatus', 'ServicePriority', 'ProblemDescription', 'PhotoLinks'],
   Services: ['ServiceID', 'ServiceName', 'Description', 'Icon'],
   Jobs: ['JobID', 'EnquiryID', 'TransformerID', 'Status', 'StartDate', 'EndDate', 'Technician', 'Description', 'Cost', 'CreatedAt', 'UpdatedAt'],
-  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt'],
+  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID'],
   TNotes: ['ID', 'TNoteNo', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt', 'Attachments'],
   'TNote Transformers': ['LinkID', 'TNoteID', 'TransformerID', 'IntakeType', 'VisitStatus', 'Billable', 'CreatedAt', 'UpdatedAt'],
   DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CustomerName', 'CustomerAddress', 'CustomerGSTIN', 'CompanyGSTIN', 'TNoteNo', 'EmptyDrumsAvailable', 'EmptyDrumCount', 'SentToTGSPDCL', 'TransformerDetails', 'Delivered', 'DeliveryAttachments', 'DeliveredAt', 'CreatedAt', 'UpdatedAt', 'GeneratedChallanUrl', 'GeneratedChallanFileId'],
@@ -633,7 +633,9 @@ function getTNoteTransformerMap_() {
     const transformer = transformerById.get(Number(link.TransformerID));
     if (!transformer) return;
     if (!byTNote.has(tNoteId)) byTNote.set(tNoteId, []);
-    byTNote.get(tNoteId).push({
+    const attachedTransformers = byTNote.get(tNoteId);
+    if (attachedTransformers.some(attached => attached.id === transformer.id)) return;
+    attachedTransformers.push({
       ...transformer,
       intakeType: String(link.IntakeType || 'NEW'),
       visitStatus: String(link.VisitStatus || transformer.status || 'Recieved'),
@@ -766,49 +768,83 @@ function getTransformerById(id) {
 }
 
 function addTransformer(data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return addTransformerLocked_(data);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function addTransformerLocked_(data) {
   const tNoteId = data.tNoteId || data.tNoteID;
   if (tNoteId && !findRowByValue(SHEET_NAMES.TNOTES, 'ID', tNoteId)) {
     throw new Error('The selected TNote does not exist.');
   }
   const intakeType = String(data.intakeType || 'NEW').toUpperCase();
-  if (intakeType === 'RGP') {
-    const existingTransformer = getSheetData(SHEET_NAMES.TRANSFORMERS).find(transformer =>
-      (normalizeTransformerIdentity_(data.dtrNo) &&
-        normalizeTransformerIdentity_(transformer.DtrNo) === normalizeTransformerIdentity_(data.dtrNo)) ||
-      (normalizeTransformerIdentity_(data.sNo) &&
-        normalizeTransformerIdentity_(transformer.SNo) === normalizeTransformerIdentity_(data.sNo))
-    );
-    if (existingTransformer) {
-      throw new Error('A transformer with this DTR number or serial number already exists. Search and link the existing transformer as RGP.');
-    }
-  }
   const linkSheet = tNoteId ? ensureTNoteTransformerLinks_() : null;
   const sheet = initializeSheet(SHEET_NAMES.TRANSFORMERS, SHEET_HEADERS.Transformers);
+  const requestId = String(data.requestId || '').trim();
+  if (requestId) {
+    const existing = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'RequestID', requestId);
+    if (existing) {
+      const existingRow = Object.fromEntries(existing.headers.map((header, index) => [header, existing.data[index]]));
+      const matchesRequest = String(existingRow.SpmCenter || '') === String(data.spmCenter || '') &&
+        String(existingRow.DtrNo || '') === String(data.dtrNo || '') &&
+        String(existingRow.SNo || '') === String(data.sNo || '') &&
+        Number(existingRow.Capacity || 0) === Number(data.capacity || 0) &&
+        String(existingRow.Type || '') === String(data.type || 'Distribution') &&
+        Number(existingRow.OilCapacity || 0) === Number(data.oilCapacity || 0) &&
+        Number(existingRow.TNoteID || 0) === Number(tNoteId || 0);
+      if (!matchesRequest) throw new Error('Request ID was already used for a different transformer.');
+      const created = transformerRowToObj(existingRow);
+      if (tNoteId) {
+        created.intakeType = intakeType;
+        created.visitStatus = data.status || 'Recieved';
+        created.billable = intakeType !== 'RGP';
+      }
+      return { status: 'SUCCESS', data: created };
+    }
+  }
+  const normalizedDtrNo = normalizeTransformerIdentity_(data.dtrNo);
+  const normalizedSNo = normalizeTransformerIdentity_(data.sNo);
+  const existingIdentity = getSheetData(SHEET_NAMES.TRANSFORMERS).find(transformer =>
+    Number(transformer.ID) > 0 &&
+    ((normalizedDtrNo && normalizeTransformerIdentity_(transformer.DtrNo) === normalizedDtrNo) ||
+      (normalizedSNo && normalizeTransformerIdentity_(transformer.SNo) === normalizedSNo))
+  );
+  if (existingIdentity) {
+    if (intakeType === 'RGP') {
+      throw new Error('A transformer with this DTR number or serial number already exists. Search and link the existing transformer as RGP.');
+    }
+    throw new Error('A transformer with this DTR number or serial number is already registered.');
+  }
   const id = getNextNumericId(SHEET_NAMES.TRANSFORMERS, 'ID');
   const now = getTimestamp();
 
-  const row = [
-    id,
-    data.spmCenter || '',
-    data.dtrNo || '',
-    data.sNo || '',
-    data.capacity || 0,
-    data.type || 'Distribution',
-    data.oilCapacity || 0,
-    data.status || 'Recieved',
-    data.tNoteId || data.tNoteID || '',
-    data.dcNo || '',
-    data.sapNo || '',
-    now,
-    now
-  ];
+  const rowValues = {
+    ID: id,
+    SpmCenter: data.spmCenter || '',
+    DtrNo: data.dtrNo || '',
+    SNo: data.sNo || '',
+    Capacity: data.capacity || 0,
+    Type: data.type || 'Distribution',
+    OilCapacity: data.oilCapacity || 0,
+    Status: data.status || 'Recieved',
+    TNoteID: data.tNoteId || data.tNoteID || '',
+    DcNo: data.dcNo || '',
+    SapNo: data.sapNo || '',
+    CreatedAt: now,
+    UpdatedAt: now,
+    RequestID: requestId
+  };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const row = headers.map(header => rowValues[header] === undefined ? '' : rowValues[header]);
   sheet.appendRow(row);
-  const created = transformerRowToObj({
-    ID: id, SpmCenter: data.spmCenter, DtrNo: data.dtrNo, SNo: data.sNo,
-    Capacity: data.capacity, Type: data.type, OilCapacity: data.oilCapacity,
-    Status: data.status || 'Recieved', TNoteID: data.tNoteId, DcNo: data.dcNo, SapNo: data.sapNo,
-    CreatedAt: now
-  });
+  const persisted = getTransformerById(id);
+  if (persisted.status !== 'SUCCESS') throw new Error('Transformer write could not be verified.');
+  const created = persisted.data;
   if (tNoteId) {
     appendTNoteTransformerLink_(linkSheet, {
       tNoteId,
@@ -849,6 +885,41 @@ function updateTransformer(id, data) {
 
 function deleteTransformer(id) {
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
+  if (!found && Number(id) === 0) {
+    const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(String);
+    const column = name => headers.indexOf(name);
+    const invalidRows = [];
+    for (let index = 1; index < data.length; index++) {
+      const value = name => column(name) >= 0 ? data[index][column(name)] : '';
+      const dtrNo = String(value('DtrNo') || '');
+      if (
+        !value('ID') &&
+        !value('SpmCenter') &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(dtrNo) &&
+        String(value('SNo') || '') === dtrNo &&
+        !value('Capacity') &&
+        !value('Type') &&
+        !value('OilCapacity') &&
+        String(value('Status') || '') === '1' &&
+        !value('TNoteID') &&
+        !value('DcNo') &&
+        !value('SapNo') &&
+        String(value('CreatedAt') || '') === 'Recieved' &&
+        !value('UpdatedAt')
+      ) {
+        invalidRows.push(index + 1);
+      }
+    }
+    if (invalidRows.length > 1) {
+      throw new Error('Multiple malformed transformer rows matched cleanup safeguards; no rows were deleted.');
+    }
+    if (invalidRows.length === 1) {
+      sheet.deleteRow(invalidRows[0]);
+      return { status: 'SUCCESS', message: 'Malformed legacy transformer row removed.' };
+    }
+  }
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
 
   const transformer = transformerRowToObj(Object.fromEntries(
@@ -1148,7 +1219,9 @@ function addTNote(data) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const row = headers.map(header => rowValues[header] === undefined ? '' : rowValues[header]);
   sheet.appendRow(row);
-  return { status: 'SUCCESS', data: { id: id, tNoteNo: tNoteNo, date: data.date, numberOfTransformers: data.numberOfTransformers, attachments: attachments, transformers: [] } };
+  const persisted = getTNoteById(id);
+  if (persisted.status !== 'SUCCESS') throw new Error('TNote write could not be verified.');
+  return persisted;
 }
 
 function updateTNote(id, data) {

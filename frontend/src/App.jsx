@@ -1769,7 +1769,8 @@ ${styles}
       const createdTNote = await tnoteResponse.json()
 
       for (const transformer of tnoteTransformers) {
-        await apiFetch('/api/transformers', {
+        const requestId = crypto.randomUUID()
+        const transformerResponse = await apiFetch('/api/transformers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1777,8 +1778,17 @@ ${styles}
             capacity: parseInt(transformer.capacity),
             oilCapacity: parseFloat(transformer.oilCapacity),
             tNoteId: createdTNote.id,
+            requestId,
           }),
         })
+        if (!transformerResponse.ok) {
+          const errorBody = await transformerResponse.json().catch(() => ({}))
+          throw new Error(
+            `TNote ${createdTNote.tNoteNo || createdTNote.id} was created, but transformer registration failed: ${
+              errorBody.detail || errorBody.message || `HTTP ${transformerResponse.status}`
+            }`,
+          )
+        }
       }
 
       setNewTNote({ tNoteNo: '', date: new Date().toISOString().split('T')[0], numberOfTransformers: 1 })
@@ -1861,6 +1871,7 @@ ${styles}
     setNewTNoteTransformerError('')
     setAddingTNoteTransformer(true)
     try {
+      const requestId = crypto.randomUUID()
       const response = await apiFetch('/api/transformers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1870,6 +1881,7 @@ ${styles}
           oilCapacity: parseFloat(newTNoteTransformer.oilCapacity),
           tNoteId: activeTNote.id,
           intakeType: tNoteIntakeMode,
+          requestId,
         }),
       })
       if (!response.ok) {
