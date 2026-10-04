@@ -10,6 +10,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.vstms.backend.model.BillDTO;
 import com.vstms.backend.model.DcDTO;
+import com.vstms.backend.model.AttachmentDTO;
+import com.vstms.backend.model.AssessmentDetailsDTO;
 import com.vstms.backend.model.TNoteDTO;
 import com.vstms.backend.model.TransformerDTO;
 import org.slf4j.Logger;
@@ -366,6 +368,7 @@ public class GoogleSheetsService {
             double oilCapacity, Long tNoteId, String intakeType, String requestId) {
         Long nextId = transformerCache.keySet().stream().max(Long::compareTo).orElse(0L) + 1;
         TransformerDTO dto = new TransformerDTO(nextId, spmCenter, dtrNo, sNo, capacity, type, oilCapacity, "Recieved", tNoteId, null, null);
+        dto.setAssessmentRound(0);
         dto.setIntakeType(intakeType);
         if (tNoteId != null) {
             dto.setVisitStatus("Recieved");
@@ -552,16 +555,32 @@ public class GoogleSheetsService {
     }
 
     public TransformerDTO updateTransformerStatus(Long id, String newStatus) {
+        return updateTransformerStatus(id, newStatus, null);
+    }
+
+    public TransformerDTO updateTransformerStatus(
+            Long id,
+            String newStatus,
+            AssessmentDetailsDTO assessmentDetails) {
         TransformerDTO dto = getTransformerById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
 
-        validateStatusTransition(dto.getStatus(), newStatus);
+        validateStatusTransition(dto.getStatus(), newStatus, dto.getAssessmentRound());
+        if ("Assesment".equalsIgnoreCase(newStatus)
+                && (assessmentDetails == null || assessmentDetails.getWindingMaterial() == null
+                        || assessmentDetails.getWindingMaterial().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Assessment details and winding material are required to move to Assessment.");
+        }
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "UPDATE_TRANSFORMER_STATUS");
         Map<String, Object> params = new HashMap<>();
         params.put("id", id);
         params.put("status", newStatus);
+        if (assessmentDetails != null) {
+            params.put("assessmentDetails", assessmentDetails);
+        }
         payload.put("payload", params);
         Map<String, Object> res = postToAppsScript(payload);
         if (!"SUCCESS".equals(res.get("status"))) {
@@ -572,10 +591,68 @@ public class GoogleSheetsService {
             dto = objectMapper.convertValue(res.get("data"), TransformerDTO.class);
         } else {
             dto.setStatus(newStatus);
+            if ("Assesment".equalsIgnoreCase(newStatus)) {
+                dto.setAssessmentRound(dto.getAssessmentRound() + 1);
+                dto.setAssessmentDetails(assessmentDetails);
+            }
         }
         transformerCache.put(id, dto);
 
         return dto;
+    }
+
+    public TransformerDTO updateTransformerAssessment(Long id, AssessmentDetailsDTO assessmentDetails) {
+        TransformerDTO dto = getTransformerById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
+        if ("Delivered".equalsIgnoreCase(dto.getStatus()) || "Billed".equalsIgnoreCase(dto.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Assessment details cannot be edited after delivery.");
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "UPDATE_TRANSFORMER_ASSESSMENT");
+        Map<String, Object> params = new HashMap<>();
+        params.put("id", id);
+        params.put("assessmentDetails", assessmentDetails);
+        payload.put("payload", params);
+        Map<String, Object> res = postToAppsScript(payload);
+        if (!"SUCCESS".equals(res.get("status"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    String.valueOf(res.getOrDefault("message", "Failed to update transformer assessment.")));
+        }
+        if (res.get("data") != null) {
+            dto = objectMapper.convertValue(res.get("data"), TransformerDTO.class);
+        } else {
+            dto.setAssessmentDetails(assessmentDetails);
+        }
+        transformerCache.put(id, dto);
+        return dto;
+    }
+
+    public void deleteTransformerAssessment(Long id) {
+        TransformerDTO dto = getTransformerById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
+        if ("Delivered".equalsIgnoreCase(dto.getStatus()) || "Billed".equalsIgnoreCase(dto.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Assessment details cannot be deleted after delivery.");
+        }
+        if (dto.getAssessmentDetails() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Assessment details have not been entered for this transformer.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "DELETE_TRANSFORMER_ASSESSMENT");
+        Map<String, Object> params = new HashMap<>();
+        params.put("id", id);
+        payload.put("payload", params);
+        Map<String, Object> res = postToAppsScript(payload);
+        if (!"SUCCESS".equals(res.get("status"))) {
+            HttpStatus status = "NOT_FOUND".equals(res.get("status")) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY;
+            throw new ResponseStatusException(status,
+                    String.valueOf(res.getOrDefault("message", "Failed to delete transformer assessment.")));
+        }
+        dto.setAssessmentDetails(null);
+        transformerCache.put(id, dto);
     }
 
     public TransformerDTO deliverTransformer(Long id, String dcNo) {
@@ -736,7 +813,7 @@ public class GoogleSheetsService {
                 .toList();
     }
 
-    private void validateStatusTransition(String current, String next) {
+    private void validateStatusTransition(String current, String next, int assessmentRound) {
         if ("Scrap".equalsIgnoreCase(next)) {
             if (List.of("Recieved", "Assesment", "Repair In Progress", "Repaired").stream()
                     .anyMatch(status -> status.equalsIgnoreCase(current))) {
@@ -744,9 +821,15 @@ public class GoogleSheetsService {
             }
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only transformers not yet delivered can be marked as Scrap.");
         }
-        int currentIndex = STATUS_ORDER.indexOf(current);
-        int nextIndex = STATUS_ORDER.indexOf(next);
-        if (currentIndex == -1 || nextIndex == -1 || nextIndex != currentIndex + 1) {
+        boolean validTransition = ("Recieved".equalsIgnoreCase(current)
+                    && "Assesment".equalsIgnoreCase(next) && assessmentRound == 0)
+                || ("Assesment".equalsIgnoreCase(current)
+                    && "Repair In Progress".equalsIgnoreCase(next) && assessmentRound == 1)
+                || ("Repair In Progress".equalsIgnoreCase(current)
+                    && "Assesment".equalsIgnoreCase(next) && assessmentRound == 1)
+                || ("Assesment".equalsIgnoreCase(current)
+                    && "Repaired".equalsIgnoreCase(next) && assessmentRound == 2);
+        if (!validTransition) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status transition from " + current + " to " + next);
         }
     }
@@ -857,6 +940,43 @@ public class GoogleSheetsService {
         HttpStatus status = "NOT_FOUND".equals(res.get("status")) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
         throw new ResponseStatusException(status,
                 String.valueOf(res.getOrDefault("message", "Failed to update TNote.")));
+    }
+
+    public TNoteDTO addTNoteAttachments(Long id, List<AttachmentDTO> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select at least one attachment.");
+        }
+        if (attachments.stream().anyMatch(attachment -> attachment == null || attachment.getDataUrl() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each attachment must include file data.");
+        }
+
+        TNoteDTO current = getTNoteById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "TNote not found."));
+        int existingCount = current.getAttachments() == null ? 0 : current.getAttachments().size();
+        if (existingCount + attachments.size() > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A TNote can have no more than 5 attachments.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "ADD_TNOTE_ATTACHMENTS");
+        payload.put("payload", Map.of("id", id, "attachments", attachments));
+        Map<String, Object> res = postToAppsScript(payload);
+        if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
+            TNoteDTO updated = normalizeTNoteTransformers(
+                    objectMapper.convertValue(res.get("data"), TNoteDTO.class));
+            if (updated != null && Objects.equals(id, updated.getId())
+                    && updated.getAttachments() != null
+                    && updated.getAttachments().size() == existingCount + attachments.size()) {
+                tnoteCache.put(updated.getId(), updated);
+                return updated;
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Apps Script returned an incomplete TNote after saving attachments. Verify the record before retrying.");
+        }
+
+        HttpStatus status = "NOT_FOUND".equals(res.get("status")) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY;
+        throw new ResponseStatusException(status,
+                String.valueOf(res.getOrDefault("message", "Failed to add TNote attachments.")));
     }
 
     public void deleteTNote(Long id) {
@@ -1153,6 +1273,11 @@ public class GoogleSheetsService {
                         dcNo,
                         sapNo
                 );
+                transformer.setAssessmentRound(switch (status) {
+                    case "Assesment", "Repair In Progress" -> 1;
+                    case "Repaired", "Delivered", "Billed" -> 2;
+                    default -> 0;
+                });
                 transformerCache.put(transformer.getId(), transformer);
                 tNote.getTransformers().add(transformer);
             }

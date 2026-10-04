@@ -56,6 +56,13 @@ public class TNoteController {
         return ResponseEntity.ok(googleSheetsService.updateTNote(tNote));
     }
 
+    @PostMapping("/{id}/attachments")
+    public TNoteDTO addTNoteAttachments(
+            @PathVariable Long id,
+            @Valid @RequestBody AddTNoteAttachmentsRequest request) {
+        return googleSheetsService.addTNoteAttachments(id, request.attachments());
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTNote(@PathVariable Long id) {
         if (googleSheetsService.getTNoteById(id).isPresent()) {
@@ -88,6 +95,9 @@ public class TNoteController {
     }
 
     public record LinkTransformerRequest(Long transformerId, String intakeType) {}
+
+    public record AddTNoteAttachmentsRequest(
+            @jakarta.validation.constraints.NotEmpty List<AttachmentDTO> attachments) {}
 
     public record UpdateVisitStatusRequest(@jakarta.validation.constraints.NotBlank String visitStatus) {}
 

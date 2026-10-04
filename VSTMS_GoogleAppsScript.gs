@@ -37,7 +37,7 @@ const SHEET_HEADERS = {
   Enquiries: ['ID', 'Date', 'CustomerName', 'CustomerPhone', 'CustomerEmail', 'ServicesRequired', 'TransformerLocation', 'LeakageLocation', 'BreakdownTiming', 'SiteLocation', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt', 'ContactPerson', 'TransformerCapacity', 'TransformerMake', 'TransformerStatus', 'ServicePriority', 'ProblemDescription', 'PhotoLinks'],
   Services: ['ServiceID', 'ServiceName', 'Description', 'Icon'],
   Jobs: ['JobID', 'EnquiryID', 'TransformerID', 'Status', 'StartDate', 'EndDate', 'Technician', 'Description', 'Cost', 'CreatedAt', 'UpdatedAt'],
-  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID'],
+  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID', 'AssessmentDetails', 'AssessmentRound'],
   TNotes: ['ID', 'TNoteNo', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt', 'Attachments'],
   'TNote Transformers': ['LinkID', 'TNoteID', 'TransformerID', 'IntakeType', 'VisitStatus', 'Billable', 'CreatedAt', 'UpdatedAt'],
   DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CustomerName', 'CustomerAddress', 'CustomerGSTIN', 'CompanyGSTIN', 'TNoteNo', 'EmptyDrumsAvailable', 'EmptyDrumCount', 'SentToTGSPDCL', 'TransformerDetails', 'Delivered', 'DeliveryAttachments', 'DeliveredAt', 'CreatedAt', 'UpdatedAt', 'GeneratedChallanUrl', 'GeneratedChallanFileId'],
@@ -562,6 +562,14 @@ function getJobsByStatus(status) {
 // ============ TRANSFORMER FUNCTIONS ============
 
 function transformerRowToObj(row) {
+  const status = String(row.Status || 'Recieved');
+  const savedAssessmentRound = row.AssessmentRound === '' || row.AssessmentRound == null
+    ? NaN
+    : Number(row.AssessmentRound);
+  const assessmentRound = Number.isInteger(savedAssessmentRound) && savedAssessmentRound >= 0
+    ? savedAssessmentRound
+    : ['Assesment', 'Repair In Progress'].includes(status) ? 1
+      : ['Repaired', 'Delivered', 'Billed'].includes(status) ? 2 : 0;
   return {
     id: Number(row.ID),
     spmCenter: String(row.SpmCenter || ''),
@@ -570,14 +578,16 @@ function transformerRowToObj(row) {
     capacity: Number(row.Capacity || 0),
     type: String(row.Type || ''),
     oilCapacity: Number(row.OilCapacity || 0),
-    status: String(row.Status || 'Recieved'),
+    status,
     tNoteId: row.TNoteID ? Number(row.TNoteID) : null,
     dcNo: row.DcNo ? String(row.DcNo) : null,
     sapNo: row.SapNo ? String(row.SapNo) : null,
     createdAt: String(row.CreatedAt || ''),
     intakeType: row.IntakeType ? String(row.IntakeType) : null,
     visitStatus: row.VisitStatus ? String(row.VisitStatus) : null,
-    billable: row.Billable === true || String(row.Billable).toLowerCase() === 'true'
+    billable: row.Billable === true || String(row.Billable).toLowerCase() === 'true',
+    assessmentDetails: row.AssessmentDetails ? JSON.parse(String(row.AssessmentDetails)) : null,
+    assessmentRound
   };
 }
 
@@ -837,7 +847,8 @@ function addTransformerLocked_(data) {
     SapNo: data.sapNo || '',
     CreatedAt: now,
     UpdatedAt: now,
-    RequestID: requestId
+    RequestID: requestId,
+    AssessmentRound: 0
   };
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const row = headers.map(header => rowValues[header] === undefined ? '' : rowValues[header]);
@@ -943,32 +954,166 @@ function deleteTransformer(id) {
   return { status: 'SUCCESS', message: 'Transformer deleted successfully' };
 }
 
-function updateTransformerStatus(id, newStatus) {
+function updateTransformerStatus(id, newStatus, assessmentDetails) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return updateTransformerStatusLocked_(id, newStatus, assessmentDetails);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateTransformerStatusLocked_(id, newStatus, assessmentDetails) {
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
   const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
-  const allowedStages = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired'];
+  const assessmentRoundIdx = found.headers.indexOf('AssessmentRound');
+  if (assessmentRoundIdx < 0) throw new Error('The transformer sheet is missing its AssessmentRound column.');
+  const storedAssessmentRound = found.data[assessmentRoundIdx] === '' || found.data[assessmentRoundIdx] == null
+    ? NaN
+    : Number(found.data[assessmentRoundIdx]);
+  const assessmentRound = Number.isInteger(storedAssessmentRound) && storedAssessmentRound >= 0
+    ? storedAssessmentRound
+    : ['Assesment', 'Repair In Progress'].includes(currentStatus) ? 1
+      : ['Repaired', 'Delivered', 'Billed'].includes(currentStatus) ? 2 : 0;
+  let nextAssessmentRound = assessmentRound;
   if (String(newStatus).toLowerCase() === 'scrap') {
-    if (!allowedStages.some(status => status.toLowerCase() === currentStatus.toLowerCase())) {
+    if (!['Recieved', 'Assesment', 'Repair In Progress', 'Repaired'].some(status => status.toLowerCase() === currentStatus.toLowerCase())) {
       throw new Error('Only transformers not yet delivered can be marked as Scrap.');
     }
     newStatus = 'Scrap';
   } else {
-    const currentIndex = allowedStages.findIndex(status => status.toLowerCase() === currentStatus.toLowerCase());
-    const nextIndex = allowedStages.findIndex(status => status.toLowerCase() === String(newStatus).toLowerCase());
-    if (currentIndex < 0 || nextIndex !== currentIndex + 1) {
+    const current = currentStatus.toLowerCase();
+    const next = String(newStatus).toLowerCase();
+    const validTransition =
+      (current === 'recieved' && next === 'assesment' && assessmentRound === 0) ||
+      (current === 'assesment' && next === 'repair in progress' && assessmentRound === 1) ||
+      (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
+      (current === 'assesment' && next === 'repaired' && assessmentRound === 2);
+    if (!validTransition) {
       throw new Error(`Invalid status transition from ${currentStatus} to ${newStatus}.`);
     }
+    if (next === 'assesment') nextAssessmentRound = assessmentRound + 1;
+  }
+
+  if (String(newStatus).toLowerCase() === 'assesment') {
+    validateTransformerAssessment_(assessmentDetails);
   }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
   const statusIdx = found.headers.indexOf('Status') + 1;
   const updatedIdx = found.headers.indexOf('UpdatedAt') + 1;
+  const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails') + 1;
+  if (statusIdx <= 0) throw new Error('The transformer sheet is missing its Status column.');
+  if (assessmentDetails && assessmentDetailsIdx <= 0) {
+    throw new Error('The transformer sheet is missing its AssessmentDetails column.');
+  }
 
-  sheet.getRange(found.rowIndex, statusIdx).setValue(newStatus);
-  if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+  const assessmentRoundColumn = assessmentRoundIdx + 1;
+  const columnsToUpdate = [statusIdx, assessmentRoundColumn, ...(updatedIdx > 0 ? [updatedIdx] : []),
+    ...(assessmentDetails ? [assessmentDetailsIdx] : [])];
+  const firstColumn = Math.min(...columnsToUpdate);
+  const lastColumn = Math.max(...columnsToUpdate);
+  const updatedValues = found.data.slice(firstColumn - 1, lastColumn);
+  updatedValues[statusIdx - firstColumn] = newStatus;
+  updatedValues[assessmentRoundColumn - firstColumn] = nextAssessmentRound;
+  if (updatedIdx > 0) updatedValues[updatedIdx - firstColumn] = getTimestamp();
+  if (assessmentDetails) {
+    updatedValues[assessmentDetailsIdx - firstColumn] = JSON.stringify(assessmentDetails);
+  }
+  sheet.getRange(found.rowIndex, firstColumn, 1, updatedValues.length).setValues([updatedValues]);
 
   return getTransformerById(id);
+}
+
+function validateTransformerAssessment_(assessmentDetails) {
+  if (!assessmentDetails || !['Al', 'CU'].includes(assessmentDetails.windingMaterial)) {
+    throw new Error('Select a winding material before saving transformer assessment details.');
+  }
+  const inspectionDateParts = String(assessmentDetails.firstInspectionDate || '')
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const inspectionDate = inspectionDateParts
+    ? new Date(Date.UTC(Number(inspectionDateParts[1]), Number(inspectionDateParts[2]) - 1, Number(inspectionDateParts[3])))
+    : null;
+  if (!inspectionDateParts ||
+      inspectionDate.getUTCFullYear() !== Number(inspectionDateParts[1]) ||
+      inspectionDate.getUTCMonth() !== Number(inspectionDateParts[2]) - 1 ||
+      inspectionDate.getUTCDate() !== Number(inspectionDateParts[3])) {
+    throw new Error('Enter a valid first inspection date before saving transformer assessment details.');
+  }
+  const integerFields = [
+    'hvDamagedCoils', 'lvReinsulatedCoils', 'bushingsLv', 'bushingsHv',
+    'bushRodsLv', 'bushRodsHv', 'metalPartsHv', 'metalPartsLv', 'breakers'
+  ];
+  Object.keys(assessmentDetails).forEach(key => {
+    const value = assessmentDetails[key];
+    if (value !== null && value !== '' && key !== 'windingMaterial' && key !== 'firstInspectionDate' && key !== 'remarks' &&
+        (!Number.isFinite(Number(value)) || Number(value) < 0)) {
+      throw new Error(`Assessment field "${key}" must be a non-negative number.`);
+    }
+    if (value !== null && value !== '' && integerFields.includes(key) && !Number.isInteger(Number(value))) {
+      throw new Error(`Assessment field "${key}" must be a whole number.`);
+    }
+  });
+}
+
+function updateTransformerAssessment(id, assessmentDetails) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+    const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+    if (['DELIVERED', 'BILLED'].includes(currentStatus.toUpperCase())) {
+      throw new Error('Assessment details cannot be edited after delivery.');
+    }
+    const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails');
+    if (assessmentDetailsIdx < 0) {
+      throw new Error('The transformer sheet is missing its AssessmentDetails column.');
+    }
+    validateTransformerAssessment_(assessmentDetails);
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const updatedIdx = found.headers.indexOf('UpdatedAt');
+    const firstColumn = Math.min(assessmentDetailsIdx, ...(updatedIdx >= 0 ? [updatedIdx] : [])) + 1;
+    const lastColumn = Math.max(assessmentDetailsIdx, ...(updatedIdx >= 0 ? [updatedIdx] : [])) + 1;
+    const updatedValues = found.data.slice(firstColumn - 1, lastColumn);
+    updatedValues[assessmentDetailsIdx + 1 - firstColumn] = JSON.stringify(assessmentDetails);
+    if (updatedIdx >= 0) updatedValues[updatedIdx + 1 - firstColumn] = getTimestamp();
+    sheet.getRange(found.rowIndex, firstColumn, 1, updatedValues.length).setValues([updatedValues]);
+    return getTransformerById(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteTransformerAssessment(id) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+    const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+    if (['DELIVERED', 'BILLED'].includes(currentStatus.toUpperCase())) {
+      throw new Error('Assessment details cannot be deleted after delivery.');
+    }
+    const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails');
+    if (assessmentDetailsIdx < 0) {
+      throw new Error('The transformer sheet is missing its AssessmentDetails column.');
+    }
+    if (!found.data[assessmentDetailsIdx]) {
+      return { status: 'NOT_FOUND', message: 'Assessment details have not been entered for this transformer.' };
+    }
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const updatedIdx = found.headers.indexOf('UpdatedAt');
+    sheet.getRange(found.rowIndex, assessmentDetailsIdx + 1).clearContent();
+    if (updatedIdx >= 0) sheet.getRange(found.rowIndex, updatedIdx + 1).setValue(getTimestamp());
+    return getTransformerById(id);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function deliverTransformer(id, dcNo) {
@@ -1251,6 +1396,35 @@ function updateTNote(id, data) {
   if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
 
   return getTNoteById(id);
+}
+
+function addTNoteAttachments(id, attachments) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+      throw new Error('Select at least one attachment.');
+    }
+
+    const attachmentsIdx = found.headers.indexOf('Attachments') + 1;
+    if (attachmentsIdx <= 0) throw new Error('The TNote sheet is missing its Attachments column.');
+    const existingAttachments = parseRecordAttachments_(found.data[attachmentsIdx - 1]);
+    if (existingAttachments.length + attachments.length > 5) {
+      throw new Error('A TNote can have no more than 5 attachments.');
+    }
+    const updatedAttachments = existingAttachments.concat(
+      saveRecordAttachments_(attachments, 'D.S. Transformer TNote Attachments')
+    );
+    const sheet = getOrCreateSheet(SHEET_NAMES.TNOTES);
+    sheet.getRange(found.rowIndex, attachmentsIdx).setValue(JSON.stringify(updatedAttachments));
+    const updatedIdx = found.headers.indexOf('UpdatedAt') + 1;
+    if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+    return getTNoteById(id);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function deleteTNote(id) {
@@ -3205,7 +3379,20 @@ function doPost(e) {
         break;
       case 'UPDATE_TRANSFORMER_STATUS':
       case 'UPDATETRANSFORMERSTATUS':
-        result = updateTransformerStatus(payload.id || raw.id, payload.status || raw.status);
+        result = updateTransformerStatus(
+          payload.id || raw.id,
+          payload.status || raw.status,
+          payload.assessmentDetails || raw.assessmentDetails
+        );
+        break;
+      case 'UPDATE_TRANSFORMER_ASSESSMENT':
+        result = updateTransformerAssessment(
+          payload.id || raw.id,
+          payload.assessmentDetails || raw.assessmentDetails
+        );
+        break;
+      case 'DELETE_TRANSFORMER_ASSESSMENT':
+        result = deleteTransformerAssessment(payload.id || raw.id);
         break;
       case 'DELIVER_TRANSFORMER':
       case 'DELIVERTRANSFORMER':
@@ -3245,6 +3432,9 @@ function doPost(e) {
       case 'UPDATE_TNOTE':
       case 'UPDATETNOTE':
         result = updateTNote(payload.id || raw.id, payload);
+        break;
+      case 'ADD_TNOTE_ATTACHMENTS':
+        result = addTNoteAttachments(payload.id || raw.id, payload.attachments);
         break;
       case 'DELETE_TNOTE':
       case 'DELETETNOTE':

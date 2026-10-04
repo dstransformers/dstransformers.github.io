@@ -18,6 +18,8 @@ public class TransformerDTO {
     private String intakeType;
     private String visitStatus;
     private Boolean billable;
+    private AssessmentDetailsDTO assessmentDetails;
+    private int assessmentRound;
 
     public TransformerDTO() {
     }
@@ -159,5 +161,21 @@ public class TransformerDTO {
 
     public void setBillable(Boolean billable) {
         this.billable = billable;
+    }
+
+    public AssessmentDetailsDTO getAssessmentDetails() {
+        return assessmentDetails;
+    }
+
+    public void setAssessmentDetails(AssessmentDetailsDTO assessmentDetails) {
+        this.assessmentDetails = assessmentDetails;
+    }
+
+    public int getAssessmentRound() {
+        return assessmentRound;
+    }
+
+    public void setAssessmentRound(int assessmentRound) {
+        this.assessmentRound = assessmentRound;
     }
 }

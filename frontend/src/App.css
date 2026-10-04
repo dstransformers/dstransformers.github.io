@@ -285,6 +285,18 @@ h1 {
   font-size: 1.8rem;
 }
 
+.kpi-card {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kpi-card:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.3);
+  outline-offset: 2px;
+}
+
 .card small {
   opacity: 0.85;
 }
@@ -1242,6 +1254,16 @@ h1 {
   display: block;
 }
 
+.assessment-edit-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .tag {
   display: inline-flex;
   border-radius: 999px;
@@ -1437,6 +1459,183 @@ h1 {
   z-index: 1100;
 }
 
+.assessment-overlay {
+  z-index: 1150;
+}
+
+.assessment-modal {
+  box-sizing: border-box;
+  width: min(960px, 94vw);
+  max-width: 960px;
+  max-height: 92vh;
+  padding: 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.assessment-modal *,
+.assessment-modal *::before,
+.assessment-modal *::after {
+  box-sizing: border-box;
+}
+
+.assessment-modal > .modal-header {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.assessment-modal > .modal-header > div {
+  min-width: 0;
+}
+
+.assessment-modal .modal-close {
+  flex: 0 0 32px;
+}
+
+.assessment-reference {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+
+.assessment-reference > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assessment-reference span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.assessment-reference strong {
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.assessment-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+.assessment-form > * {
+  min-width: 0;
+}
+
+.assessment-readonly-fieldset {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.assessment-form-intro,
+.assessment-error,
+.assessment-actions {
+  grid-column: 1 / -1;
+}
+
+.assessment-group {
+  grid-column: 1 / -1;
+}
+
+.assessment-form-intro h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.assessment-form-intro p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.assessment-field {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.assessment-field input,
+.assessment-field select,
+.assessment-field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 400;
+}
+
+.assessment-field input:focus,
+.assessment-field select:focus,
+.assessment-field textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.assessment-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #dbe4ee;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.assessment-group > .assessment-field {
+  min-width: 0;
+}
+
+.assessment-group legend {
+  padding: 0 7px;
+  color: #1e3a5f;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.assessment-group--paired {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.assessment-field--wide {
+  grid-column: 1 / -1;
+}
+
+.assessment-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
 .transformer-edit-overlay {
   z-index: 1200;
 }
@@ -1445,7 +1644,8 @@ h1 {
   width: min(1120px, 94vw);
   max-width: 1120px;
   padding: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: #f8fafc;
 }
@@ -1506,7 +1706,7 @@ h1 {
 }
 
 .tnote-transformer-section {
-  padding: 0 28px;
+  padding: 0 28px 20px;
 }
 
 .tnote-transformer-section > h3 {
@@ -1531,6 +1731,12 @@ h1 {
   margin: 5px 0 0;
   color: #64748b;
   font-size: 0.8rem;
+}
+
+.tnote-attachment-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .tnote-intake-panel {
@@ -1670,13 +1876,19 @@ h1 {
 }
 
 .tnote-transformers-table {
-  min-width: 760px;
+  min-width: 900px;
 }
 
 .tnote-transformer-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.tnote-next-status {
+  display: block;
+  margin-top: 6px;
 }
 
 .tnote-empty-state {
@@ -1732,12 +1944,6 @@ h1 {
   overflow-wrap: anywhere;
   color: #0f172a;
   font-weight: 650;
-}
-
-.tnote-details-modal > .modal-actions {
-  padding: 18px 28px 24px;
-  flex-direction: row;
-  justify-content: flex-end;
 }
 
 .modal-header {
@@ -2378,6 +2584,33 @@ h1 {
     border-radius: 18px 18px 0 0;
   }
 
+  .assessment-modal {
+    width: 100%;
+    max-width: none;
+    max-height: 94dvh;
+    padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0;
+  }
+
+  .assessment-reference {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px;
+  }
+
+  .assessment-form {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 13px;
+  }
+
+  .assessment-group {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 13px;
+  }
+
+  .assessment-group--paired {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .tnote-details-modal > .modal-header {
     padding: 18px 16px;
   }
@@ -2388,7 +2621,7 @@ h1 {
   }
 
   .tnote-transformer-section {
-    padding: 0 16px;
+    padding: 0 16px 20px;
   }
 
   .tnote-transformer-section-heading {
@@ -2425,10 +2658,6 @@ h1 {
 
   .tnote-transformer-detail dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tnote-details-modal > .modal-actions {
-    padding: 16px;
   }
 
   .tnote-details-modal > .status {

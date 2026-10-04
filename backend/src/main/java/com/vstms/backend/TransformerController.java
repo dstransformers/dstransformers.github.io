@@ -1,6 +1,7 @@
 package com.vstms.backend;
 
 import com.vstms.backend.model.TransformerDTO;
+import com.vstms.backend.model.AssessmentDetailsDTO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,7 +68,24 @@ public class TransformerController {
 
     @PatchMapping("/{id}/status")
     public TransformerDTO updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
-        return googleSheetsService.updateTransformerStatus(id, request.status());
+        if ("Assesment".equalsIgnoreCase(request.status()) && request.assessmentDetails() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Assessment details are required to move to Assessment.");
+        }
+        return googleSheetsService.updateTransformerStatus(id, request.status(), request.assessmentDetails());
+    }
+
+    @PatchMapping("/{id}/assessment")
+    public TransformerDTO updateAssessment(
+            @PathVariable Long id,
+            @Valid @RequestBody AssessmentDetailsDTO assessmentDetails) {
+        return googleSheetsService.updateTransformerAssessment(id, assessmentDetails);
+    }
+
+    @DeleteMapping("/{id}/assessment")
+    public void deleteAssessment(@PathVariable Long id) {
+        googleSheetsService.deleteTransformerAssessment(id);
     }
 
     @PatchMapping("/{id}/deliver")
@@ -139,7 +157,9 @@ public class TransformerController {
             double oilCapacity
     ) {}
 
-    public record UpdateStatusRequest(@NotBlank String status) {}
+    public record UpdateStatusRequest(
+            @NotBlank String status,
+            @jakarta.validation.Valid AssessmentDetailsDTO assessmentDetails) {}
 
     public record DeliverRequest(@NotBlank String dcNo) {}
 
