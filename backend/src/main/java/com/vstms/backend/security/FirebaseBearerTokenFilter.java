@@ -30,10 +30,17 @@ public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
         String authorization = request.getHeader("Authorization");
         boolean adminRequired = requiresAdmin(request);
+        boolean tnoteCreateRequest = "POST".equals(request.getMethod())
+                && "/api/tnotes".equals(request.getRequestURI());
+        boolean bearerPresent = authorization != null
+                && authorization.startsWith("Bearer ")
+                && !authorization.substring("Bearer ".length()).trim().isEmpty();
+        boolean authenticatedAdmin = false;
         if (authorization != null && authorization.startsWith("Bearer ")) {
             String token = authorization.substring("Bearer ".length()).trim();
             if (!token.isEmpty()) {
                 Optional<String> adminEmail = tokenVerifier.verifyAdminToken(token);
+                authenticatedAdmin = adminEmail.isPresent();
                 adminEmail.ifPresent(email -> {
                     var authentication = new UsernamePasswordAuthenticationToken(
                             email, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
@@ -57,7 +64,18 @@ public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
                     request.getMethod(),
                     request.getRequestURI());
         }
+        if (tnoteCreateRequest) {
+            LOGGER.info(
+                    "TNote creation auth diagnostic: bearerPresent={}, authenticatedAdmin={}",
+                    bearerPresent,
+                    authenticatedAdmin);
+        }
         filterChain.doFilter(request, response);
+        if (tnoteCreateRequest && response.getStatus() == HttpServletResponse.SC_UNAUTHORIZED) {
+            LOGGER.warn(
+                    "TNote creation returned 401 after authentication filter; authenticatedAdmin={}",
+                    authenticatedAdmin);
+        }
     }
 
     private boolean requiresAdmin(HttpServletRequest request) {
