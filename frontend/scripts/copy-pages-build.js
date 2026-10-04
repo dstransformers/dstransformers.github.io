@@ -1,12 +1,11 @@
-import { cpSync, mkdirSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const frontendDirectory = resolve(scriptDirectory, '..')
 const buildDirectory = resolve(frontendDirectory, 'dist')
-const pagesAdminDirectory = resolve(frontendDirectory, '..', 'admin')
+const pagesRootDirectory = resolve(frontendDirectory, '..')
 
-rmSync(pagesAdminDirectory, { recursive: true, force: true })
-mkdirSync(pagesAdminDirectory, { recursive: true })
-cpSync(buildDirectory, pagesAdminDirectory, { recursive: true })
+mkdirSync(pagesRootDirectory, { recursive: true })
+cpSync(buildDirectory, pagesRootDirectory, { recursive: true })

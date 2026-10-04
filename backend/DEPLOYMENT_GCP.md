@@ -1,6 +1,6 @@
 # Secure deployment: GitHub Pages and Google Cloud Run
 
-The public site stays at `https://dstransformers.github.io/`; the management app is published at `/admin/`. The Spring API runs as a Cloud Run service. Only health checks and public enquiry submissions are anonymous. All management endpoints require a verified Firebase ID token whose email is on the server-side `ADMIN_EMAILS` allowlist.
+The management app is published at `https://dstransformers.github.io/`. The public business website remains available at `/staticpage/`. The Spring API runs as a Cloud Run service. Only health checks and public enquiry submissions are anonymous. All management endpoints require a verified Firebase ID token whose email is on the server-side `ADMIN_EMAILS` allowlist.
 
 ## 1. Configure Firebase Authentication
 
@@ -61,7 +61,7 @@ npm ci
 npm run build:pages
 ```
 
-The build script copies the generated app to the repository's root `admin/` directory. Commit and push the updated static site, the `/admin/` bundle, and source changes to `main`; GitHub Pages will publish both the public site and management UI. Rebuild after any frontend change. Do not commit `.env.production`.
+The build script copies the generated app to the repository root. Commit and push the updated root bundle and source changes to `main`; GitHub Pages will publish the management UI at `/`. The public business website remains available at `/staticpage/`, and `/admin/` redirects to `/`. Rebuild after any frontend change. Do not commit `.env.production`.
 
 ## Local development
 
