@@ -14,10 +14,12 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class FirebaseTokenVerifier {
-    private static final System.Logger LOGGER = System.getLogger(FirebaseTokenVerifier.class.getName());
+    private static final Logger LOGGER = LoggerFactory.getLogger(FirebaseTokenVerifier.class);
 
     private final String projectId;
     private final Set<String> adminEmails;
@@ -39,23 +41,19 @@ public class FirebaseTokenVerifier {
             FirebaseToken decodedToken = getFirebaseAuth().verifyIdToken(token, true);
             String email = decodedToken.getEmail();
             if (!decodedToken.isEmailVerified()) {
-                LOGGER.log(System.Logger.Level.WARNING, "Firebase admin access denied: email is not verified.");
+                LOGGER.warn("Firebase admin access denied: email is not verified.");
                 return Optional.empty();
             }
             if (email == null || !adminEmails.contains(email.toLowerCase(Locale.ROOT))) {
-                LOGGER.log(System.Logger.Level.WARNING, "Firebase admin access denied: account is not on the admin allowlist.");
+                LOGGER.warn("Firebase admin access denied: account is not on the admin allowlist.");
                 return Optional.empty();
             }
             return Optional.of(email);
         } catch (FirebaseAuthException exception) {
-            LOGGER.log(System.Logger.Level.WARNING,
-                    "Firebase ID token verification failed ({0}).",
-                    exception.getClass().getSimpleName());
+            LOGGER.warn("Firebase ID token verification failed ({}).", exception.getClass().getSimpleName());
             return Optional.empty();
         } catch (IOException exception) {
-            LOGGER.log(System.Logger.Level.ERROR,
-                    "Firebase Admin SDK initialization failed ({0}).",
-                    exception.getClass().getSimpleName());
+            LOGGER.error("Firebase Admin SDK initialization failed ({}).", exception.getClass().getSimpleName());
             return Optional.empty();
         }
     }

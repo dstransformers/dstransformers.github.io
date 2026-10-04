@@ -6,13 +6,16 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
-    private static final System.Logger LOGGER = System.getLogger(FirebaseBearerTokenFilter.class.getName());
+    private static final Logger LOGGER = LoggerFactory.getLogger(FirebaseBearerTokenFilter.class);
 
     private final FirebaseTokenVerifier tokenVerifier;
 
@@ -26,18 +29,33 @@ public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         String authorization = request.getHeader("Authorization");
+        boolean adminRequired = requiresAdmin(request);
         if (authorization != null && authorization.startsWith("Bearer ")) {
             String token = authorization.substring("Bearer ".length()).trim();
             if (!token.isEmpty()) {
-                tokenVerifier.verifyAdminToken(token).ifPresent(email -> {
+                Optional<String> adminEmail = tokenVerifier.verifyAdminToken(token);
+                adminEmail.ifPresent(email -> {
                     var authentication = new UsernamePasswordAuthenticationToken(
                             email, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 });
+                if (adminRequired && adminEmail.isEmpty()) {
+                    LOGGER.warn(
+                            "Protected API request rejected: bearer token did not authenticate an admin; method={}, path={}",
+                            request.getMethod(),
+                            request.getRequestURI());
+                }
+            } else if (adminRequired) {
+                LOGGER.warn(
+                        "Protected API request rejected: empty bearer token; method={}, path={}",
+                        request.getMethod(),
+                        request.getRequestURI());
             }
-        } else if (requiresAdmin(request)) {
-            LOGGER.log(System.Logger.Level.WARNING,
-                    "Protected API request rejected because the bearer token is missing.");
+        } else if (adminRequired) {
+            LOGGER.warn(
+                    "Protected API request rejected: missing or unsupported bearer token; method={}, path={}",
+                    request.getMethod(),
+                    request.getRequestURI());
         }
         filterChain.doFilter(request, response);
     }
