@@ -1316,10 +1316,23 @@ ${styles}
     }))
   }
 
-  const printQuotation = (quotation) => {
+  const printQuotation = async (quotation) => {
     const printWindow = window.open('', '_blank')
     if (!printWindow) {
       setQuotationModalError('Allow pop-ups for this site to print the quotation.')
+      return
+    }
+
+    let letterheadUrl
+    try {
+      const response = await apiFetch('/api/quotations/letterhead')
+      if (!response.ok) {
+        throw new Error(`Unable to load quotation letterhead (${response.status}).`)
+      }
+      letterheadUrl = URL.createObjectURL(await response.blob())
+    } catch (error) {
+      printWindow.close()
+      setQuotationModalError(error instanceof Error ? error.message : 'Unable to load quotation letterhead.')
       return
     }
 
@@ -1343,7 +1356,6 @@ ${styles}
     const customerName = escapeHtml(quotation.customerName || '')
     const quotationNo = escapeHtml(quotationNumber)
     const documentTitle = isBill ? 'BILL' : 'QUOTATION'
-    const letterheadUrl = `${window.location.origin}/api/quotations/letterhead`
     const subtotal = Math.round(quotation.lineItems.reduce((total, item) => total + (isBill ? Number(item.quantity || 0) : 1) * Number(item.rate || 0), 0) * 100) / 100
     const gstAmount = isBill && quotation.gstApplicable ? Math.round(subtotal * Number(quotation.gstRate || 19)) / 100 : 0
     const totalAmount = Math.round((subtotal + gstAmount) * 100) / 100
@@ -1428,7 +1440,7 @@ ${styles}
         </style>
       </head>
       <body>
-        <img class="letterhead" src="${letterheadUrl}" alt="">
+        <img class="letterhead" alt="">
         <main>
           <h1>${documentTitle}</h1>
           <div class="meta"><b>${isBill ? 'Bill' : 'Quotation'} No.:</b> ${escapeHtml(quotationNumber)} &nbsp; | &nbsp; <b>Date:</b> ${escapeHtml(quotationDate)}</div>
@@ -1463,6 +1475,14 @@ ${styles}
       </body>
       </html>`)
     printWindow.document.close()
+    const letterheadImage = printWindow.document.querySelector('.letterhead')
+    letterheadImage.addEventListener('load', () => URL.revokeObjectURL(letterheadUrl), { once: true })
+    letterheadImage.addEventListener('error', () => {
+      URL.revokeObjectURL(letterheadUrl)
+      printWindow.close()
+      setQuotationModalError('Unable to display the quotation letterhead.')
+    }, { once: true })
+    letterheadImage.src = letterheadUrl
   }
 
   const shareQuotationOnWhatsApp = (quotation) => {

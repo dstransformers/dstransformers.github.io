@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, firebaseConfigured } from './firebase';
-import { apiUrl } from './api';
+import { publicApiFetch } from './api';
 import './LandingPage.css';
 
 export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashboard }) {
@@ -51,7 +51,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     let cancelled = false;
     const loadDropdownDefaults = async () => {
       try {
-        const response = await fetch(apiUrl('/api/defaults'));
+        const response = await publicApiFetch('/api/defaults');
         if (!response.ok) throw new Error(`Unable to load form options (${response.status})`);
         const result = await response.json();
         if (result.status !== 'SUCCESS' || !result.data) {
@@ -180,7 +180,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
         reader.onerror = () => reject(new Error(`Unable to read ${photo.name}. Please choose the photo again.`));
         reader.readAsDataURL(photo);
       })));
-      const response = await fetch(apiUrl('/api/enquiries'), {
+      const response = await publicApiFetch('/api/enquiries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

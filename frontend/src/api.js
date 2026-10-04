@@ -6,15 +6,18 @@ export function apiUrl(path) {
   return apiBaseUrl ? `${apiBaseUrl}${path}` : path
 }
 
-export async function apiFetch(input, init = {}) {
+async function authenticatedFetch(input, init, allowAnonymous) {
+  const url = typeof input === 'string' && input.startsWith('/')
+    ? apiUrl(input)
+    : input
   const user = auth?.currentUser
+  if (!user && allowAnonymous) {
+    return fetch(url, init)
+  }
   if (!user) {
     throw new Error('You must sign in with an authorized admin account to use the management API.')
   }
 
-  const url = typeof input === 'string' && input.startsWith('/')
-    ? apiUrl(input)
-    : input
   const requestWithToken = async (forceRefresh) => {
     const token = await user.getIdToken(forceRefresh)
     const headers = new Headers(init.headers)
@@ -30,4 +33,12 @@ export async function apiFetch(input, init = {}) {
     throw new Error('The API rejected your refreshed admin session. Sign out and back in with the verified, authorized admin account.')
   }
   return refreshedResponse
+}
+
+export function apiFetch(input, init = {}) {
+  return authenticatedFetch(input, init, false)
+}
+
+export function publicApiFetch(input, init = {}) {
+  return authenticatedFetch(input, init, true)
 }
