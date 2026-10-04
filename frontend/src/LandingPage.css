@@ -765,6 +765,24 @@ body.quote-modal-open {
   gap: 0.55rem;
 }
 
+.quote-services-select {
+  width: 100%;
+  min-height: 150px;
+  padding: 0.55rem;
+  border: 1px solid rgba(13, 27, 42, 0.15);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ds-text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.quote-services-select:focus {
+  outline: none;
+  border-color: var(--ds-accent-deep);
+  box-shadow: 0 0 0 3px rgba(242, 169, 0, 0.18);
+}
+
 .quote-service-option {
   display: flex;
   align-items: center;

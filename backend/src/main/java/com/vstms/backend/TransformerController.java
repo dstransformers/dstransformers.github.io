@@ -31,6 +31,20 @@ public class TransformerController {
         return googleSheetsService.getTransformers(page, size, status, spmCenter, dtrNo, sNo, tNoteId, type, capacity);
     }
 
+    @GetMapping("/lookup")
+    public List<TransformerDTO> findByIdentity(
+            @RequestParam(required = false) String dtrNo,
+            @RequestParam(required = false) String sNo) {
+        if ((dtrNo == null || dtrNo.isBlank()) == (sNo == null || sNo.isBlank())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Provide exactly one of dtrNo or sNo.");
+        }
+        return googleSheetsService.findTransformersByIdentity(
+                dtrNo != null && !dtrNo.isBlank() ? "dtrNo" : "sNo",
+                dtrNo != null && !dtrNo.isBlank() ? dtrNo : sNo);
+    }
+
     @GetMapping("/summary")
     public SummaryResponse getSummary() {
         return googleSheetsService.getSummary();
@@ -45,7 +59,8 @@ public class TransformerController {
                 request.capacity(),
                 request.type(),
                 request.oilCapacity(),
-                request.tNoteId()
+                request.tNoteId(),
+                request.intakeType()
         );
     }
 
@@ -77,6 +92,11 @@ public class TransformerController {
         );
     }
 
+    @DeleteMapping("/{id}")
+    public void deleteTransformer(@PathVariable Long id) {
+        googleSheetsService.deleteTransformer(id);
+    }
+
     @GetMapping("/{id}")
     public TransformerDTO getTransformer(@PathVariable Long id) {
         return googleSheetsService.getTransformerById(id).orElse(null);
@@ -84,6 +104,11 @@ public class TransformerController {
 
     @GetMapping("/dc/{dcNo}")
     public List<TransformerDTO> getTransformersByDcNo(@PathVariable String dcNo) {
+        return googleSheetsService.getTransformersByDcNo(dcNo);
+    }
+
+    @GetMapping("/by-dc")
+    public List<TransformerDTO> getTransformersByDcNumber(@RequestParam String dcNo) {
         return googleSheetsService.getTransformersByDcNo(dcNo);
     }
 
@@ -99,7 +124,8 @@ public class TransformerController {
             int capacity,
             @NotBlank String type,
             double oilCapacity,
-            Long tNoteId
+            Long tNoteId,
+            String intakeType
     ) {}
 
     public record UpdateTransformerRequest(
@@ -119,5 +145,5 @@ public class TransformerController {
 
     public record PagedResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}
 
-    public record SummaryResponse(long recieve, long assesment, long repairInProgress, long repaired, long delivered, long billed) {}
+    public record SummaryResponse(long recieve, long assesment, long repairInProgress, long repaired, long delivered, long billed, long scrap) {}
 }

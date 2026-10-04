@@ -1,9 +1,14 @@
 package com.vstms.backend;
 
 import com.vstms.backend.model.TNoteDTO;
+import com.vstms.backend.model.AttachmentDTO;
+import com.vstms.backend.model.TransformerDTO;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -30,7 +35,12 @@ public class TNoteController {
 
     @PostMapping
     public TNoteDTO createTNote(@RequestBody TNoteRequest request) {
+        if (request.getTNoteNo() == null || request.getTNoteNo().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TNote number is required.");
+        }
         TNoteDTO tNote = new TNoteDTO(null, request.getDate(), request.getNumberOfTransformers(), new ArrayList<>());
+        tNote.setTNoteNo(request.getTNoteNo().trim());
+        tNote.setAttachments(request.getAttachments());
         return googleSheetsService.saveTNote(tNote);
     }
 
@@ -38,9 +48,13 @@ public class TNoteController {
     public ResponseEntity<TNoteDTO> updateTNote(@PathVariable Long id, @RequestBody TNoteRequest request) {
         return googleSheetsService.getTNoteById(id)
                 .map(tNote -> {
+                    if (request.getTNoteNo() == null || request.getTNoteNo().isBlank()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TNote number is required.");
+                    }
+                    tNote.setTNoteNo(request.getTNoteNo().trim());
                     tNote.setDate(request.getDate());
                     tNote.setNumberOfTransformers(request.getNumberOfTransformers());
-                    return ResponseEntity.ok(googleSheetsService.saveTNote(tNote));
+                    return ResponseEntity.ok(googleSheetsService.updateTNote(tNote));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -54,9 +68,45 @@ public class TNoteController {
         return ResponseEntity.notFound().build();
     }
 
+    @PostMapping("/{id}/transformers")
+    public TransformerDTO linkExistingTransformer(@PathVariable Long id, @RequestBody LinkTransformerRequest request) {
+        if (request.transformerId() == null || !"RGP".equalsIgnoreCase(request.intakeType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An existing transformer can only be linked as an RGP visit.");
+        }
+        return googleSheetsService.linkExistingTransformerToTNote(id, request.transformerId());
+    }
+
+    @PatchMapping("/{id}/transformers/{transformerId}/visit-status")
+    public TransformerDTO updateRgpVisitStatus(
+            @PathVariable Long id,
+            @PathVariable Long transformerId,
+            @Valid @RequestBody UpdateVisitStatusRequest request) {
+        return googleSheetsService.updateRgpVisitStatus(id, transformerId, request.visitStatus());
+    }
+
+    @DeleteMapping("/{id}/transformers/{transformerId}")
+    public ResponseEntity<Void> unlinkTransformer(@PathVariable Long id, @PathVariable Long transformerId) {
+        googleSheetsService.unlinkTransformerFromTNote(id, transformerId);
+        return ResponseEntity.noContent().build();
+    }
+
+    public record LinkTransformerRequest(Long transformerId, String intakeType) {}
+
+    public record UpdateVisitStatusRequest(@jakarta.validation.constraints.NotBlank String visitStatus) {}
+
     public static class TNoteRequest {
+        private String tNoteNo;
         private LocalDate date;
         private int numberOfTransformers;
+        private List<AttachmentDTO> attachments = new ArrayList<>();
+
+        public String getTNoteNo() {
+            return tNoteNo;
+        }
+
+        public void setTNoteNo(String tNoteNo) {
+            this.tNoteNo = tNoteNo;
+        }
 
         public LocalDate getDate() {
             return date;
@@ -72,6 +122,14 @@ public class TNoteController {
 
         public void setNumberOfTransformers(int numberOfTransformers) {
             this.numberOfTransformers = numberOfTransformers;
+        }
+
+        public List<AttachmentDTO> getAttachments() {
+            return attachments;
+        }
+
+        public void setAttachments(List<AttachmentDTO> attachments) {
+            this.attachments = attachments != null ? attachments : new ArrayList<>();
         }
     }
 }

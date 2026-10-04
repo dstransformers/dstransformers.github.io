@@ -25,9 +25,45 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
   });
   const [quotationPhotos, setQuotationPhotos] = useState([]);
   const quotationPhotoInput = useRef(null);
+  const [dropdownDefaults, setDropdownDefaults] = useState({
+    capacities: [],
+    makes: [],
+    services: [],
+  });
+  const [dropdownDefaultsLoading, setDropdownDefaultsLoading] = useState(true);
+  const [dropdownDefaultsError, setDropdownDefaultsError] = useState('');
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteSuccess, setQuoteSuccess] = useState('');
   const [quoteError, setQuoteError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDropdownDefaults = async () => {
+      try {
+        const response = await fetch(apiUrl('/api/defaults'));
+        if (!response.ok) throw new Error(`Unable to load form options (${response.status})`);
+        const result = await response.json();
+        if (result.status !== 'SUCCESS' || !result.data) {
+          throw new Error(result.message || 'Unable to load form options');
+        }
+        if (!cancelled) {
+          setDropdownDefaults({
+            capacities: Array.isArray(result.data.capacities) ? result.data.capacities : [],
+            makes: Array.isArray(result.data.makes) ? result.data.makes : [],
+            services: Array.isArray(result.data.services) ? result.data.services : [],
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDropdownDefaultsError(error instanceof Error ? error.message : 'Unable to load form options');
+        }
+      } finally {
+        if (!cancelled) setDropdownDefaultsLoading(false);
+      }
+    };
+    loadDropdownDefaults();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!showQuotationModal) return undefined;
@@ -113,6 +149,10 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
 
   const handleQuoteSubmit = async (e) => {
     e.preventDefault();
+    if (dropdownDefaultsLoading || dropdownDefaultsError) {
+      setQuoteError(dropdownDefaultsError || 'Form options are still loading. Please wait and try again.');
+      return;
+    }
     setQuoteLoading(true);
     setQuoteSuccess('');
     setQuoteError('');
@@ -189,16 +229,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     setShowQuotationModal(true);
   };
 
-  const toggleQuotationService = (service) => {
-    setQuotation((current) => ({
-      ...current,
-      servicesRequired: current.servicesRequired.includes(service)
-        ? current.servicesRequired.filter((selected) => selected !== service)
-        : [...current.servicesRequired, service]
-    }));
-  };
-
-  const handleQuotationPhotosChange = (event) => {
+  const handleQuotationPhotosChange = (event) =>  {
     const files = Array.from(event.target.files || []);
     const maxPhotoCount = 5;
     const maxPhotoSize = 2 * 1024 * 1024;
@@ -496,7 +527,11 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               </header>
 
               {quoteSuccess && <div className="quote-feedback quote-feedback-success" role="status">{quoteSuccess}</div>}
-              {quoteError && <div className="quote-feedback quote-feedback-error" role="alert">{quoteError}</div>}
+              {(dropdownDefaultsError || quoteError) && (
+                <div className="quote-feedback quote-feedback-error" role="alert">
+                  {dropdownDefaultsError || quoteError}
+                </div>
+              )}
 
               <form onSubmit={handleQuoteSubmit} className="quote-form">
                 <section className="quote-form-section">
@@ -523,17 +558,33 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   <div className="quote-fields-grid">
                     <div className="quote-field">
                       <label htmlFor="quoteCapacity">Transformer Capacity</label>
-                      <select id="quoteCapacity" value={quotation.transformerCapacity} onChange={(event) => updateQuotation('transformerCapacity', event.target.value)}>
+                      <select
+                        id="quoteCapacity"
+                        value={quotation.transformerCapacity}
+                        onChange={(event) => updateQuotation('transformerCapacity', event.target.value)}
+                        disabled={dropdownDefaultsLoading || Boolean(dropdownDefaultsError)}
+                      >
                         <option value="">Select capacity</option>
-                        <option>25 kVA</option><option>50 kVA</option><option>100 kVA</option>
-                        <option>160 kVA</option><option>250 kVA</option><option>315 kVA</option>
-                        <option>500 kVA</option><option>630 kVA</option><option>1000 kVA</option>
-                        <option>1250 kVA</option><option>1600 kVA</option><option>Other</option><option>Not sure</option>
+                        {quotation.transformerCapacity && !dropdownDefaults.capacities.includes(quotation.transformerCapacity) && (
+                          <option value={quotation.transformerCapacity}>{quotation.transformerCapacity}</option>
+                        )}
+                        {dropdownDefaults.capacities.map(capacity => <option key={capacity} value={capacity}>{capacity}</option>)}
                       </select>
                     </div>
                     <div className="quote-field">
                       <label htmlFor="quoteMake">Transformer Make</label>
-                      <input id="quoteMake" type="text" placeholder="e.g. ABB, Siemens" value={quotation.transformerMake} onChange={(event) => updateQuotation('transformerMake', event.target.value)} />
+                      <select
+                        id="quoteMake"
+                        value={quotation.transformerMake}
+                        onChange={(event) => updateQuotation('transformerMake', event.target.value)}
+                        disabled={dropdownDefaultsLoading || Boolean(dropdownDefaultsError)}
+                      >
+                        <option value="">Select make</option>
+                        {quotation.transformerMake && !dropdownDefaults.makes.includes(quotation.transformerMake) && (
+                          <option value={quotation.transformerMake}>{quotation.transformerMake}</option>
+                        )}
+                        {dropdownDefaults.makes.map(make => <option key={make} value={make}>{make}</option>)}
+                      </select>
                     </div>
                   </div>
                 </section>
@@ -541,26 +592,23 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 <section className="quote-form-section">
                   <h3><span>3</span>Services required</h3>
                   <p className="quote-form-hint">Select all services that apply.</p>
-                  <div className="quote-services-grid" role="group" aria-label="Select required services">
-                    {[
-                      'Transformer Breakdown Repair',
-                      'Transformer Inspection',
-                      'Sick Transformer Repair / Restoration',
-                      'Transformer Coil Rewinding',
-                      'Transformer Oil Filtration',
-                      'Oil Leakage Rectification',
-                      'Gasket Replacement',
-                      'Annual Maintenance',
-                      'Preventive Maintenance',
-                      'Transformer Servicing',
-                      'Other'
-                    ].map((service) => (
-                      <label className={`quote-service-option${quotation.servicesRequired.includes(service) ? ' is-selected' : ''}`} key={service}>
-                        <input type="checkbox" checked={quotation.servicesRequired.includes(service)} onChange={() => toggleQuotationService(service)} />
-                        <span>{service}</span>
-                      </label>
+                  <select
+                    id="quoteServices"
+                    className="quote-services-select"
+                    multiple
+                    size={Math.min(Math.max(dropdownDefaults.services.length, 4), 8)}
+                    value={quotation.servicesRequired}
+                    onChange={(event) => updateQuotation(
+                      'servicesRequired',
+                      Array.from(event.target.selectedOptions, option => option.value)
+                    )}
+                    disabled={dropdownDefaultsLoading || Boolean(dropdownDefaultsError)}
+                    aria-label="Select required services"
+                  >
+                    {Array.from(new Set([...dropdownDefaults.services, ...quotation.servicesRequired])).map(service => (
+                      <option key={service} value={service}>{service}</option>
                     ))}
-                  </div>
+                  </select>
                 </section>
 
                 <section className="quote-form-section">
@@ -602,8 +650,8 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 </section>
 
                 <div className="quote-form-actions">
-                  <button type="submit" disabled={quoteLoading} className="landing-btn btn-primary">
-                    {quoteLoading ? 'Submitting request...' : 'Submit Quotation Request'}
+                  <button type="submit" disabled={quoteLoading || dropdownDefaultsLoading || Boolean(dropdownDefaultsError)} className="landing-btn btn-primary">
+                    {quoteLoading ? 'Submitting request...' : dropdownDefaultsLoading ? 'Loading options...' : 'Submit Quotation Request'}
                   </button>
                 </div>
               </form>

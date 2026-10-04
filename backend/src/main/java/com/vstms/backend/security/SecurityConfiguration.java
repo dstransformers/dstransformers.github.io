@@ -32,6 +32,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/defaults").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/enquiries").permitAll()
                         .anyRequest().hasRole("ADMIN"))
                 .addFilterBefore(new FirebaseBearerTokenFilter(tokenVerifier), UsernamePasswordAuthenticationFilter.class)

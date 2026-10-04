@@ -14,6 +14,10 @@ public class TransformerDTO {
     private Long tNoteId;
     private String dcNo;
     private String sapNo;
+    private String createdAt;
+    private String intakeType;
+    private String visitStatus;
+    private Boolean billable;
 
     public TransformerDTO() {
     }
@@ -123,5 +127,37 @@ public class TransformerDTO {
 
     public void setSapNo(String sapNo) {
         this.sapNo = sapNo;
+    }
+
+    public String getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(String createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getIntakeType() {
+        return intakeType;
+    }
+
+    public void setIntakeType(String intakeType) {
+        this.intakeType = intakeType;
+    }
+
+    public String getVisitStatus() {
+        return visitStatus;
+    }
+
+    public void setVisitStatus(String visitStatus) {
+        this.visitStatus = visitStatus;
+    }
+
+    public Boolean getBillable() {
+        return billable;
+    }
+
+    public void setBillable(Boolean billable) {
+        this.billable = billable;
     }
 }

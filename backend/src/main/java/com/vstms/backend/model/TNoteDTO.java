@@ -6,9 +6,11 @@ import java.util.List;
 
 public class TNoteDTO {
     private Long id;
+    private String tNoteNo;
     private LocalDate date;
     private int numberOfTransformers;
     private List<TransformerDTO> transformers = new ArrayList<>();
+    private List<AttachmentDTO> attachments = new ArrayList<>();
 
     public TNoteDTO() {
     }
@@ -26,6 +28,14 @@ public class TNoteDTO {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public String getTNoteNo() {
+        return tNoteNo;
+    }
+
+    public void setTNoteNo(String tNoteNo) {
+        this.tNoteNo = tNoteNo;
     }
 
     public LocalDate getDate() {
@@ -50,5 +60,13 @@ public class TNoteDTO {
 
     public void setTransformers(List<TransformerDTO> transformers) {
         this.transformers = transformers != null ? transformers : new ArrayList<>();
+    }
+
+    public List<AttachmentDTO> getAttachments() {
+        return attachments;
+    }
+
+    public void setAttachments(List<AttachmentDTO> attachments) {
+        this.attachments = attachments != null ? attachments : new ArrayList<>();
     }
 }

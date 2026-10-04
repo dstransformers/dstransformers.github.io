@@ -51,6 +51,16 @@ public class QuotationController {
         return responseFor(googleSheetsService.saveQuotation(quotation));
     }
 
+    @PostMapping("/reserve-numbers")
+    public ResponseEntity<?> reserveQuotationNumbers(@RequestBody Map<String, Object> request) {
+        return responseFor(googleSheetsService.reserveQuotationNumbers(request));
+    }
+
+    @PostMapping("/generated")
+    public ResponseEntity<?> saveGeneratedQuotationGroup(@RequestBody Map<String, Object> request) {
+        return responseFor(googleSheetsService.saveGeneratedQuotationGroup(request));
+    }
+
     @PutMapping
     public ResponseEntity<?> updateQuotation(@RequestBody Map<String, Object> quotation) {
         if (quotation.get("quotationNo") == null || quotation.get("quotationNo").toString().isBlank()) {
@@ -61,6 +71,15 @@ public class QuotationController {
 
     @DeleteMapping("/{quotationNo}")
     public ResponseEntity<?> deleteQuotation(@PathVariable String quotationNo) {
+        return deleteQuotationByNumber(quotationNo);
+    }
+
+    @DeleteMapping
+    public ResponseEntity<?> deleteQuotationByQuery(@RequestParam String quotationNo) {
+        return deleteQuotationByNumber(quotationNo);
+    }
+
+    private ResponseEntity<?> deleteQuotationByNumber(String quotationNo) {
         if (quotationNo.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Quotation number is required."));
         }
