@@ -42,9 +42,11 @@ public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
                 Optional<String> adminEmail = tokenVerifier.verifyAdminToken(token);
                 authenticatedAdmin = adminEmail.isPresent();
                 adminEmail.ifPresent(email -> {
+                    var context = SecurityContextHolder.createEmptyContext();
                     var authentication = new UsernamePasswordAuthenticationToken(
                             email, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    context.setAuthentication(authentication);
+                    SecurityContextHolder.setContext(context);
                 });
                 if (adminRequired && adminEmail.isEmpty()) {
                     LOGGER.warn(
@@ -70,11 +72,15 @@ public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
                     bearerPresent,
                     authenticatedAdmin);
         }
-        filterChain.doFilter(request, response);
-        if (tnoteCreateRequest && response.getStatus() == HttpServletResponse.SC_UNAUTHORIZED) {
-            LOGGER.warn(
-                    "TNote creation returned 401 after authentication filter; authenticatedAdmin={}",
-                    authenticatedAdmin);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            if (tnoteCreateRequest) {
+                LOGGER.info(
+                        "TNote creation response diagnostic: authenticatedAdmin={}, responseStatus={}",
+                        authenticatedAdmin,
+                        response.getStatus());
+            }
         }
     }
 
