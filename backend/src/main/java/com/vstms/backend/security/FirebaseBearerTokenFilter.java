@@ -12,6 +12,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
+    private static final System.Logger LOGGER = System.getLogger(FirebaseBearerTokenFilter.class.getName());
+
     private final FirebaseTokenVerifier tokenVerifier;
 
     public FirebaseBearerTokenFilter(FirebaseTokenVerifier tokenVerifier) {
@@ -33,7 +35,20 @@ public class FirebaseBearerTokenFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 });
             }
+        } else if (requiresAdmin(request)) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Protected API request rejected because the bearer token is missing.");
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean requiresAdmin(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (!path.startsWith("/api/")) return false;
+        if ("GET".equals(request.getMethod())
+                && ("/api/health".equals(path) || "/api/defaults".equals(path))) {
+            return false;
+        }
+        return !("POST".equals(request.getMethod()) && "/api/enquiries".equals(path));
     }
 }
