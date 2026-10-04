@@ -1,5 +1,6 @@
 package com.vstms.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,10 +31,12 @@ public class TNoteDTO {
         this.id = id;
     }
 
+    @JsonProperty("tNoteNo")
     public String getTNoteNo() {
         return tNoteNo;
     }
 
+    @JsonProperty("tNoteNo")
     public void setTNoteNo(String tNoteNo) {
         this.tNoteNo = tNoteNo;
     }

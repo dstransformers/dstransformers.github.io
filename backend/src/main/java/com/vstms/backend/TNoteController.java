@@ -1,5 +1,6 @@
 package com.vstms.backend;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vstms.backend.model.TNoteDTO;
 import com.vstms.backend.model.AttachmentDTO;
 import com.vstms.backend.model.TransformerDTO;
@@ -100,10 +101,12 @@ public class TNoteController {
         private int numberOfTransformers;
         private List<AttachmentDTO> attachments = new ArrayList<>();
 
+        @JsonProperty("tNoteNo")
         public String getTNoteNo() {
             return tNoteNo;
         }
 
+        @JsonProperty("tNoteNo")
         public void setTNoteNo(String tNoteNo) {
             this.tNoteNo = tNoteNo;
         }
