@@ -5,6 +5,7 @@ import { apiUrl } from './api';
 import './LandingPage.css';
 
 export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashboard }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -35,6 +36,16 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteSuccess, setQuoteSuccess] = useState('');
   const [quoteError, setQuoteError] = useState('');
+
+  useEffect(() => {
+    if (!mobileNavOpen) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileNavOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,12 +277,29 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
             </span>
           </a>
 
-          <nav className="main-nav" aria-label="Primary navigation">
-            <a href="#services">Services</a>
-            <a href="#why-us">Why Us</a>
-            <a href="#machinery">Machinery</a>
-            <a href="#about">About</a>
-            <a href="#contact">Contact</a>
+          <button
+            type="button"
+            className="mobile-nav-toggle"
+            aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileNavOpen}
+            aria-controls="landing-primary-navigation"
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+
+          <nav
+            id="landing-primary-navigation"
+            className={`main-nav${mobileNavOpen ? ' is-open' : ''}`}
+            aria-label="Primary navigation"
+          >
+            <a href="#services" onClick={() => setMobileNavOpen(false)}>Services</a>
+            <a href="#why-us" onClick={() => setMobileNavOpen(false)}>Why Us</a>
+            <a href="#machinery" onClick={() => setMobileNavOpen(false)}>Machinery</a>
+            <a href="#about" onClick={() => setMobileNavOpen(false)}>About</a>
+            <a href="#contact" onClick={() => setMobileNavOpen(false)}>Contact</a>
           </nav>
 
           <div className="header-actions">
@@ -301,7 +329,10 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               <button
                 type="button"
                 className="landing-btn btn-admin-login"
-                onClick={() => setShowLoginModal(true)}
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  setShowLoginModal(true);
+                }}
                 title="Admin Portal Login"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

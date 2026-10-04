@@ -165,6 +165,8 @@ const DEFAULT_DROPDOWN_VALUES = {
   ]))
 };
 
+const QUOTATION_CAPACITIES = DEFAULT_DROPDOWN_VALUES.Capacity;
+
 const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Delivered', 'Billed'];
 
 // ============ UTILITY FUNCTIONS ============

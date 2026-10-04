@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class FirebaseTokenVerifier {
+    private static final System.Logger LOGGER = System.getLogger(FirebaseTokenVerifier.class.getName());
+
     private final String projectId;
     private final Set<String> adminEmails;
     private FirebaseAuth firebaseAuth;
@@ -36,13 +38,24 @@ public class FirebaseTokenVerifier {
         try {
             FirebaseToken decodedToken = getFirebaseAuth().verifyIdToken(token, true);
             String email = decodedToken.getEmail();
-            if (!decodedToken.isEmailVerified()
-                    || email == null
-                    || !adminEmails.contains(email.toLowerCase(Locale.ROOT))) {
+            if (!decodedToken.isEmailVerified()) {
+                LOGGER.log(System.Logger.Level.WARNING, "Firebase admin access denied: email is not verified.");
+                return Optional.empty();
+            }
+            if (email == null || !adminEmails.contains(email.toLowerCase(Locale.ROOT))) {
+                LOGGER.log(System.Logger.Level.WARNING, "Firebase admin access denied: account is not on the admin allowlist.");
                 return Optional.empty();
             }
             return Optional.of(email);
-        } catch (FirebaseAuthException | IOException exception) {
+        } catch (FirebaseAuthException exception) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Firebase ID token verification failed ({0}).",
+                    exception.getClass().getSimpleName());
+            return Optional.empty();
+        } catch (IOException exception) {
+            LOGGER.log(System.Logger.Level.ERROR,
+                    "Firebase Admin SDK initialization failed ({0}).",
+                    exception.getClass().getSimpleName());
             return Optional.empty();
         }
     }
