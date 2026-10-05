@@ -2,6 +2,11 @@ package com.vstms.backend;
 
 import com.vstms.backend.model.BillDTO;
 import com.vstms.backend.model.AttachmentDTO;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
@@ -31,16 +36,19 @@ public class BillController {
     }
 
     @PostMapping
-    public BillDTO createBill(@RequestBody BillRequest request) {
+    public BillDTO createBill(@Valid @RequestBody BillRequest request) {
         BillDTO bill = new BillDTO(
-                request.getSapNo(),
+                request.getSapNo().trim(),
                 request.getDate(),
                 request.getSpmCenter(),
                 request.getTotalTransformers(),
                 request.getBillAmount()
         );
         if (request.getAgreementNo() != null) {
-            bill.setAgreementNo(request.getAgreementNo());
+            bill.setAgreementNo(request.getAgreementNo().trim());
+        }
+        if (request.getSpmCenter() != null) {
+            bill.setSpmCenter(request.getSpmCenter().trim());
         }
         if (request.getGstAmount() != null) {
             bill.setGstAmount(request.getGstAmount());
@@ -50,14 +58,14 @@ public class BillController {
     }
 
     @PutMapping("/{sapNo}")
-    public ResponseEntity<BillDTO> updateBill(@PathVariable String sapNo, @RequestBody BillRequest request) {
+    public ResponseEntity<BillDTO> updateBill(@PathVariable String sapNo, @Valid @RequestBody BillRequest request) {
         return googleSheetsService.getBillById(sapNo)
                 .map(bill -> {
                     bill.setDate(request.getDate());
                     if (request.getAgreementNo() != null) {
-                        bill.setAgreementNo(request.getAgreementNo());
+                        bill.setAgreementNo(request.getAgreementNo().trim());
                     }
-                    bill.setSpmCenter(request.getSpmCenter());
+                    bill.setSpmCenter(request.getSpmCenter().trim());
                     bill.setTotalTransformers(request.getTotalTransformers());
                     bill.setBillAmount(request.getBillAmount());
                     if (request.getGstAmount() != null) {
@@ -118,12 +126,21 @@ public class BillController {
     }
 
     public static class BillRequest {
+        @NotBlank
         private String sapNo;
+        @NotBlank
         private String agreementNo;
+        @NotNull
         private LocalDate date;
+        @NotBlank
         private String spmCenter;
+        @Min(1)
         private int totalTransformers;
+        @NotNull
+        @DecimalMin("0.0")
         private Double billAmount;
+        @NotNull
+        @DecimalMin("0.0")
         private Double gstAmount;
         private List<AttachmentDTO> attachments;
 

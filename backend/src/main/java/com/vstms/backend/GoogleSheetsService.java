@@ -555,18 +555,27 @@ public class GoogleSheetsService {
     }
 
     public TransformerDTO updateTransformerStatus(Long id, String newStatus) {
-        return updateTransformerStatus(id, newStatus, null);
+        return updateTransformerStatus(id, newStatus, null, false);
     }
 
     public TransformerDTO updateTransformerStatus(
             Long id,
             String newStatus,
             AssessmentDetailsDTO assessmentDetails) {
+        return updateTransformerStatus(id, newStatus, assessmentDetails, false);
+    }
+
+    public TransformerDTO updateTransformerStatus(
+            Long id,
+            String newStatus,
+            AssessmentDetailsDTO assessmentDetails,
+            boolean backward) {
         TransformerDTO dto = getTransformerById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
 
-        validateStatusTransition(dto.getStatus(), newStatus, dto.getAssessmentRound());
+        validateStatusTransition(dto.getStatus(), newStatus, dto.getAssessmentRound(), backward);
         if ("Assesment".equalsIgnoreCase(newStatus)
+                && !backward
                 && (assessmentDetails == null || assessmentDetails.getWindingMaterial() == null
                         || assessmentDetails.getWindingMaterial().isBlank())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -578,6 +587,7 @@ public class GoogleSheetsService {
         Map<String, Object> params = new HashMap<>();
         params.put("id", id);
         params.put("status", newStatus);
+        params.put("backward", backward);
         if (assessmentDetails != null) {
             params.put("assessmentDetails", assessmentDetails);
         }
@@ -591,9 +601,13 @@ public class GoogleSheetsService {
             dto = objectMapper.convertValue(res.get("data"), TransformerDTO.class);
         } else {
             dto.setStatus(newStatus);
-            if ("Assesment".equalsIgnoreCase(newStatus)) {
+            if ("Assesment".equalsIgnoreCase(newStatus) && !backward) {
                 dto.setAssessmentRound(dto.getAssessmentRound() + 1);
                 dto.setAssessmentDetails(assessmentDetails);
+            } else if (backward && "Recieved".equalsIgnoreCase(newStatus)) {
+                dto.setAssessmentRound(0);
+            } else if (backward && "Repair In Progress".equalsIgnoreCase(newStatus)) {
+                dto.setAssessmentRound(1);
             }
         }
         transformerCache.put(id, dto);
@@ -604,9 +618,9 @@ public class GoogleSheetsService {
     public TransformerDTO updateTransformerAssessment(Long id, AssessmentDetailsDTO assessmentDetails) {
         TransformerDTO dto = getTransformerById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
-        if ("Delivered".equalsIgnoreCase(dto.getStatus()) || "Billed".equalsIgnoreCase(dto.getStatus())) {
+        if ("Billed".equalsIgnoreCase(dto.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Assessment details cannot be edited after delivery.");
+                    "Assessment details cannot be edited after billing.");
         }
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "UPDATE_TRANSFORMER_ASSESSMENT");
@@ -659,12 +673,24 @@ public class GoogleSheetsService {
         TransformerDTO dto = getTransformerById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
 
-        if (!"Repaired".equalsIgnoreCase(dto.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only repaired transformers can be delivered");
-        }
-        if (dcNo == null || dcNo.isBlank() || getDCById(dcNo).isEmpty()) {
+        DcDTO dc = dcNo == null || dcNo.isBlank()
+                ? null
+                : getDCById(dcNo).orElse(null);
+        if (dc == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Select an existing delivery challan before delivering a transformer.");
+        }
+        if (!Boolean.TRUE.equals(dc.getDelivered())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Mark the delivery challan as delivered before delivering its transformers.");
+        }
+        if (!dcNo.equalsIgnoreCase(dto.getDcNo())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The transformer must be assigned to the delivered challan.");
+        }
+        if ("Delivered".equalsIgnoreCase(dto.getStatus())) return dto;
+        if (!"Repaired".equalsIgnoreCase(dto.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only repaired transformers can be delivered");
         }
 
         Map<String, Object> payload = new HashMap<>();
@@ -721,6 +747,15 @@ public class GoogleSheetsService {
         }
         DcDTO updated = objectMapper.convertValue(response.get("data"), DcDTO.class);
         dcCache.put(updated.getDcNo(), updated);
+        if (existing.getTransformerDetails() != null) {
+            for (Map<String, Object> detail : existing.getTransformerDetails()) {
+                Object transformerId = detail.get("transformerId");
+                if (transformerId instanceof Number number) {
+                    TransformerDTO transformer = transformerCache.get(number.longValue());
+                    if (transformer != null) transformer.setStatus("Delivered");
+                }
+            }
+        }
         return updated;
     }
 
@@ -746,6 +781,11 @@ public class GoogleSheetsService {
         }
         DcDTO updated = objectMapper.convertValue(response.get("data"), DcDTO.class);
         dcCache.put(updated.getDcNo(), updated);
+        TransformerDTO transformer = transformerCache.get(transformerId);
+        if (transformer != null) {
+            transformer.setDcNo(assign ? dcNo : null);
+            if (!assign) transformer.setStatus("Repaired");
+        }
         return updated;
     }
 
@@ -813,13 +853,28 @@ public class GoogleSheetsService {
                 .toList();
     }
 
-    private void validateStatusTransition(String current, String next, int assessmentRound) {
+    static void validateStatusTransition(String current, String next, int assessmentRound, boolean backward) {
         if ("Scrap".equalsIgnoreCase(next)) {
+            if (backward) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Scrap status cannot be moved backward.");
+            }
             if (List.of("Recieved", "Assesment", "Repair In Progress", "Repaired").stream()
                     .anyMatch(status -> status.equalsIgnoreCase(current))) {
                 return;
             }
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only transformers not yet delivered can be marked as Scrap.");
+        }
+        if (backward) {
+            boolean validBackwardTransition =
+                    ("Assesment".equalsIgnoreCase(current) && "Recieved".equalsIgnoreCase(next) && assessmentRound == 1)
+                    || ("Repair In Progress".equalsIgnoreCase(current) && "Assesment".equalsIgnoreCase(next) && assessmentRound == 1)
+                    || ("Assesment".equalsIgnoreCase(current) && "Repair In Progress".equalsIgnoreCase(next) && assessmentRound == 2)
+                    || ("Repaired".equalsIgnoreCase(current) && "Assesment".equalsIgnoreCase(next) && assessmentRound == 2);
+            if (!validBackwardTransition) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Invalid backward status transition from " + current + " to " + next);
+            }
+            return;
         }
         boolean validTransition = ("Recieved".equalsIgnoreCase(current)
                     && "Assesment".equalsIgnoreCase(next) && assessmentRound == 0)
@@ -1062,7 +1117,7 @@ public class GoogleSheetsService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "SAVE_GENERATED_DC_PDF");
         payload.put("payload", Map.of("dcNo", dcNo, "fileName", fileName, "dataUrl", dataUrl));
-        Map<String, Object> response = postToAppsScript(payload);
+        Map<String, Object> response = postToAppsScript(payload, Duration.ofSeconds(90));
         if (!"SUCCESS".equals(response.get("status")) || response.get("data") == null) {
             String message = String.valueOf(response.getOrDefault("message", "Failed to save generated delivery challan."));
             HttpStatus status = message.toLowerCase().contains("not found")
@@ -1070,7 +1125,17 @@ public class GoogleSheetsService {
                     : HttpStatus.BAD_GATEWAY;
             throw new ResponseStatusException(status, message);
         }
-        DcDTO saved = objectMapper.convertValue(response.get("data"), DcDTO.class);
+        Object responseData = response.get("data");
+        if (responseData instanceof Map<?, ?> nestedResponse
+                && "SUCCESS".equals(nestedResponse.get("status"))
+                && nestedResponse.get("data") != null) {
+            responseData = nestedResponse.get("data");
+        }
+        DcDTO saved = objectMapper.convertValue(responseData, DcDTO.class);
+        if (saved.getDcNo() == null || saved.getDcNo().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Google Apps Script saved the PDF but returned no delivery challan details.");
+        }
         dcCache.put(saved.getDcNo(), saved);
         return saved;
     }
@@ -1158,9 +1223,13 @@ public class GoogleSheetsService {
                 return saved;
             }
         }
+        String message = String.valueOf(res.getOrDefault("message", "Failed to save bill attachments and record."));
+        HttpStatus status = message.toLowerCase().contains("already exists")
+                ? HttpStatus.CONFLICT
+                : HttpStatus.BAD_GATEWAY;
         throw new ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                String.valueOf(res.getOrDefault("message", "Failed to save bill attachments and record.")));
+                status,
+                message);
     }
 
     public void deleteBill(String sapNo) {

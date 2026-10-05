@@ -1,5 +1,6 @@
 package com.vstms.backend;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vstms.backend.model.DcDTO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -265,10 +266,12 @@ public class DcController {
             this.companyGstin = companyGstin;
         }
 
+        @JsonProperty("tNoteNo")
         public String getTNoteNo() {
             return tNoteNo;
         }
 
+        @JsonProperty("tNoteNo")
         public void setTNoteNo(String tNoteNo) {
             this.tNoteNo = tNoteNo;
         }

@@ -68,12 +68,15 @@ public class TransformerController {
 
     @PatchMapping("/{id}/status")
     public TransformerDTO updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
-        if ("Assesment".equalsIgnoreCase(request.status()) && request.assessmentDetails() == null) {
+        if ("Assesment".equalsIgnoreCase(request.status())
+                && request.assessmentDetails() == null
+                && !Boolean.TRUE.equals(request.backward())) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST,
                     "Assessment details are required to move to Assessment.");
         }
-        return googleSheetsService.updateTransformerStatus(id, request.status(), request.assessmentDetails());
+        return googleSheetsService.updateTransformerStatus(
+                id, request.status(), request.assessmentDetails(), Boolean.TRUE.equals(request.backward()));
     }
 
     @PatchMapping("/{id}/assessment")
@@ -159,7 +162,8 @@ public class TransformerController {
 
     public record UpdateStatusRequest(
             @NotBlank String status,
-            @jakarta.validation.Valid AssessmentDetailsDTO assessmentDetails) {}
+            @jakarta.validation.Valid AssessmentDetailsDTO assessmentDetails,
+            Boolean backward) {}
 
     public record DeliverRequest(@NotBlank String dcNo) {}
 

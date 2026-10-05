@@ -614,8 +614,13 @@ function App() {
     })
     .filter(Boolean)
   const visibleDCCandidates = dcCandidates.filter(transformer =>
+    Boolean(newDC.spmCenter) &&
     transformer.status === 'Repaired' &&
-    (!newDC.spmCenter || String(transformer.spmCenter || '').trim() === newDC.spmCenter.trim())
+    String(transformer.spmCenter || '').trim() === newDC.spmCenter.trim()
+  )
+  const visibleBillCandidates = billCandidates.filter(transformer =>
+    Boolean(newBill.spmCenter) &&
+    String(transformer.spmCenter || '').trim() === newBill.spmCenter.trim()
   )
   const availableDCTransformerCandidates = dcCandidates.filter(transformer =>
     transformer.status === 'Repaired' &&
@@ -642,6 +647,17 @@ function App() {
     const customerName = String(dc.customerName || '')
     const match = customerName.match(/AE\s*\/\s*SPM\s*\/\s*(.+?)\s*\/?\s*TGSPDCL/i)
     return match?.[1]?.trim() || dc.spmCenter || '—'
+  }
+  const getDCTNoteNumbers = (dc) => {
+    const tNoteNumbers = [
+      ...(String(dc.tNoteNo || '').split(',').map(value => value.trim()).filter(Boolean)),
+      ...(Array.isArray(dc.transformerDetails)
+        ? dc.transformerDetails.flatMap(detail =>
+          Array.isArray(detail.tNotes) ? detail.tNotes.map(note => String(note.tNoteNo || '').trim()).filter(Boolean) : [],
+        )
+        : []),
+    ]
+    return [...new Set(tNoteNumbers)].join(', ')
   }
   const eligibleDCTransformerCandidates = availableDCTransformerCandidates.filter(transformer => {
     const notes = getTransformerTNoteDetails(transformer)
@@ -1723,7 +1739,7 @@ ${styles}
     }
   }
 
-  const updateTransformerStatus = async (transformerId, nextStatus, assessmentDetails = null) => {
+  const updateTransformerStatus = async (transformerId, nextStatus, assessmentDetails = null, backward = false) => {
     setTransformersError('')
     try {
       const response = await apiFetch(`/api/transformers/${transformerId}/status`, {
@@ -1731,7 +1747,7 @@ ${styles}
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: nextStatus, assessmentDetails }),
+        body: JSON.stringify({ status: nextStatus, assessmentDetails, backward }),
       })
       if (!response.ok) {
         const message = await response.text()
@@ -1747,7 +1763,7 @@ ${styles}
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Status update failed'
       setTransformersError(message)
-      if (nextStatus === 'Assesment') setAssessmentError(message)
+      if (nextStatus === 'Assesment' || nextStatus === 'Scrap') setAssessmentError(message)
       return null
     }
   }
@@ -1896,20 +1912,49 @@ ${styles}
       if (linkedTransformers.length !== Number(tnote.numberOfTransformers)) {
         throw new Error(`TNote ${tnote.tNoteNo || tnote.id} reports ${tnote.numberOfTransformers} transformers but returned ${linkedTransformers.length}. The assessment sheet was not exported.`)
       }
-      const dcByNumber = new Map(dcs
-        .map(dc => [String(dc.dcNo || '').trim().toLowerCase(), dc]))
+      const dcResponse = await apiFetch('/api/dcs')
+      if (!dcResponse.ok) throw new Error(`Failed to load delivery challans for TNote export (${dcResponse.status}).`)
+      const dcData = await dcResponse.json()
+      if (!Array.isArray(dcData)) throw new Error('The delivery challan service returned invalid data; the assessment sheet was not exported.')
+      setDcs(dcData)
+      const getTransformerDcs = (transformer) => {
+        const transformerId = String(transformer.id)
+        return dcData.filter(dc =>
+          String(dc.dcNo || '').trim().toLowerCase() === String(transformer.dcNo || '').trim().toLowerCase() ||
+          (Array.isArray(dc.transformerDetails) && dc.transformerDetails.some(detail =>
+            String(detail.transformerId ?? '') === transformerId,
+          ))
+        )
+      }
+      const transformerDcs = new Map(linkedTransformers.map(transformer => [
+        String(transformer.id),
+        getTransformerDcs(transformer),
+      ]))
+      const unbilledDcs = [...new Map(linkedTransformers
+        .filter(transformer => String(transformer.status || '').toLowerCase() !== 'billed')
+        .flatMap(transformer => transformerDcs.get(String(transformer.id)) || [])
+        .map(dc => [String(dc.dcNo || '').trim().toLowerCase(), dc])
+        .filter(([dcNo]) => dcNo)).values()]
       const firstInspectionDates = [...new Set(linkedTransformers
         .map(transformer => transformer.assessmentDetails?.firstInspectionDate)
         .filter(Boolean))]
-      const dcNumbers = [...new Set(linkedTransformers.map(transformer => transformer.dcNo).filter(Boolean))]
-      const dcDates = [...new Set(dcNumbers
-        .map(dcNo => dcByNumber.get(String(dcNo).trim().toLowerCase())?.date)
-        .filter(Boolean))]
+      const dcNumbers = unbilledDcs.map(dc => dc.dcNo)
+      const dcDates = [...new Set(unbilledDcs.map(dc => dc.date).filter(Boolean))]
       const columns = [
+        { header: 'Sl. No.', key: 'rowNumber', width: 8, getValue: (_, index) => index + 1 },
         { header: 'DTR Code', key: 'dtrNo', width: 15, getValue: transformer => transformer.dtrNo },
         { header: 'Capacity (kVA)', key: 'capacity', width: 13, getValue: transformer => transformer.capacity },
         { header: 'Make', key: 'make', width: 16, getValue: transformer => transformer.type },
-        { header: 'S. No.', key: 'sNo', width: 14, getValue: transformer => transformer.sNo },
+        { header: 'Transformer S. No.', key: 'sNo', width: 17, getValue: transformer => transformer.sNo },
+        { header: 'Unbilled Challan No.', key: 'unbilledChallanNo', width: 20, getValue: transformer => {
+          if (String(transformer.status || '').toLowerCase() === 'billed') return ''
+          return (transformerDcs.get(String(transformer.id)) || []).map(dc => dc.dcNo).filter(Boolean).join(', ')
+        } },
+        { header: 'Unbilled Challan Date', key: 'unbilledChallanDate', width: 20, getValue: transformer => {
+          if (String(transformer.status || '').toLowerCase() === 'billed') return ''
+          return [...new Set((transformerDcs.get(String(transformer.id)) || []).map(dc => dc.date).filter(Boolean))]
+            .map(date => formattedDate(date)).join(', ')
+        } },
         { header: 'First Inspection Date', key: 'firstInspectionDate', width: 18, getValue: transformer => transformer.assessmentDetails?.firstInspectionDate },
         { header: 'Winding Material', key: 'windingMaterial', width: 15, getValue: transformer => transformer.assessmentDetails?.windingMaterial },
         { header: 'HV Coils Damaged', key: 'hvDamagedCoils', width: 16, getValue: transformer => transformer.assessmentDetails?.hvDamagedCoils },
@@ -1927,14 +1972,20 @@ ${styles}
         { header: 'Breakers', key: 'breakers', width: 12, getValue: transformer => transformer.assessmentDetails?.breakers },
         { header: 'Oil Capacity', key: 'oilCapacity', width: 14, getValue: transformer => transformer.assessmentDetails?.oilCapacity },
         { header: 'Oil Less', key: 'oilLess', width: 12, getValue: transformer => transformer.assessmentDetails?.oilLess },
-        { header: 'Remarks', key: 'remarks', width: 36, getValue: transformer => transformer.assessmentDetails?.remarks },
+        { header: 'Remarks', key: 'remarks', width: 48, getValue: transformer => {
+          if (String(transformer.status || '').toLowerCase() !== 'billed') return transformer.assessmentDetails?.remarks
+          const transformerDC = (transformerDcs.get(String(transformer.id)) || [])[0]
+          const dcNo = transformerDC?.dcNo || transformer.dcNo || '—'
+          const dcDate = formattedDate(transformerDC?.date) || '—'
+          return `Billed Bill no ${transformer.sapNo || '—'} - DC no ${dcNo} date ${dcDate}`
+        } },
       ]
       const metadata = [
         ['TNote No.', tnote.tNoteNo || tnote.id],
         ['TNote Date', formattedDate(tnote.date) || '—'],
         ['First Inspection Date', firstInspectionDates.map(date => formattedDate(date)).join(', ') || '—'],
-        ['D.C. No.', dcNumbers.join(', ') || '—'],
-        ['D.C. Date', dcDates.map(date => formattedDate(date)).join(', ') || '—'],
+        ['Unbilled D.C. No.', dcNumbers.join(', ') || '—'],
+        ['Unbilled D.C. Date', dcDates.map(date => formattedDate(date)).join(', ') || '—'],
       ]
       const workbook = new ExcelJS.Workbook()
       workbook.creator = 'D.S. Transformers Management System'
@@ -1947,11 +1998,11 @@ ${styles}
           fitToWidth: 1,
           fitToHeight: 0,
           margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
-          printTitlesRow: '10:10',
+          printTitlesRow: '11:11',
         },
-        views: [{ state: 'frozen', ySplit: 10 }],
+        views: [{ state: 'frozen', ySplit: 11 }],
       })
-      worksheet.columns = columns.map(({ header, key, width }) => ({ header, key, width }))
+      worksheet.columns = columns.map(({ key, width }) => ({ key, width }))
       const lastColumn = columns.length
       worksheet.mergeCells(1, 1, 1, lastColumn)
       worksheet.getCell('A1').value = 'JOINT INSPECTION OF SICK DISTRIBUTION TRANSFORMERS'
@@ -1959,14 +2010,28 @@ ${styles}
       worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17365D' } }
       worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' }
       worksheet.getRow(1).height = 30
-      worksheet.mergeCells(2, 1, 2, lastColumn)
-      worksheet.getCell('A2').value = 'ASSESSMENT & BILLING RECORD'
-      worksheet.getCell('A2').font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
-      worksheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }
-      worksheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' }
-      worksheet.getRow(2).height = 22
+      const companyRows = [
+        'M/s. D.S. TRANSFORMERS & ELECTRICAL CONTRACTOR',
+        'Industrial Area, Mallapur, Hyderabad, Telangana 500076',
+        `GSTIN: ${dropdownDefaults.businessGstin || '36AAUFM2590B1Z4'}    |    Vendor Number: 314286`,
+      ]
+      companyRows.forEach((value, index) => {
+        const rowNumber = index + 2
+        worksheet.mergeCells(rowNumber, 1, rowNumber, lastColumn)
+        const cell = worksheet.getCell(rowNumber, 1)
+        cell.value = value
+        cell.font = {
+          name: 'Arial',
+          size: index === 0 ? 12 : 10,
+          bold: index === 0,
+          color: { argb: 'FF17365D' },
+        }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: index % 2 === 0 ? 'FFD9EAF7' : 'FFF3F7FA' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        worksheet.getRow(rowNumber).height = index === 0 ? 22 : 20
+      })
       metadata.forEach(([label, value], index) => {
-        const rowNumber = index + 4
+        const rowNumber = index + 6
         worksheet.getCell(rowNumber, 1).value = label
         worksheet.mergeCells(rowNumber, 1, rowNumber, 3)
         worksheet.getCell(rowNumber, 4).value = value
@@ -1980,10 +2045,12 @@ ${styles}
           }
         }
       })
-      const headerRowNumber = 10
+      const headerRowNumber = 11
       const headerRow = worksheet.getRow(headerRowNumber)
-      headerRow.values = [undefined, ...columns.map(column => column.header)]
       headerRow.height = 34
+      columns.forEach((column, index) => {
+        headerRow.getCell(index + 1).value = column.header
+      })
       headerRow.eachCell(cell => {
         cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FFFFFFFF' } }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF244A64' } }
@@ -1993,7 +2060,7 @@ ${styles}
       linkedTransformers.forEach((transformer, index) => {
         const row = worksheet.addRow(Object.fromEntries(columns.map(column => [
           column.key,
-          column.getValue(transformer) ?? '',
+          column.getValue(transformer, index) ?? '',
         ])))
         row.height = 28
         row.eachCell(cell => {
@@ -2023,7 +2090,7 @@ ${styles}
         cell.border = { top: { style: 'thin', color: { argb: 'FF17365D' } } }
       })
       worksheet.getRow(signatureRowNumber).height = 48
-      worksheet.pageSetup.printArea = `A1:V${signatureRowNumber}`
+      worksheet.pageSetup.printArea = `A1:${worksheet.getColumn(lastColumn).letter}${signatureRowNumber}`
       worksheet.autoFilter = { from: { row: headerRowNumber, column: 1 }, to: { row: headerRowNumber, column: lastColumn } }
       const workbookBuffer = await workbook.xlsx.writeBuffer()
       const blob = new Blob([workbookBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -2508,7 +2575,7 @@ ${styles}
       const deliveredDC = await response.json()
       setActiveDC(deliveredDC)
       setDcDeliveryAttachments([])
-      await fetchDCs()
+      await Promise.all([fetchDCs(), fetchTransformers(), fetchSummary()])
     } catch (err) {
       setDcDetailError(err instanceof Error ? err.message : 'Failed to mark challan as delivered.')
     } finally {
@@ -2998,6 +3065,15 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id],
     )
   }
+  const setBillSpmCenter = (spmCenter) => {
+    const normalizedCenter = spmCenter.trim()
+    setNewBill(current => ({ ...current, spmCenter }))
+    setSelectedBillTransformers(current => current.filter(id => {
+      const transformer = billCandidates.find(candidate => String(candidate.id) === String(id))
+      return transformer && String(transformer.spmCenter || '').trim() === normalizedCenter
+    }))
+    setBillFormError('')
+  }
 
   const createAndSaveDCFile = async (dc) => {
     const generatedPdf = await generateDeliveryChallanPdf(dc, deliveryChallanTemplateUrl)
@@ -3098,14 +3174,14 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       if (!createdDC.dcNo) throw new Error('The delivery challan service returned no DC number.')
       createdDcNo = createdDC.dcNo
       for (const id of selectedDCTransformers) {
-        const deliverRes = await apiFetch(`/api/transformers/${id}/deliver`, {
-          method: 'PATCH',
+        const assignRes = await apiFetch('/api/dcs/transformers', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dcNo: createdDcNo }),
+          body: JSON.stringify({ dcNo: createdDcNo, transformerId: id }),
         })
-        if (!deliverRes.ok) {
-          const errorBody = await deliverRes.json().catch(() => ({}))
-          throw new Error(errorBody.detail || errorBody.message || `Failed to deliver transformer ${id}`)
+        if (!assignRes.ok) {
+          const errorBody = await assignRes.json().catch(() => ({}))
+          throw new Error(errorBody.detail || errorBody.message || `Failed to assign transformer ${id} to the challan`)
         }
       }
       transformerAssignmentsCompleted = true
@@ -3152,12 +3228,28 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   const createBillWithSelection = async (event) => {
     event.preventDefault()
     setBillFormError('')
-    if (!newBill.sapNo) {
+    const sapNo = newBill.sapNo.trim()
+    if (!sapNo) {
       setBillFormError('Enter SAP number')
+      return
+    }
+    if (!newBill.agreementNo.trim() || !newBill.date || !newBill.spmCenter) {
+      setBillFormError('Complete the agreement number, date, and SPM Center.')
+      return
+    }
+    if (!Number.isFinite(Number(newBill.billAmount)) || Number(newBill.billAmount) < 0 ||
+        !Number.isFinite(Number(newBill.gstAmount)) || Number(newBill.gstAmount) < 0) {
+      setBillFormError('Bill and GST amounts must be valid non-negative numbers.')
       return
     }
     if (selectedBillTransformers.length === 0) {
       setBillFormError('Select at least one delivered transformer')
+      return
+    }
+    if (selectedBillTransformers.some(id =>
+      !visibleBillCandidates.some(transformer => String(transformer.id) === String(id)),
+    )) {
+      setBillFormError('Selected transformers must belong to the chosen SPM Center.')
       return
     }
     setTransformersError('')
@@ -3166,8 +3258,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       // Auto-calculate totalTransformers based on selected transformers
       const billData = {
         ...newBill,
+        sapNo,
         agreementNo: newBill.agreementNo.trim(),
         totalTransformers: selectedBillTransformers.length,
+        billAmount: Number(newBill.billAmount),
+        gstAmount: Number(newBill.gstAmount),
         attachments: billAttachments,
       }
       const response = await apiFetch('/api/bills', {
@@ -3175,14 +3270,20 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(billData),
       })
-      if (!response.ok) throw new Error('Failed to create Bill')
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody.detail || errorBody.message || `Failed to create bill (${response.status}).`)
+      }
       for (const id of selectedBillTransformers) {
         const billRes = await apiFetch(`/api/transformers/${id}/bill`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sapNo: newBill.sapNo }),
+          body: JSON.stringify({ sapNo }),
         })
-        if (!billRes.ok) throw new Error('Failed to assign transformer to Bill')
+        if (!billRes.ok) {
+          const errorBody = await billRes.json().catch(() => ({}))
+          throw new Error(errorBody.detail || errorBody.message || `Failed to assign transformer ${id} to bill ${sapNo} (${billRes.status}).`)
+        }
       }
       setNewBill({ sapNo: '', agreementNo: '', date: new Date().toISOString().split('T')[0], spmCenter: '', totalTransformers: 0, billAmount: 0, gstAmount: 0 })
       setBillAttachments([])
@@ -3233,6 +3334,32 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       return
     }
     updateTransformerStatus(transformer.id, nextStatus)
+  }
+
+  const getPreviousTransformerStage = (transformer) => {
+    const status = String(transformer.status || '').toLowerCase()
+    const assessmentRound = Number(transformer.assessmentRound)
+    if (status === 'assesment' && assessmentRound === 1) return 'Recieved'
+    if (status === 'repair in progress' && assessmentRound === 1) return 'Assesment'
+    if (status === 'assesment' && assessmentRound === 2) return 'Repair In Progress'
+    if (status === 'repaired' && assessmentRound === 2) return 'Assesment'
+    return null
+  }
+
+  const moveToPreviousStage = (transformer) => {
+    const previousStatus = getPreviousTransformerStage(transformer)
+    if (!previousStatus || !hasValidTransformerId(transformer)) return
+    updateTransformerStatus(transformer.id, previousStatus, null, true)
+  }
+
+  const markAssessmentTransformerAsScrap = async () => {
+    if (!assessmentTransformer || !hasValidTransformerId(assessmentTransformer)) return
+    if (!window.confirm(`Mark transformer ${assessmentTransformer.dtrNo || assessmentTransformer.id} as Scrap? This cannot be undone.`)) return
+    setAssessmentSaving(true)
+    setAssessmentError('')
+    const updated = await updateTransformerStatus(assessmentTransformer.id, 'Scrap')
+    if (updated) setAssessmentTransformer(null)
+    setAssessmentSaving(false)
   }
 
   const submitAssessment = async (event) => {
@@ -4192,6 +4319,17 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       </span>
                     </td>
                     <td className="actions-cell">
+                      {getPreviousTransformerStage(transformer) && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={() => moveToPreviousStage(transformer)}
+                          disabled={!hasValidTransformerId(transformer)}
+                          title={`Move transformer status back to ${getPreviousTransformerStage(transformer)}`}
+                        >
+                          Back to {getPreviousTransformerStage(transformer)}
+                        </button>
+                      )}
                       {transformer.assessmentDetails &&
                         !['Delivered', 'Billed'].includes(transformer.status) && (
                           <button
@@ -4476,7 +4614,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     <td>{formattedDate(dc.date) || '—'}</td>
                     <td>{getDCSpmCenter(dc)}</td>
                     <td>{dc.customerName || '—'}</td>
-                    <td>{dc.tNoteNo || '—'}</td>
+                    <td>{getDCTNoteNumbers(dc) || '—'}</td>
                     <td>{dc.sentToTgspdcl === true ? 'Yes' : dc.sentToTgspdcl === false ? 'No' : '—'}</td>
                     <td>{dc.delivered ? 'Delivered' : 'Not delivered'}</td>
                     <td>{dc.emptyDrumsAvailable === true ? dc.emptyDrumCount || 0 : dc.emptyDrumsAvailable === false ? 0 : '—'}</td>
@@ -4491,6 +4629,20 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       </button>
                     </td>
                     <td className="actions-cell">
+                      {!dc.delivered && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small btn--icon"
+                          onClick={() => openDCDetails(dc.dcNo)}
+                          aria-label={`Upload signed challan and mark ${dc.dcNo} as delivered`}
+                          title="Upload signed challan and mark as delivered"
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M5 12.5 9.5 17 19 7.5" />
+                            <circle cx="12" cy="12" r="10" />
+                          </svg>
+                        </button>
+                      )}
                       {dc.generatedChallanUrl && (
                         <a
                           className="btn btn--ghost btn--small btn--icon"
@@ -4722,7 +4874,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     ))}
                     {visibleDCCandidates.length === 0 && (
                       <tr>
-                        <td colSpan="5">No repaired transformers are available for delivery.</td>
+                        <td colSpan="5">{newDC.spmCenter
+                          ? `No repaired transformers are available for ${newDC.spmCenter}.`
+                          : 'Select an SPM Center to view repaired transformers.'}</td>
                       </tr>
                     )}
                   </tbody>
@@ -5136,13 +5290,25 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     Edit assessment
                   </button>
                 ) : (
-                  <button type="submit" className="btn btn--primary" disabled={assessmentSaving}>
-                    {assessmentSaving
-                      ? 'Saving assessment...'
-                      : assessmentMode === 'stage'
-                        ? 'Save and move to Assessment'
-                        : 'Save changes'}
-                  </button>
+                  <>
+                    <button type="submit" className="btn btn--primary" disabled={assessmentSaving}>
+                      {assessmentSaving
+                        ? 'Saving assessment...'
+                        : assessmentMode === 'stage'
+                          ? 'Save and move to Assessment'
+                          : 'Save changes'}
+                    </button>
+                    {!['Delivered', 'Billed', 'Scrap'].includes(assessmentTransformer.status) && (
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={markAssessmentTransformerAsScrap}
+                        disabled={assessmentSaving}
+                      >
+                        Mark as Scrap
+                      </button>
+                    )}
+                  </>
                 )}
                 <button type="button" className="btn btn--ghost" onClick={() => setAssessmentTransformer(null)} disabled={assessmentSaving}>
                   {assessmentMode === 'create' ? 'Cancel' : 'Close'}
@@ -5635,7 +5801,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   value={newBill.spmCenter}
                   options={dropdownDefaults.spmCenters}
                   placeholder="Select SPM Center"
-                  onChange={(e) => setNewBill({ ...newBill, spmCenter: e.target.value })}
+                  onChange={(e) => setBillSpmCenter(e.target.value)}
                   required
                 />
               </div>
@@ -5653,6 +5819,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <input
                   name="billAmount"
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={newBill.billAmount}
                   onChange={(e) => setNewBill({ ...newBill, billAmount: parseFloat(e.target.value) || 0 })}
                   placeholder="50000"
@@ -5698,7 +5866,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     </tr>
                   </thead>
                   <tbody>
-                    {billCandidates.map((transformer, index) => (
+                    {visibleBillCandidates.map((transformer, index) => (
                       <tr key={`${transformer.id}-${index}`}>
                         <td>
                           <input
@@ -5718,9 +5886,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         <td>{transformer.dcNo ?? '-'}</td>
                       </tr>
                     ))}
-                    {billCandidates.length === 0 && (
+                    {visibleBillCandidates.length === 0 && (
                       <tr>
-                        <td colSpan="9">No delivered transformers available.</td>
+                        <td colSpan="9">{newBill.spmCenter ? 'No delivered transformers are available for this SPM Center.' : 'Select an SPM Center to view delivered transformers.'}</td>
                       </tr>
                     )}
                   </tbody>
@@ -5972,6 +6140,17 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                               {getNextTransformerStage(transformer)}
                             </button>
                           )}
+                          {getPreviousTransformerStage(transformer) && (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small tnote-next-status"
+                              onClick={() => moveToPreviousStage(transformer)}
+                              disabled={!hasValidTransformerId(transformer)}
+                              title={`Move transformer status back to ${getPreviousTransformerStage(transformer)}`}
+                            >
+                              Back to {getPreviousTransformerStage(transformer)}
+                            </button>
+                          )}
                           {transformer.intakeType === 'RGP' && (
                             <div className="tnote-rgp-status">
                               <span className="tag tag--rgp">RGP · Non-billable</span>
@@ -5995,21 +6174,25 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                             </button>
                             {transformer.assessmentDetails ? (
                               <>
-                                <button type="button" className="btn btn--ghost btn--small btn--icon" aria-label={`View assessment for transformer ${transformer.dtrNo || transformer.id}`} title="View assessment" onClick={() => openAssessmentForm(transformer, 'view')}>
+                                <button type="button" className="btn btn--ghost btn--small btn--icon tnote-assessment-action" aria-label={`View assessment for transformer ${transformer.dtrNo || transformer.id}`} title="View assessment" onClick={() => openAssessmentForm(transformer, 'view')}>
                                   <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
-                                    <circle cx="12" cy="12" r="3" />
+                                    <path d="M6 3h9l4 4v14H6z" />
+                                    <path d="M14 3v5h5M9 12h4M9 16h3" />
+                                    <circle cx="17.5" cy="16.5" r="2.5" />
+                                    <path d="m19.3 18.3 1.5 1.5" />
                                   </svg>
                                 </button>
-                                <button type="button" className="btn btn--ghost btn--small btn--icon assessment-edit-button" aria-label={`Edit assessment for transformer ${transformer.dtrNo || transformer.id}`} title="Edit assessment" onClick={() => openAssessmentForm(transformer, 'edit')} disabled={['Delivered', 'Billed'].includes(transformer.status)}>
-                                  <svg aria-hidden="true" viewBox="0 0 24 24">
-                                    <path d="M12 20h9" />
-                                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                                <button type="button" className="btn btn--ghost btn--small btn--icon tnote-assessment-action assessment-edit-button" aria-label={`Edit assessment for transformer ${transformer.dtrNo || transformer.id}`} title="Edit assessment" onClick={() => openAssessmentForm(transformer, 'edit')} disabled={transformer.status === 'Billed'}>
+                                  <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M6 3h9l4 4v7" />
+                                    <path d="M14 3v5h5M9 12h3M9 16h2" />
+                                    <path d="m14 19 5.5-5.5a2.1 2.1 0 0 1 3 3L17 22l-4 1 1-4Z" />
                                   </svg>
                                 </button>
-                                <button type="button" className="btn btn--danger btn--small btn--icon" aria-label={`Delete assessment for transformer ${transformer.dtrNo || transformer.id}`} title="Delete assessment" onClick={() => deleteTransformerAssessment(transformer)} disabled={['Delivered', 'Billed'].includes(transformer.status)}>
+                                <button type="button" className="btn btn--danger btn--small btn--icon tnote-assessment-action" aria-label={`Delete assessment for transformer ${transformer.dtrNo || transformer.id}`} title="Delete assessment" onClick={() => deleteTransformerAssessment(transformer)} disabled={['Delivered', 'Billed'].includes(transformer.status)}>
                                   <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v6m4-6v6" />
+                                    <path d="M6 3h9l4 4v14H6z" />
+                                    <path d="M14 3v5h5M10 12l5 5m0-5-5 5" />
                                   </svg>
                                 </button>
                               </>

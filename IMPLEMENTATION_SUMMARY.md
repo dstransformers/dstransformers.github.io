@@ -1,7 +1,7 @@
 # VSTMS Implementation Summary
 
 ## Project Overview
-VSTMS (Vendor Service Transformer Management System) - A full-stack application for managing transformer repair services with:
+VSTMS (D.S Transformer Management System) - A full-stack application for managing transformer repair services with:
 - **Frontend:** React 19.2.4 with Vite 8.0.4
 - **Backend:** Spring Boot 3.5.13 with Java 17 and Maven
 - **Database:** Google Sheets with Google Apps Script

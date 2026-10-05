@@ -2,6 +2,7 @@ package com.vstms.backend;
 
 import com.vstms.backend.model.TNoteDTO;
 import com.vstms.backend.model.TransformerDTO;
+import com.vstms.backend.model.BillDTO;
 import com.vstms.backend.security.FirebaseTokenVerifier;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -18,9 +19,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -109,6 +112,57 @@ class BackendApplicationTests {
 				String.valueOf(result.getResolvedException()));
 		assertTrue(result.getResponse().getContentAsString().contains("\"tNoteNo\":\"QA-BINDING-TEST\""));
 		assertFalse(result.getResponse().getContentAsString().contains("\"TNoteNo\""));
+	}
+
+	@Test
+	void validBillRequestPassesControllerBindingAndTrimsIdentifiers() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		when(googleSheetsService.saveBill(any(BillDTO.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+
+		var result = mockMvc.perform(post("/api/bills")
+						.header("Authorization", "Bearer unit-test-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"sapNo\":\" SAP-QA-1 \",\"agreementNo\":\" AGR-1 \",\"date\":\"2026-10-05\",\"spmCenter\":\" Warangal \",\"totalTransformers\":2,\"billAmount\":1000,\"gstAmount\":180,\"attachments\":[]}"))
+				.andReturn();
+
+		assertEquals(HttpStatus.OK.value(), result.getResponse().getStatus(),
+				String.valueOf(result.getResolvedException()));
+		assertTrue(result.getResponse().getContentAsString().contains("\"sapNo\":\"SAP-QA-1\""));
+		assertTrue(result.getResponse().getContentAsString().contains("\"agreementNo\":\"AGR-1\""));
+		assertTrue(result.getResponse().getContentAsString().contains("\"spmCenter\":\"Warangal\""));
+	}
+
+	@Test
+	void billWithMissingRequiredAmountsIsRejectedBeforePersistence() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+
+		mockMvc.perform(post("/api/bills")
+						.header("Authorization", "Bearer unit-test-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"sapNo\":\"SAP-QA-INVALID\",\"agreementNo\":\"AGR-1\",\"date\":\"2026-10-05\",\"spmCenter\":\"Warangal\",\"totalTransformers\":1,\"attachments\":[]}"))
+				.andExpect(status().isBadRequest());
+
+		verify(googleSheetsService, org.mockito.Mockito.never()).saveBill(any(BillDTO.class));
+	}
+
+	@Test
+	void transformerCanMoveBackOneActiveStageButNotFromDeliveredOrBilled() {
+		GoogleSheetsService.validateStatusTransition("Assesment", "Recieved", 1, true);
+		GoogleSheetsService.validateStatusTransition("Repair In Progress", "Assesment", 1, true);
+		GoogleSheetsService.validateStatusTransition("Assesment", "Repair In Progress", 2, true);
+		GoogleSheetsService.validateStatusTransition("Repaired", "Assesment", 2, true);
+
+		assertThrows(ResponseStatusException.class,
+				() -> GoogleSheetsService.validateStatusTransition("Delivered", "Repaired", 2, true));
+		assertThrows(ResponseStatusException.class,
+				() -> GoogleSheetsService.validateStatusTransition("Billed", "Delivered", 2, true));
+		assertThrows(ResponseStatusException.class,
+				() -> GoogleSheetsService.validateStatusTransition("Repaired", "Delivered", 2, false));
+		assertThrows(ResponseStatusException.class,
+				() -> GoogleSheetsService.validateStatusTransition("Repair In Progress", "Recieved", 1, true));
 	}
 
 	@Test

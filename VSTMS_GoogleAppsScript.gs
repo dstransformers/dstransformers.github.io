@@ -954,17 +954,17 @@ function deleteTransformer(id) {
   return { status: 'SUCCESS', message: 'Transformer deleted successfully' };
 }
 
-function updateTransformerStatus(id, newStatus, assessmentDetails) {
+function updateTransformerStatus(id, newStatus, assessmentDetails, backward) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    return updateTransformerStatusLocked_(id, newStatus, assessmentDetails);
+    return updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backward);
   } finally {
     lock.releaseLock();
   }
 }
 
-function updateTransformerStatusLocked_(id, newStatus, assessmentDetails) {
+function updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backward) {
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
   const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
@@ -978,7 +978,9 @@ function updateTransformerStatusLocked_(id, newStatus, assessmentDetails) {
     : ['Assesment', 'Repair In Progress'].includes(currentStatus) ? 1
       : ['Repaired', 'Delivered', 'Billed'].includes(currentStatus) ? 2 : 0;
   let nextAssessmentRound = assessmentRound;
+  const isBackward = backward === true || String(backward).toLowerCase() === 'true';
   if (String(newStatus).toLowerCase() === 'scrap') {
+    if (isBackward) throw new Error('Scrap status cannot be moved backward.');
     if (!['Recieved', 'Assesment', 'Repair In Progress', 'Repaired'].some(status => status.toLowerCase() === currentStatus.toLowerCase())) {
       throw new Error('Only transformers not yet delivered can be marked as Scrap.');
     }
@@ -986,18 +988,27 @@ function updateTransformerStatusLocked_(id, newStatus, assessmentDetails) {
   } else {
     const current = currentStatus.toLowerCase();
     const next = String(newStatus).toLowerCase();
-    const validTransition =
-      (current === 'recieved' && next === 'assesment' && assessmentRound === 0) ||
-      (current === 'assesment' && next === 'repair in progress' && assessmentRound === 1) ||
-      (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
-      (current === 'assesment' && next === 'repaired' && assessmentRound === 2);
+    const validTransition = isBackward
+      ? (current === 'assesment' && next === 'recieved' && assessmentRound === 1) ||
+        (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
+        (current === 'assesment' && next === 'repair in progress' && assessmentRound === 2) ||
+        (current === 'repaired' && next === 'assesment' && assessmentRound === 2)
+      : (current === 'recieved' && next === 'assesment' && assessmentRound === 0) ||
+        (current === 'assesment' && next === 'repair in progress' && assessmentRound === 1) ||
+        (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
+        (current === 'assesment' && next === 'repaired' && assessmentRound === 2);
     if (!validTransition) {
       throw new Error(`Invalid status transition from ${currentStatus} to ${newStatus}.`);
     }
-    if (next === 'assesment') nextAssessmentRound = assessmentRound + 1;
+    if (isBackward) {
+      if (current === 'assesment' && next === 'recieved') nextAssessmentRound = 0;
+      else if (next === 'repair in progress') nextAssessmentRound = 1;
+    } else if (next === 'assesment') {
+      nextAssessmentRound = assessmentRound + 1;
+    }
   }
 
-  if (String(newStatus).toLowerCase() === 'assesment') {
+  if (String(newStatus).toLowerCase() === 'assesment' && !isBackward) {
     validateTransformerAssessment_(assessmentDetails);
   }
 
@@ -1065,8 +1076,8 @@ function updateTransformerAssessment(id, assessmentDetails) {
     const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
     const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
-    if (['DELIVERED', 'BILLED'].includes(currentStatus.toUpperCase())) {
-      throw new Error('Assessment details cannot be edited after delivery.');
+    if (currentStatus.toUpperCase() === 'BILLED') {
+      throw new Error('Assessment details cannot be edited after billing.');
     }
     const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails');
     if (assessmentDetailsIdx < 0) {
@@ -1117,13 +1128,19 @@ function deleteTransformerAssessment(id) {
 }
 
 function deliverTransformer(id, dcNo) {
-  if (!dcNo || !findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo)) {
+  const dc = dcNo ? findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo) : null;
+  if (!dc) {
     throw new Error('Select an existing delivery challan before delivering a transformer.');
+  }
+  const dcDelivered = dc.headers.indexOf('Delivered');
+  if (dcDelivered < 0 || String(dc.data[dcDelivered]).toLowerCase() !== 'true') {
+    throw new Error('Mark the delivery challan as delivered before delivering its transformers.');
   }
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
   const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
-  if (currentStatus.toLowerCase() !== 'repaired') {
+  const currentDcNo = String(found.data[found.headers.indexOf('DcNo')] || '');
+  if (currentStatus.toLowerCase() !== 'repaired' || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
     throw new Error('Only repaired, non-scrapped transformers can be delivered.');
   }
 
@@ -1176,12 +1193,12 @@ function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
         throw new Error('A TGSPDCL challan can only include transformers from its SPM Center.');
       }
       const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
-      transformerSheet.getRange(transformer.rowIndex, statusColumn + 1).setValue('Delivered');
       transformerSheet.getRange(transformer.rowIndex, dcColumn + 1).setValue(dcNo);
       const updatedColumn = transformerHeaders.indexOf('UpdatedAt');
       if (updatedColumn >= 0) transformerSheet.getRange(transformer.rowIndex, updatedColumn + 1).setValue(getTimestamp());
     } else {
-      if (currentStatus.toLowerCase() !== 'delivered' || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
+      if (!['repaired', 'delivered'].includes(currentStatus.toLowerCase())
+          || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
         throw new Error('Only a transformer assigned to this challan can be removed.');
       }
       const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
@@ -1596,18 +1613,72 @@ function markDCDelivered_(dcNo, attachments) {
     if (!Array.isArray(attachments) || attachments.length === 0) {
       throw new Error('Upload the signed delivery challan before marking it delivered.');
     }
+    const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const transformerData = getSheetData(SHEET_NAMES.TRANSFORMERS);
+    const assignedTransformers = transformerData
+      .filter(transformer => String(transformer.DcNo || '').toLowerCase() === String(dcNo).toLowerCase());
+    if (assignedTransformers.length === 0) {
+      throw new Error('Assign at least one repaired transformer to this challan before marking it delivered.');
+    }
+    const transformerRows = assignedTransformers.map(item => {
+      const transformer = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', item.ID);
+      if (!transformer) throw new Error(`Transformer ${item.ID} assigned to this challan was not found.`);
+      const statusIndex = transformer.headers.indexOf('Status');
+      const dcIndex = transformer.headers.indexOf('DcNo');
+      if (statusIndex < 0 || dcIndex < 0
+          || String(transformer.data[dcIndex] || '').toLowerCase() !== String(dcNo).toLowerCase()
+          || String(transformer.data[statusIndex] || '').toLowerCase() !== 'repaired') {
+        throw new Error(`Transformer ${item.ID} must be repaired and assigned to this challan before delivery.`);
+      }
+      return {
+        row: transformer,
+        statusIndex,
+        updatedAtIndex: transformer.headers.indexOf('UpdatedAt')
+      };
+    });
     const savedAttachments = saveRecordAttachments_(attachments, 'D.S. Transformer Delivered Challans');
-    const sheet = getOrCreateSheet(SHEET_NAMES.DCS);
+    const dcSheet = getOrCreateSheet(SHEET_NAMES.DCS);
     const setValue = (header, value) => {
       const index = headers.indexOf(header);
-      if (index >= 0) sheet.getRange(found.rowIndex, index + 1).setValue(value);
+      if (index >= 0) dcSheet.getRange(found.rowIndex, index + 1).setValue(value);
     };
+    const transformerChanges = [];
+    const originalDcValues = {};
+    ['Delivered', 'DeliveryAttachments', 'DeliveredAt', 'UpdatedAt'].forEach(header => {
+      const index = headers.indexOf(header);
+      if (index >= 0) originalDcValues[header] = found.data[index];
+    });
     const deliveredAt = getTimestamp();
-    setValue('Delivered', true);
-    setValue('DeliveryAttachments', JSON.stringify(savedAttachments));
-    setValue('DeliveredAt', deliveredAt);
-    setValue('UpdatedAt', deliveredAt);
-    return getDCByNo(dcNo);
+    try {
+      setValue('Delivered', true);
+      setValue('DeliveryAttachments', JSON.stringify(savedAttachments));
+      setValue('DeliveredAt', deliveredAt);
+      setValue('UpdatedAt', deliveredAt);
+      transformerRows.forEach(({ row, statusIndex, updatedAtIndex }) => {
+        transformerChanges.push({
+          rowIndex: row.rowIndex,
+          statusIndex,
+          oldStatus: row.data[statusIndex],
+          updatedAtIndex,
+          oldUpdatedAt: updatedAtIndex >= 0 ? row.data[updatedAtIndex] : undefined
+        });
+        transformerSheet.getRange(row.rowIndex, statusIndex + 1).setValue('Delivered');
+        if (updatedAtIndex >= 0) transformerSheet.getRange(row.rowIndex, updatedAtIndex + 1).setValue(deliveredAt);
+      });
+      return getDCByNo(dcNo);
+    } catch (error) {
+      transformerChanges.forEach(change => {
+        transformerSheet.getRange(change.rowIndex, change.statusIndex + 1).setValue(change.oldStatus);
+        if (change.updatedAtIndex >= 0) {
+          transformerSheet.getRange(change.rowIndex, change.updatedAtIndex + 1).setValue(change.oldUpdatedAt);
+        }
+      });
+      Object.keys(originalDcValues).forEach(header => {
+        const index = headers.indexOf(header);
+        dcSheet.getRange(found.rowIndex, index + 1).setValue(originalDcValues[header]);
+      });
+      throw error;
+    }
   } finally {
     lock.releaseLock();
   }
@@ -1627,14 +1698,14 @@ function nextDeliveryChallanNumber_(sheet) {
     financialYear = `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
   }
 
-  const prefix = `DC/${financialYear}/`;
+  const prefix = `DS/${financialYear}/`;
   const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const dcNoIndex = header.indexOf('DcNo');
   const currentNumbers = sheet.getLastRow() > 1
     ? sheet.getRange(2, dcNoIndex + 1, sheet.getLastRow() - 1, 1).getValues().flat()
     : [];
   const nextNumber = currentNumbers.reduce((maximum, value) => {
-    const match = String(value || '').trim().match(new RegExp(`^DC/${financialYear.replace('-', '\\-')}/(\\d+)$`, 'i'));
+    const match = String(value || '').trim().match(new RegExp(`^DS/${financialYear.replace('-', '\\-')}/(\\d+)$`, 'i'));
     return match ? Math.max(maximum, Number(match[1])) : maximum;
   }, 499) + 1;
   return `${prefix}${nextNumber}`;
@@ -1679,7 +1750,11 @@ function saveGeneratedDCChallanPdf_(dcNo, fileName, dataUrl) {
   sheet.getRange(found.rowIndex, urlColumn).setValue(file.getUrl());
   sheet.getRange(found.rowIndex, fileIdColumn).setValue(file.getId());
   if (updatedColumn > 0) sheet.getRange(found.rowIndex, updatedColumn).setValue(getTimestamp());
-  return getDCByNo(dcNo);
+  const savedDC = getDCByNo(dcNo);
+  if (savedDC.status !== 'SUCCESS' || !savedDC.data) {
+    throw new Error('Delivery challan PDF was saved, but the challan record could not be reloaded.');
+  }
+  return savedDC;
 }
 
 function updateDC(dcNo, data) {
@@ -1744,6 +1819,19 @@ function deleteDC(dcNo) {
     throw new Error('A delivered challan cannot be deleted.');
   }
 
+  const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+  getSheetData(SHEET_NAMES.TRANSFORMERS)
+    .filter(transformer => String(transformer.DcNo || '').toLowerCase() === String(dcNo).toLowerCase())
+    .forEach(transformer => {
+      const linked = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', transformer.ID);
+      if (!linked) return;
+      const dcIndex = linked.headers.indexOf('DcNo');
+      if (dcIndex >= 0) transformerSheet.getRange(linked.rowIndex, dcIndex + 1).clearContent();
+      const statusIndex = linked.headers.indexOf('Status');
+      if (statusIndex >= 0 && String(linked.data[statusIndex]).toLowerCase() === 'delivered') {
+        transformerSheet.getRange(linked.rowIndex, statusIndex + 1).setValue('Repaired');
+      }
+    });
   const sheet = getOrCreateSheet(SHEET_NAMES.DCS);
   sheet.deleteRow(found.rowIndex);
   return { status: 'SUCCESS', message: 'DC deleted successfully' };
@@ -1799,33 +1887,46 @@ function getBillBySapNo(sapNo) {
 function addBill(data) {
   const sheet = initializeSheet(SHEET_NAMES.BILLS, SHEET_HEADERS.Bills);
   const now = getTimestamp();
-  const sapNo = String(data.sapNo || `SAP-${Date.now().toString().slice(-4)}`);
+  const sapNo = String(data.sapNo || '').trim();
+  if (!sapNo) throw new Error('SAP number is required.');
 
-  const existing = findRowByValue(SHEET_NAMES.BILLS, 'SapNo', sapNo);
-  if (existing) {
-    return updateBill(sapNo, data);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (findRowByValue(SHEET_NAMES.BILLS, 'SapNo', sapNo)) {
+      throw new Error(`A bill with SAP number "${sapNo}" already exists.`);
+    }
+
+    const attachments = saveRecordAttachments_(data.attachments, 'D.S. Transformer Bill Attachments');
+    const values = {
+      SapNo: sapNo,
+      Date: data.date || new Date().toISOString().split('T')[0],
+      SpmCenter: data.spmCenter || '',
+      TotalTransformers: Number(data.totalTransformers || 0),
+      BillAmount: Number(data.billAmount || 0),
+      CreatedAt: now,
+      UpdatedAt: now,
+      Attachments: JSON.stringify(attachments),
+      AgreementNo: data.agreementNo || '',
+      GSTAmount: Number(data.gstAmount || 0),
+      Status: data.status || 'PENDING',
+      AmountCredited: data.amountCredited || '',
+      CreditedDate: data.creditedDate || '',
+      GSTFilingMonth: data.gstFilingMonth || '',
+      InvoiceNo: data.invoiceNo || ''
+    };
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    sheet.appendRow(headers.map(header => values[header] === undefined ? '' : values[header]));
+    return { status: 'SUCCESS', data: {
+      sapNo: values.SapNo, agreementNo: values.AgreementNo, date: values.Date,
+      spmCenter: values.SpmCenter, totalTransformers: values.TotalTransformers,
+      billAmount: values.BillAmount, gstAmount: values.GSTAmount, status: values.Status,
+      amountCredited: values.AmountCredited || null, creditedDate: values.CreditedDate || null,
+      gstFilingMonth: values.GSTFilingMonth, invoiceNo: values.InvoiceNo, attachments: attachments
+    } };
+  } finally {
+    lock.releaseLock();
   }
-
-  const attachments = saveRecordAttachments_(data.attachments, 'D.S. Transformer Bill Attachments');
-  const row = [
-    sapNo,
-    data.date || new Date().toISOString().split('T')[0],
-    data.spmCenter || '',
-    data.totalTransformers || 0,
-    data.billAmount || 0,
-    now,
-    now,
-    JSON.stringify(attachments),
-    data.agreementNo || '',
-    data.gstAmount || 0,
-    data.status || 'PENDING',
-    data.amountCredited || '',
-    data.creditedDate || '',
-    data.gstFilingMonth || '',
-    data.invoiceNo || ''
-  ];
-  sheet.appendRow(row);
-  return { status: 'SUCCESS', data: { sapNo: sapNo, agreementNo: data.agreementNo || '', date: data.date, spmCenter: data.spmCenter, totalTransformers: data.totalTransformers, billAmount: data.billAmount, gstAmount: data.gstAmount || 0, status: data.status || 'PENDING', amountCredited: data.amountCredited || null, creditedDate: data.creditedDate || null, gstFilingMonth: data.gstFilingMonth || '', invoiceNo: data.invoiceNo || '', attachments: attachments } };
 }
 
 function updateBill(sapNo, data) {
@@ -3382,7 +3483,8 @@ function doPost(e) {
         result = updateTransformerStatus(
           payload.id || raw.id,
           payload.status || raw.status,
-          payload.assessmentDetails || raw.assessmentDetails
+          payload.assessmentDetails || raw.assessmentDetails,
+          payload.backward || raw.backward
         );
         break;
       case 'UPDATE_TRANSFORMER_ASSESSMENT':
