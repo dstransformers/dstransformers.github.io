@@ -3077,10 +3077,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
 
   const createAndSaveDCFile = async (dc) => {
     const generatedPdf = await generateDeliveryChallanPdf(dc, deliveryChallanTemplateUrl)
-    const response = await apiFetch(`/api/dcs/${encodeURIComponent(dc.dcNo)}/generated-pdf`, {
+    const response = await apiFetch('/api/dcs/generated-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(generatedPdf),
+      body: JSON.stringify({ ...generatedPdf, dcNo: dc.dcNo }),
     })
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}))

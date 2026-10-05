@@ -3,6 +3,7 @@ package com.vstms.backend;
 import com.vstms.backend.model.TNoteDTO;
 import com.vstms.backend.model.TransformerDTO;
 import com.vstms.backend.model.BillDTO;
+import com.vstms.backend.model.DcDTO;
 import com.vstms.backend.security.FirebaseTokenVerifier;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -132,6 +133,24 @@ class BackendApplicationTests {
 		assertTrue(result.getResponse().getContentAsString().contains("\"sapNo\":\"SAP-QA-1\""));
 		assertTrue(result.getResponse().getContentAsString().contains("\"agreementNo\":\"AGR-1\""));
 		assertTrue(result.getResponse().getContentAsString().contains("\"spmCenter\":\"Warangal\""));
+	}
+
+	@Test
+	void generatedPdfRequestSupportsSlashDelimitedChallanNumbers() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		when(googleSheetsService.saveGeneratedChallanPdf(
+				eq("DS/26-27/501"), eq("DS-26-27-501.pdf"), eq("data:application/pdf;base64,QA")))
+				.thenReturn(new DcDTO("DS/26-27/501", LocalDate.of(2026, 10, 5), "Warangal", 1));
+
+		mockMvc.perform(post("/api/dcs/generated-pdf")
+						.header("Authorization", "Bearer unit-test-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"dcNo\":\"DS/26-27/501\",\"fileName\":\"DS-26-27-501.pdf\",\"dataUrl\":\"data:application/pdf;base64,QA\"}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).saveGeneratedChallanPdf(
+				"DS/26-27/501", "DS-26-27-501.pdf", "data:application/pdf;base64,QA");
 	}
 
 	@Test

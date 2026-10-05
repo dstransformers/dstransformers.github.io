@@ -78,11 +78,11 @@ public class DcController {
         return googleSheetsService.markDCAsDelivered(request.dcNo(), request.attachments());
     }
 
-    @PostMapping("/{dcNo}/generated-pdf")
+    @PostMapping("/generated-pdf")
     public DcDTO saveGeneratedPdf(
-            @PathVariable @NotBlank String dcNo,
             @Valid @RequestBody GeneratedPdfRequest request) {
-        return googleSheetsService.saveGeneratedChallanPdf(dcNo, request.fileName(), request.dataUrl());
+        return googleSheetsService.saveGeneratedChallanPdf(
+                request.dcNo(), request.fileName(), request.dataUrl());
     }
 
     @PostMapping
@@ -318,6 +318,7 @@ public class DcController {
     ) {}
 
     public record GeneratedPdfRequest(
+            @NotBlank String dcNo,
             @NotBlank String fileName,
             @NotBlank String dataUrl
     ) {}
