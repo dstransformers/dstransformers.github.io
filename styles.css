@@ -184,16 +184,11 @@ p {
 }
 
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 44px;
+  display: block;
+  width: 58px;
   height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--navy), var(--navy-soft));
-  color: #fff;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  box-shadow: var(--shadow);
+  flex: 0 0 58px;
+  object-fit: contain;
 }
 
 .brand-text {
@@ -1733,10 +1728,9 @@ p {
   }
 
   .brand-mark {
-    width: 38px;
+    width: 50px;
     height: 38px;
-    border-radius: 10px;
-    font-size: 0.8rem;
+    flex-basis: 50px;
   }
 
   .brand-text strong {

@@ -3608,7 +3608,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((prev) => !prev)} aria-label="Toggle sidebar">
             {sidebarCollapsed ? '>' : '<'}
           </button>
-          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="DS Transformers logo" className="sidebar-logo" />
+          <img src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`} alt="DS Transformers logo" className="sidebar-logo" />
           {!sidebarCollapsed && <span className="sidebar-title">V S Transformers</span>}
         </div>
         <nav className="sidebar-nav">
@@ -3630,7 +3630,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         <header className="hero">
           <div className="hero__content hero__content--compact dashboard-header">
             <div className="dashboard-brand">
-              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="DS Transformers logo" className="hero-logo" />
+              <img src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`} alt="DS Transformers logo" className="hero-logo" />
               <h1>V S Transformers Management System</h1>
             </div>
             <div className="dashboard-header-actions">

@@ -30,9 +30,7 @@
 .sidebar-logo {
   width: 36px;
   height: 36px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: #111827;
+  object-fit: contain;
 }
 
 .sidebar-title {
@@ -128,12 +126,10 @@
 
 .hero-logo {
   position: static;
-  flex: 0 0 40px;
-  width: 40px;
+  flex: 0 0 54px;
+  width: 54px;
   height: 40px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: #111827;
+  object-fit: contain;
 }
 
 h1 {
@@ -2393,8 +2389,8 @@ h1 {
   }
 
   .hero-logo {
-    flex: 0 0 34px;
-    width: 34px;
+    flex: 0 0 46px;
+    width: 46px;
     height: 34px;
   }
 

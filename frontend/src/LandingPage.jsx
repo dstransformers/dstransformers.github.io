@@ -270,7 +270,11 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       <header className="site-header">
         <div className="landing-container nav-wrap">
           <a href="#top" className="brand" aria-label="D.S. Transformers home">
-            <span className="brand-mark">DS</span>
+            <img
+              src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`}
+              alt="DS Transformers logo"
+              className="brand-mark"
+            />
             <span className="brand-text">
               <strong>D.S. TRANSFORMERS</strong>
               <small>Electrical Contractor & Repair Specialist</small>

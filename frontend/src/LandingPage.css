@@ -67,16 +67,11 @@
 }
 
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 44px;
+  display: block;
+  width: 58px;
   height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--ds-navy), var(--ds-navy-soft));
-  color: #fff;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  box-shadow: 0 6px 16px rgba(13, 27, 42, 0.2);
+  flex: 0 0 58px;
+  object-fit: contain;
 }
 
 .brand-text {
@@ -1434,7 +1429,8 @@ body.quote-modal-open {
   }
 
   .brand-mark {
-    flex: 0 0 38px;
+    width: 50px;
+    flex-basis: 50px;
   }
 
   .brand-text strong {
