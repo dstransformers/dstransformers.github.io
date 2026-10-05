@@ -52,7 +52,7 @@ const SHEET_HEADERS = {
 const DEFAULT_QUOTATION_SETTINGS = [
   ['Business Name', 'M/s. D.S. TRANSFORMERS & ELECTRICAL CONTRACTOR'],
   ['Business Email', 'ds.transformerelectrical@gmail.com'],
-  ['WhatsApp', '919949396530'],
+  ['WhatsApp', '918885250302'],
   ['Financial Year', '26-27'],
   ['Starting Quotation Number', '710'],
   ['Letterhead Presentation ID', '1W7qyj0bRI5jbMlgc-RtXA-UYnbOvxBaqvBk-nrvF-5U'],
@@ -194,6 +194,9 @@ function initializeSheet(sheetName, headers) {
     if (missingHeaders.length > 0) {
       sheet.getRange(1, existingHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
     }
+  }
+  if (sheetName === SHEET_NAMES.BILLS && sheet.getLastColumn() > 0) {
+    sheet.getRange(1, 1, 1, sheet.getLastColumn()).setHorizontalAlignment('left');
   }
   return sheet;
 }

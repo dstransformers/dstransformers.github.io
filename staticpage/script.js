@@ -2,7 +2,7 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrWX_cP6X7vh52
 
 const appConfig = {
   businessEmail: 'ds.transformerelectrical@gmail.com',
-  businessWhatsApp: '919949396530',
+  businessWhatsApp: '918885250302',
   storageKey: 'ds_transformers_enquiries_v1'
 };
 

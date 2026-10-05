@@ -329,6 +329,8 @@ const indianCurrencyWords = (amount) => {
 function App() {
   const [showPublicSite, setShowPublicSite] = useState(false)
   const authUser = useSyncExternalStore(subscribeToAuth, getAuthSnapshot, getAuthSnapshot)
+  const [initialPageLoadedFor, setInitialPageLoadedFor] = useState('')
+  const initialPageReady = Boolean(authUser && initialPageLoadedFor === authUser.uid)
   const adminLoginOnly = window.location.pathname.replace(/\/+$/, '') === '/admin'
   const [currentTab, setCurrentTab] = useState('quotations')
   const [transformers, setTransformers] = useState([])
@@ -698,12 +700,7 @@ function App() {
     })
 
   useEffect(() => {
-    if (!authUser) return
-    fetchDropdownDefaults()
-  }, [authUser])
-
-  useEffect(() => {
-    if (!authUser) return
+    if (!authUser || !initialPageReady) return
     fetchTransformers()
     fetchSummary()
   }, [authUser, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, typeFilter, capacityFilter])
@@ -719,9 +716,8 @@ function App() {
   }, [openFilterColumn])
 
   useEffect(() => {
-    if (!authUser) return
+    if (!authUser || !initialPageReady) return
     if (currentTab === 'enquiries') fetchEnquiries()
-    if (currentTab === 'quotations') fetchQuotations()
     if (currentTab === 'tnotes') fetchTNotes()
     if (currentTab === 'dcs') fetchDCs()
     if (currentTab === 'bills') fetchBills()
@@ -735,6 +731,18 @@ function App() {
     if (!value) return ''
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
+  }
+
+  const dateInputValue = (value) => {
+    if (!value) return ''
+    const isoDate = String(value).match(/^(\d{4}-\d{2}-\d{2})/)
+    if (isoDate) return isoDate[1]
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
   }
 
   const sortByDateDescending = (rows, dateAccessor, tieBreaker = () => '') =>
@@ -752,7 +760,7 @@ function App() {
     })
 
   const filteredTNotes = tnotes.filter((tnote) => {
-    const dateValue = formattedDate(tnote.date)
+    const dateValue = dateInputValue(tnote.date)
     const centers = [...new Set((tnote.transformers || []).map(transformer => transformer.spmCenter).filter(Boolean))]
     return (
       (tnoteNoFilter.length === 0 || tnoteNoFilter.includes(String(tnote.tNoteNo || tnote.id))) &&
@@ -770,7 +778,7 @@ function App() {
   const visibleTNotes = sortedTNotes.slice(safeTnotePage * tnotePageSize, (safeTnotePage + 1) * tnotePageSize)
 
   const filteredDcs = dcs.filter((dc) => {
-    const dateValue = formattedDate(dc.date)
+    const dateValue = dateInputValue(dc.date)
     return (
       (dcNoFilter.length === 0 || dcNoFilter.some(filter => dc.dcNo.toLowerCase().includes(filter.toLowerCase()))) &&
       (dcDateFilter.length === 0 || dcDateFilter.includes(dateValue)) &&
@@ -783,7 +791,7 @@ function App() {
   const visibleDcs = sortedDcs.slice(safeDcPage * dcPageSize, (safeDcPage + 1) * dcPageSize)
 
   const filteredBills = bills.filter((bill) => {
-    const dateValue = formattedDate(bill.date)
+    const dateValue = dateInputValue(bill.date)
     return (
       (billSapFilter.length === 0 || billSapFilter.some(filter => bill.sapNo.toLowerCase().includes(filter.toLowerCase()))) &&
       (billDateFilter.length === 0 || billDateFilter.includes(dateValue)) &&
@@ -794,7 +802,7 @@ function App() {
 
   const enquiryColumns = [
     { key: 'id', label: 'ID', value: enquiry => String(enquiry.ID || '—') },
-    { key: 'date', label: 'Date', value: enquiry => formattedDate(enquiry.Date) || '—' },
+    { key: 'date', label: 'Date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
     { key: 'company', label: 'Company', value: enquiry => enquiry.CustomerName || '—' },
     { key: 'contact', label: 'Contact Person', value: enquiry => enquiry.ContactPerson || '—' },
     { key: 'mobile', label: 'Mobile', value: enquiry => enquiry.CustomerPhone || '—' },
@@ -813,7 +821,7 @@ function App() {
   const quotationColumns = [
     { key: 'documentType', label: 'Document Type', value: quotation => quotation.documentType === 'BILL' ? 'Bill' : 'Quotation' },
     { key: 'number', label: 'Document No.', value: quotation => quotation.quotationNo || '—' },
-    { key: 'date', label: 'Date', value: quotation => formattedDate(quotation.quotationDate) || '—' },
+    { key: 'date', label: 'Date', value: quotation => dateInputValue(quotation.quotationDate) || '—' },
     { key: 'customer', label: 'Customer', value: quotation => quotation.customerName || '—' },
     { key: 'mobile', label: 'Mobile', value: quotation => quotation.mobile || '—' },
     { key: 'capacity', label: 'Capacity', value: quotation => quotation.transformerCapacity || '—' },
@@ -856,7 +864,7 @@ function App() {
 
   const tnoteOptions = {
     tnoteNo: uniqueValues(tnotes, (tnote) => String(tnote.tNoteNo || tnote.id)),
-    date: uniqueValues(tnotes, (tnote) => formattedDate(tnote.date)),
+    date: uniqueValues(tnotes, (tnote) => dateInputValue(tnote.date)),
     count: uniqueValues(tnotes, (tnote) => String(tnote.numberOfTransformers)),
     spmCenter: uniqueValues(
       tnotes.flatMap(tnote => (tnote.transformers || []).map(transformer => transformer.spmCenter).filter(Boolean)),
@@ -869,13 +877,13 @@ function App() {
 
   const dcOptions = {
     dcNo: uniqueValues(dcs, (dc) => dc.dcNo),
-    date: uniqueValues(dcs, (dc) => formattedDate(dc.date)),
+    date: uniqueValues(dcs, (dc) => dateInputValue(dc.date)),
     spmCenter: uniqueValues(dcs, (dc) => getDCSpmCenter(dc)),
   }
 
   const billOptions = {
     sapNo: uniqueValues(bills, (bill) => bill.sapNo),
-    date: uniqueValues(bills, (bill) => formattedDate(bill.date)),
+    date: uniqueValues(bills, (bill) => dateInputValue(bill.date)),
     spmCenter: uniqueValues(bills, (bill) => bill.spmCenter || ''),
   }
 
@@ -1220,6 +1228,26 @@ ${styles}
       setQuotationsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (authUser === undefined) return
+    if (!authUser) return
+
+    let cancelled = false
+    Promise.all([
+      fetchDropdownDefaults(),
+      fetchTransformers(),
+      fetchSummary(),
+      fetchQuotations(),
+    ]).finally(() => {
+      if (cancelled) return
+      setInitialPageLoadedFor(authUser.uid)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [authUser])
 
   const openNewQuotation = (documentType = 'QUOTATION') => {
     setQuotationsSuccess('')
@@ -2736,10 +2764,10 @@ ${styles}
       const statusData = status === 'RECEIVED'
         ? { status, amountCredited: Number(billReceiptAmount), creditedDate: billReceiptDate }
         : { status, gstFilingMonth: billGstFilingMonth, invoiceNo: billInvoiceNo.trim() }
-      const response = await apiFetch(`/api/bills/${encodeURIComponent(activeBill.sapNo)}/status`, {
+      const response = await apiFetch('/api/bills/status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(statusData),
+        body: JSON.stringify({ ...statusData, sapNo: activeBill.sapNo }),
       })
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}))
@@ -3415,6 +3443,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   const FilterHeader = ({ column, value, onFilter, options = null, resetPage = true }) => {
     const isOpen = openFilterColumn === column
     const searchText = filterSearchText[column] || ''
+    const isDateFilter = column.toLowerCase() === 'date'
 
     const handleFilterChange = (newValue, closeDropdown = true) => {
       if (typeof resetPage === 'function') resetPage()
@@ -3445,15 +3474,33 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         </button>
         {isOpen && (
           <div className="filter-dropdown">
-            <input
-              type="text"
-              placeholder="Search..."
-              className="filter-search-input"
-              value={searchText}
-              onChange={(e) => setFilterSearchText((prev) => ({ ...prev, [column]: e.target.value }))}
-              autoFocus
-            />
-            {column === 'Status' && !options ? (
+            {isDateFilter ? (
+              <div className="filter-date-options">
+                <input
+                  type="date"
+                  className="filter-date-input"
+                  aria-label="Filter by date"
+                  value={value[0] || ''}
+                  onChange={(event) => handleFilterChange(event.target.value ? [event.target.value] : [], false)}
+                />
+                <button
+                  className="btn btn--small btn--ghost"
+                  onClick={() => handleFilterChange([])}
+                >
+                  Clear Date
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  placeholder="Search unique values..."
+                  className="filter-search-input"
+                  value={searchText}
+                  onChange={(e) => setFilterSearchText((prev) => ({ ...prev, [column]: e.target.value }))}
+                  autoFocus
+                />
+                {column === 'Status' && !options ? (
               <div className="filter-options">
                 <button
                   className="btn btn--small btn--ghost"
@@ -3525,6 +3572,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   Clear
                 </button>
               </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -3532,8 +3581,13 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     )
   }
 
-  if (authUser === undefined) {
-    return <div className="auth-loading" role="status">Checking admin access...</div>
+  if (authUser === undefined || (authUser && !initialPageReady)) {
+    return (
+      <div className="auth-loading" role="status" aria-live="polite" aria-busy="true">
+        <span className="page-loading-spinner" aria-hidden="true" />
+        <span>{authUser === undefined ? 'Checking access...' : 'Loading application...'}</span>
+      </div>
+    )
   }
 
   if (!authUser || showPublicSite) {

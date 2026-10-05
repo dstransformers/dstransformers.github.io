@@ -30,9 +30,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -164,6 +166,31 @@ class BackendApplicationTests {
 						.content("{\"sapNo\":\"SAP-QA-INVALID\",\"agreementNo\":\"AGR-1\",\"date\":\"2026-10-05\",\"spmCenter\":\"Warangal\",\"totalTransformers\":1,\"attachments\":[]}"))
 				.andExpect(status().isBadRequest());
 
+		verify(googleSheetsService, org.mockito.Mockito.never()).saveBill(any(BillDTO.class));
+	}
+
+	@Test
+	void receivingBillUsesUpdateActionAndSupportsSlashDelimitedSapNumber() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		BillDTO pendingBill = new BillDTO(
+				"SAP/QA/001", LocalDate.of(2026, 10, 5), "Warangal", 1, 1000.0);
+		when(googleSheetsService.getBillById("SAP/QA/001"))
+				.thenReturn(Optional.of(pendingBill));
+		when(googleSheetsService.updateBill(any(BillDTO.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+
+		mockMvc.perform(patch("/api/bills/status")
+						.header("Authorization", "Bearer unit-test-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"sapNo\":\"SAP/QA/001\",\"status\":\"RECEIVED\",\"amountCredited\":1000,\"creditedDate\":\"2026-10-05\"}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).updateBill(argThat(bill ->
+				"SAP/QA/001".equals(bill.getSapNo())
+						&& "RECEIVED".equals(bill.getStatus())
+						&& Double.valueOf(1000).equals(bill.getAmountCredited())
+						&& LocalDate.of(2026, 10, 5).equals(bill.getCreditedDate())));
 		verify(googleSheetsService, org.mockito.Mockito.never()).saveBill(any(BillDTO.class));
 	}
 

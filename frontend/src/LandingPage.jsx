@@ -303,7 +303,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
           </nav>
 
           <div className="header-actions">
-            <a className="landing-btn btn-whatsapp" href="https://wa.me/919949396530" target="_blank" rel="noreferrer">
+            <a className="landing-btn btn-whatsapp" href="https://wa.me/918885250302" target="_blank" rel="noreferrer">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.771-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.074-1.926-.461-1.393-.578-2.316-1.989-2.387-2.083-.07-.095-.572-.76-.572-1.448 0-.689.362-1.028.49-1.168.129-.14.282-.175.376-.175.093 0 .188.001.27.005.087.004.204-.033.319.243.12.288.409 1.002.446 1.075.037.073.061.16.012.257-.048.098-.073.159-.145.243-.072.085-.152.189-.217.254-.073.072-.149.151-.064.297.085.146.377.623.81 1.008.558.496 1.029.65 1.175.723.146.073.232.064.318-.036.087-.1.373-.434.473-.583.1-.149.2-.124.335-.075.136.049.864.407 1.012.481.149.074.248.111.285.174.037.063.037.367-.107.772z"/>
               </svg>
@@ -365,7 +365,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
 
             <div className="hero-cta">
               <a className="landing-btn btn-primary" href="#quotation-form" onClick={openQuotationModal}>Request Instant Quotation</a>
-              <a className="landing-btn btn-whatsapp" href="https://wa.me/919949396530" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
+              <a className="landing-btn btn-whatsapp" href="https://wa.me/918885250302" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
             </div>
           </div>
 
@@ -717,7 +717,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               <a href="#why-us">Why Choose Us</a>
               <a href="#machinery">Machinery & Facility</a>
               <a href="#quotation-form" onClick={openQuotationModal}>Request Quotation</a>
-              <a href="https://wa.me/919949396530" target="_blank" rel="noreferrer">WhatsApp Chat</a>
+              <a href="https://wa.me/918885250302" target="_blank" rel="noreferrer">WhatsApp Chat</a>
             </div>
 
             <div className="footer-col">

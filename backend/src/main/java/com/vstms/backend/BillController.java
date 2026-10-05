@@ -79,10 +79,23 @@ public class BillController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @PatchMapping("/{sapNo}/status")
+    @PatchMapping("/status")
     public ResponseEntity<BillDTO> updateBillStatus(
+            @RequestBody BillStatusRequest request) {
+        return updateBillStatus(request.getSapNo(), request);
+    }
+
+    @PatchMapping("/{sapNo}/status")
+    public ResponseEntity<BillDTO> updateBillStatusBySapNo(
             @PathVariable String sapNo,
             @RequestBody BillStatusRequest request) {
+        return updateBillStatus(sapNo, request);
+    }
+
+    private ResponseEntity<BillDTO> updateBillStatus(String sapNo, BillStatusRequest request) {
+        if (sapNo == null || sapNo.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SAP number is required.");
+        }
         BillDTO bill = googleSheetsService.getBillById(sapNo)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Bill not found."));
         String currentStatus = bill.getStatus() == null ? "PENDING" : bill.getStatus().toUpperCase();
@@ -113,7 +126,7 @@ public class BillController {
         }
 
         bill.setStatus(nextStatus);
-        return ResponseEntity.ok(googleSheetsService.saveBill(bill));
+        return ResponseEntity.ok(googleSheetsService.updateBill(bill));
     }
 
     @DeleteMapping("/{sapNo}")
@@ -210,11 +223,20 @@ public class BillController {
     }
 
     public static class BillStatusRequest {
+        private String sapNo;
         private String status;
         private Double amountCredited;
         private LocalDate creditedDate;
         private String gstFilingMonth;
         private String invoiceNo;
+
+        public String getSapNo() {
+            return sapNo;
+        }
+
+        public void setSapNo(String sapNo) {
+            this.sapNo = sapNo;
+        }
 
         public String getStatus() {
             return status;

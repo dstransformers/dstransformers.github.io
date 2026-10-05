@@ -1232,6 +1232,27 @@ public class GoogleSheetsService {
                 message);
     }
 
+    public BillDTO updateBill(BillDTO bill) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "UPDATE_BILL");
+        payload.put("payload", bill);
+        Map<String, Object> res = postToAppsScript(payload);
+        if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
+            BillDTO updated = objectMapper.convertValue(res.get("data"), BillDTO.class);
+            if (updated != null && Objects.equals(bill.getSapNo(), updated.getSapNo())) {
+                billCache.put(updated.getSapNo(), updated);
+                return updated;
+            }
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Apps Script returned an invalid bill after updating its status.");
+        }
+        HttpStatus status = "NOT_FOUND".equals(res.get("status")) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY;
+        throw new ResponseStatusException(
+                status,
+                String.valueOf(res.getOrDefault("message", "Failed to update bill.")));
+    }
+
     public void deleteBill(String sapNo) {
         billCache.remove(sapNo);
         Map<String, Object> payload = new HashMap<>();
