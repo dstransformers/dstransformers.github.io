@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, firebaseConfigured } from './firebase';
 import { publicApiFetch } from './api';
+import { hideLoading, showLoading } from './globalLoading';
 import './LandingPage.css';
 
 export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashboard }) {
@@ -103,6 +104,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       return;
     }
 
+    showLoading();
     try {
       await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
       setShowLoginModal(false);
@@ -124,6 +126,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       setLoginError(messages[errorCode] || `Sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase account and provider settings.`);
     } finally {
       setLoginLoading(false);
+      hideLoading();
     }
   };
 
@@ -137,6 +140,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       return;
     }
 
+    showLoading();
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
       setShowLoginModal(false);
@@ -155,6 +159,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       setLoginError(messages[errorCode] || `Google sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase provider and authorized domain settings.`);
     } finally {
       setLoginLoading(false);
+      hideLoading();
     }
   };
 
@@ -168,6 +173,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     setQuoteSuccess('');
     setQuoteError('');
 
+    showLoading();
     try {
       const attachments = await Promise.all(quotationPhotos.map((photo) => new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -226,6 +232,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       setQuoteError(err instanceof Error ? err.message : 'Failed to submit quotation request. Please try again.');
     } finally {
       setQuoteLoading(false);
+      hideLoading();
     }
   };
 
@@ -686,7 +693,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
 
                 <div className="quote-form-actions">
                   <button type="submit" disabled={quoteLoading || dropdownDefaultsLoading || Boolean(dropdownDefaultsError)} className="landing-btn btn-primary">
-                    {quoteLoading ? 'Submitting request...' : dropdownDefaultsLoading ? 'Loading options...' : 'Submit Quotation Request'}
+                    Submit Quotation Request
                   </button>
                 </div>
               </form>
@@ -792,7 +799,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   <path fill="#FBBC05" d="M10.53 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.9 23.9 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)"/>
                   <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -4)"/>
                 </svg>
-                <span>{loginLoading ? 'Signing in...' : 'Sign in with Google'}</span>
+                <span>Sign in with Google</span>
               </button>
 
               <div className="admin-login-divider" aria-hidden="true">
@@ -831,7 +838,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   disabled={loginLoading}
                   className="admin-submit-btn"
                 >
-                  {loginLoading ? 'Authenticating...' : 'Sign In to Dashboard →'}
+                  Sign In to Dashboard →
                 </button>
               </form>
             </div>

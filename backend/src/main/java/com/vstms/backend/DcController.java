@@ -5,8 +5,10 @@ import com.vstms.backend.model.DcDTO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -64,6 +66,11 @@ public class DcController {
         return googleSheetsService.addTransformerToDC(dcNo, request.transformerId());
     }
 
+    @PostMapping("/transformers/batch")
+    public DcDTO addTransformers(@Valid @RequestBody DcTransformersRequest request) {
+        return googleSheetsService.addTransformersToDC(request.dcNo(), request.transformerIds());
+    }
+
     @DeleteMapping("/transformers")
     public DcDTO removeTransformer(@RequestParam String dcNo, @RequestParam Long transformerId) {
         return googleSheetsService.removeTransformerFromDC(dcNo, transformerId);
@@ -109,6 +116,14 @@ public class DcController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Include saved details for every transformer selected for this challan.");
         }
+        if (request.getTransformerIds() == null || request.getTransformerIds().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Select at least one transformer for this challan.");
+        }
+        if (request.getTransformerIds().stream().distinct().count() != request.getTransformerIds().size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Select distinct transformers for this challan.");
+        }
         if (Boolean.TRUE.equals(request.getSentToTgspdcl())) {
             Set<String> centers = new HashSet<>();
             for (Map<String, Object> detail : request.getTransformerDetails()) {
@@ -127,7 +142,7 @@ public class DcController {
                         "TGSPDCL challan customer name and address must use the generated TGSPDCL details.");
             }
         }
-        return googleSheetsService.saveDC(dc);
+        return googleSheetsService.saveDC(dc, request.getTransformerIds(), request.getRequestId());
     }
 
     @PutMapping("/{dcNo}")
@@ -180,6 +195,8 @@ public class DcController {
 
     public static class DcRequest {
         private String dcNo;
+        @NotBlank
+        private String requestId;
         @NotNull
         private LocalDate date;
         private String spmCenter;
@@ -201,6 +218,7 @@ public class DcController {
         @NotNull
         private Boolean sentToTgspdcl;
         private List<Map<String, Object>> transformerDetails;
+        private List<Long> transformerIds;
 
         public String getDcNo() {
             return dcNo;
@@ -208,6 +226,14 @@ public class DcController {
 
         public void setDcNo(String dcNo) {
             this.dcNo = dcNo;
+        }
+
+        public String getRequestId() {
+            return requestId;
+        }
+
+        public void setRequestId(String requestId) {
+            this.requestId = requestId;
         }
 
         public LocalDate getDate() {
@@ -308,9 +334,21 @@ public class DcController {
             this.transformerDetails = transformerDetails;
         }
 
+        public List<Long> getTransformerIds() {
+            return transformerIds;
+        }
+
+        public void setTransformerIds(List<Long> transformerIds) {
+            this.transformerIds = transformerIds;
+        }
+
     }
 
     public record DcTransformerRequest(@NotBlank String dcNo, @NotNull Long transformerId) {}
+
+        public record DcTransformersRequest(
+            @NotBlank String dcNo,
+            @NotEmpty List<@NotNull @Positive Long> transformerIds) {}
 
     public record MarkDeliveredRequest(
             @NotBlank String dcNo,

@@ -2,6 +2,14 @@
 setlocal
 cd /d "%~dp0"
 
+if exist "%ProgramFiles%\Java\jdk-17\bin\java.exe" (
+  set "JAVA_HOME=%ProgramFiles%\Java\jdk-17"
+  set "PATH=%JAVA_HOME%\bin;%PATH%"
+) else (
+  echo Java 17 was not found at %ProgramFiles%\Java\jdk-17. Install JDK 17 before starting VSTMS.
+  exit /b 1
+)
+
 if not exist "frontend\.env.local" (
   echo Missing frontend\.env.local. Add Firebase web settings before starting VSTMS.
   exit /b 1
@@ -23,11 +31,7 @@ if not exist "%APPDATA%\gcloud\application_default_credentials.json" (
 )
 
 set "FIREBASE_PROJECT_ID=vs-transformers-quotation"
-if not defined ADMIN_EMAILS set /p "ADMIN_EMAILS=Enter the Firebase admin email(s), comma-separated: "
-if not defined ADMIN_EMAILS (
-  echo At least one admin email is required.
-  exit /b 1
-)
+set "ADMIN_EMAILS=ds.transformerelectrical@gmail.com"
 
 set "GOOGLE_APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec"
 set "CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://dstransformers.github.io"

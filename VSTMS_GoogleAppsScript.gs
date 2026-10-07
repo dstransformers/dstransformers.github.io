@@ -2,7 +2,8 @@
  * VSTMS Google Apps Script - Single Source of Truth
  *
  * Manages data in Google Sheets for the complete VSTMS application:
- * Sheets: Enquiries, Services, Jobs, Transformers, TNotes, DCs, Bills
+ * Sheets: Enquiries, Services, Jobs, Transformers, TNotes, DCs, Bills,
+ * Employees, Attendance, Holidays, Salaries
  *
  * Deployment:
  * 1. Open Google Sheet > Extensions > Apps Script
@@ -30,7 +31,11 @@ const SHEET_NAMES = {
   QUOTATION_FORM: 'Quotation_Form',
   QUOTATION_SETTINGS: 'Quotation Settings',
   QUOTATION_RATES: 'Quotation Rates',
-  DROPDOWN_DEFAULTS: 'Dropdown Defaults'
+  DROPDOWN_DEFAULTS: 'Dropdown Defaults',
+  EMPLOYEES: 'Employees',
+  ATTENDANCE: 'Attendance',
+  HOLIDAYS: 'Holidays',
+  SALARIES: 'Salaries'
 };
 
 const SHEET_HEADERS = {
@@ -40,13 +45,17 @@ const SHEET_HEADERS = {
   Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID', 'AssessmentDetails', 'AssessmentRound'],
   TNotes: ['ID', 'TNoteNo', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt', 'Attachments'],
   'TNote Transformers': ['LinkID', 'TNoteID', 'TransformerID', 'IntakeType', 'VisitStatus', 'Billable', 'CreatedAt', 'UpdatedAt'],
-  DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CustomerName', 'CustomerAddress', 'CustomerGSTIN', 'CompanyGSTIN', 'TNoteNo', 'EmptyDrumsAvailable', 'EmptyDrumCount', 'SentToTGSPDCL', 'TransformerDetails', 'Delivered', 'DeliveryAttachments', 'DeliveredAt', 'CreatedAt', 'UpdatedAt', 'GeneratedChallanUrl', 'GeneratedChallanFileId'],
+  DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CustomerName', 'CustomerAddress', 'CustomerGSTIN', 'CompanyGSTIN', 'TNoteNo', 'EmptyDrumsAvailable', 'EmptyDrumCount', 'SentToTGSPDCL', 'TransformerDetails', 'Delivered', 'DeliveryAttachments', 'DeliveredAt', 'CreatedAt', 'UpdatedAt', 'GeneratedChallanUrl', 'GeneratedChallanFileId', 'RequestId'],
   Bills: ['SapNo', 'Date', 'SpmCenter', 'TotalTransformers', 'BillAmount', 'CreatedAt', 'UpdatedAt', 'Attachments', 'AgreementNo', 'GSTAmount', 'Status', 'AmountCredited', 'CreditedDate', 'GSTFilingMonth', 'InvoiceNo'],
   Quotations: ['QuotationNo', 'CustomerName', 'CustomerAddress', 'ContactPerson', 'Mobile', 'Email', 'TransformerMake', 'TransformerCapacity', 'TransformerSerialNo', 'TransformerLocation', 'QuotationDate', 'FinancialYear', 'LineItems', 'Subtotal', 'PdfUrl', 'FileUrl', 'FileId', 'OutputFormat', 'CreatedAt', 'UpdatedAt', 'DocumentType', 'GSTApplicable', 'GSTRate', 'GSTAmount', 'GrandTotal', 'WarrantyMonths', 'Terms', 'DocumentGroupId', 'GroupPosition', 'GroupCount'],
   Quotation_Form: ['QuotationNo', 'CustomerName', 'CustomerAddress', 'ContactPerson', 'Mobile', 'Email', 'TransformerMake', 'TransformerCapacity', 'TransformerSerialNo', 'TransformerLocation', 'QuotationDate', 'FinancialYear', 'LineItems', 'OutputFormat', 'UpdatedAt', 'DocumentType', 'Subtotal', 'GSTApplicable', 'GSTRate', 'GSTAmount', 'GrandTotal', 'WarrantyMonths', 'Terms', 'DocumentGroupId', 'GroupPosition', 'GroupCount'],
   'Quotation Settings': ['Setting', 'Value'],
   'Quotation Rates': ['TransformerCapacity', 'Service', 'Rate'],
-  'Dropdown Defaults': ['Category', 'Value', 'Active']
+  'Dropdown Defaults': ['Category', 'Value', 'Active'],
+  Employees: ['ID', 'EmployeeCode', 'Name', 'Department', 'MonthlySalary', 'PhotoUrl', 'PhotoName', 'Active', 'CreatedAt', 'UpdatedAt'],
+  Attendance: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Date', 'InTime', 'OutTime', 'Hours', 'OvertimeHours', 'Status', 'PhotoUrl', 'MonthlySalary', 'DailyRate', 'OvertimeHourlyRate', 'CreatedAt'],
+  Holidays: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Date', 'CreatedAt'],
+  Salaries: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Month', 'MonthlySalary', 'DailyRate', 'OvertimeHourlyRate', 'PaidDays', 'HolidayCount', 'RegularHours', 'OvertimeHours', 'RegularPay', 'OvertimePay', 'TotalAmount', 'Status', 'GeneratedAt', 'ReceivedAt']
 };
 
 const DEFAULT_QUOTATION_SETTINGS = [
@@ -195,10 +204,29 @@ function initializeSheet(sheetName, headers) {
       sheet.getRange(1, existingHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
     }
   }
+  if (sheetName === SHEET_NAMES.EMPLOYEES) {
+    migrateEmployeeSalary_();
+  }
   if (sheetName === SHEET_NAMES.BILLS && sheet.getLastColumn() > 0) {
     sheet.getRange(1, 1, 1, sheet.getLastColumn()).setHorizontalAlignment('left');
   }
   return sheet;
+}
+
+function migrateEmployeeSalary_() {
+  const sheet = getOrCreateSheet(SHEET_NAMES.EMPLOYEES);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1 || !data[0].includes('DailyRate') || data[0].includes('MonthlySalary')) return;
+
+  const rows = data.slice(1);
+  const monthlySalaryIndex = data[0].indexOf('MonthlySalary');
+  const dailyRateIndex = data[0].indexOf('DailyRate');
+  rows.forEach((row, index) => {
+    const dailyRate = Number(row[dailyRateIndex] || 0);
+    if (Number.isFinite(dailyRate) && dailyRate >= 0) {
+      sheet.getRange(index + 2, monthlySalaryIndex + 1).setValue(dailyRate * 26);
+    }
+  });
 }
 
 function getSheetData(sheetName) {
@@ -231,19 +259,28 @@ function initializeDropdownDefaults_() {
     }
   }
   const rows = getSheetData(SHEET_NAMES.DROPDOWN_DEFAULTS);
-  const gstinRow = rows.find(row => String(row.Category || '').trim() === 'Business GSTIN');
-  if (!gstinRow) {
-    sheet.appendRow(['Business GSTIN', '36AAUFM2590B1Z4', true]);
-  } else if (
-    String(gstinRow.Value || '').trim() !== '36AAUFM2590B1Z4' ||
-    (gstinRow.Active !== true && String(gstinRow.Active).toLowerCase() !== 'true')
-  ) {
-    const found = findRowByValue(SHEET_NAMES.DROPDOWN_DEFAULTS, 'Category', 'Business GSTIN');
-    if (found) {
-      sheet.getRange(found.rowIndex, found.headers.indexOf('Value') + 1).setValue('36AAUFM2590B1Z4');
-      sheet.getRange(found.rowIndex, found.headers.indexOf('Active') + 1).setValue(true);
+  const gstinRows = {
+    businessGstin: rows.find(row => String(row.Category || '').trim() === 'Business GSTIN'),
+    tgspdclGstin: rows.find(row => String(row.Category || '').trim() === 'TGSPDCL GSTIN')
+  };
+  const defaultValues = {
+    businessGstin: '36AAUFM2590B1Z4',
+    tgspdclGstin: '27ABCDE1234F1Z5'
+  };
+  Object.entries(gstinRows).forEach(([key, gstinRow]) => {
+    if (!gstinRow) {
+      sheet.appendRow([key === 'businessGstin' ? 'Business GSTIN' : 'TGSPDCL GSTIN', defaultValues[key], true]);
+    } else if (
+      String(gstinRow.Value || '').trim() !== defaultValues[key] ||
+      (gstinRow.Active !== true && String(gstinRow.Active).toLowerCase() !== 'true')
+    ) {
+      const found = findRowByValue(SHEET_NAMES.DROPDOWN_DEFAULTS, 'Category', key === 'businessGstin' ? 'Business GSTIN' : 'TGSPDCL GSTIN');
+      if (found) {
+        sheet.getRange(found.rowIndex, found.headers.indexOf('Value') + 1).setValue(defaultValues[key]);
+        sheet.getRange(found.rowIndex, found.headers.indexOf('Active') + 1).setValue(true);
+      }
     }
-  }
+  });
   return sheet;
 }
 
@@ -254,14 +291,16 @@ function getDropdownDefaults_() {
     makes: [],
     spmCenters: [],
     services: [],
-    businessGstin: '36AAUFM2590B1Z4'
+    businessGstin: '36AAUFM2590B1Z4',
+    tgspdclGstin: '27ABCDE1234F1Z5'
   };
   const categoryKeys = {
     Capacity: 'capacities',
     Make: 'makes',
     'SPM Center': 'spmCenters',
     Service: 'services',
-    'Business GSTIN': 'businessGstin'
+    'Business GSTIN': 'businessGstin',
+    'TGSPDCL GSTIN': 'tgspdclGstin'
   };
 
   getSheetData(SHEET_NAMES.DROPDOWN_DEFAULTS).forEach(row => {
@@ -269,8 +308,8 @@ function getDropdownDefaults_() {
     const value = String(row.Value || '').trim();
     const active = row.Active;
     if (!key || !value || active === false || String(active).toLowerCase() === 'false') return;
-    if (key === 'businessGstin') {
-      values.businessGstin = value;
+    if (key === 'businessGstin' || key === 'tgspdclGstin') {
+      values[key] = value;
       return;
     }
     if (!values[key].some(existing => existing.toLowerCase() === value.toLowerCase())) {
@@ -323,6 +362,361 @@ function dateOnly_(value) {
   const parsed = new Date(text);
   if (isNaN(parsed.getTime())) throw new Error(`Invalid date value in spreadsheet: ${text}`);
   return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function employeeRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeCode: String(row.EmployeeCode || ''),
+    name: String(row.Name || ''),
+    department: String(row.Department || ''),
+    salary: Number(row.MonthlySalary || 0),
+    photoUrl: String(row.PhotoUrl || ''),
+    photoName: String(row.PhotoName || ''),
+    active: String(row.Active || 'true').toLowerCase() !== 'false',
+    createdAt: dateOnly_(row.CreatedAt),
+    updatedAt: dateOnly_(row.UpdatedAt)
+  };
+}
+
+function attendanceRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeId: Number(row.EmployeeID),
+    employeeCode: String(row.EmployeeCode || ''),
+    employeeName: String(row.Name || ''),
+    date: dateOnly_(row.Date),
+    inTime: String(row.InTime || ''),
+    outTime: String(row.OutTime || ''),
+    hours: Number(row.Hours || 0),
+    overtimeHours: Number(row.OvertimeHours || 0),
+    status: String(row.Status || 'PRESENT'),
+    photoUrl: String(row.PhotoUrl || ''),
+    monthlySalary: Number(row.MonthlySalary || 0),
+    dailyRate: Number(row.DailyRate || 0),
+    overtimeRate: Number(row.OvertimeHourlyRate || 0),
+    createdAt: dateOnly_(row.CreatedAt)
+  };
+}
+
+function holidayRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeId: Number(row.EmployeeID),
+    employeeCode: String(row.EmployeeCode || ''),
+    employeeName: String(row.Name || ''),
+    date: dateOnly_(row.Date),
+    createdAt: dateOnly_(row.CreatedAt)
+  };
+}
+
+function salaryRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeId: Number(row.EmployeeID),
+    employeeCode: String(row.EmployeeCode || ''),
+    employeeName: String(row.Name || ''),
+    month: dateOnly_(row.Month),
+    monthlySalary: Number(row.MonthlySalary || 0),
+    dailyRate: Number(row.DailyRate || 0),
+    overtimeRate: Number(row.OvertimeHourlyRate || 0),
+    paidDays: Number(row.PaidDays || 0),
+    holidayCount: Number(row.HolidayCount || 0),
+    regularHours: Number(row.RegularHours || 0),
+    overtimeHours: Number(row.OvertimeHours || 0),
+    regularPay: Number(row.RegularPay || 0),
+    overtimePay: Number(row.OvertimePay || 0),
+    totalAmount: Number(row.TotalAmount || 0),
+    status: String(row.Status || 'GENERATED'),
+    generatedAt: dateOnly_(row.GeneratedAt),
+    receivedAt: dateOnly_(row.ReceivedAt)
+  };
+}
+
+function getAllEmployees() {
+  return { status: 'SUCCESS', data: getSheetData(SHEET_NAMES.EMPLOYEES).map(employeeRecord_) };
+}
+
+function getEmployeeById(id) {
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(id));
+  if (!employee) return { status: 'NOT_FOUND', message: 'Employee not found.' };
+  return { status: 'SUCCESS', data: employeeRecord_(employee.data) };
+}
+
+function saveEmployee(data) {
+  const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
+  const employeeCode = String(data.employeeCode || '').trim();
+  const name = String(data.name || '').trim();
+  const department = String(data.department || '').trim();
+  const monthlySalary = Number(data.salary);
+  if (!employeeCode || !name || !department || !Number.isFinite(monthlySalary) || monthlySalary < 0) {
+    throw new Error('Employee code, name, department, and monthly salary are required.');
+  }
+  const existing = getSheetData(SHEET_NAMES.EMPLOYEES).find(row => String(row.EmployeeCode || '').trim().toLowerCase() === employeeCode.toLowerCase());
+  const id = data.id ? Number(data.id) : existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
+  const now = getTimestamp();
+  const values = {
+    ID: id,
+    EmployeeCode: employeeCode,
+    Name: name,
+    Department: department,
+    MonthlySalary: monthlySalary,
+    PhotoUrl: String(data.photoUrl || ''),
+    PhotoName: String(data.photoName || ''),
+    Active: data.active === false ? false : true,
+    CreatedAt: existing ? existing.CreatedAt : now,
+    UpdatedAt: now
+  };
+  if (existing) {
+    const found = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', id);
+    found.headers.forEach((header, index) => sheet.getRange(found.rowIndex, index + 1).setValue(values[header]));
+  } else {
+    sheet.appendRow(SHEET_HEADERS.Employees.map(header => values[header]));
+  }
+  return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
+}
+
+function parseTime_(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) throw new Error('Enter a valid clock time.');
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) throw new Error('Enter a valid clock time.');
+  return hours * 60 + minutes;
+}
+
+function attendanceRatesForMonth_(employee, monthValue) {
+  const monthMatch = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
+  if (!monthMatch) return { monthlySalary: 0, dailyRate: 0, overtimeRate: 0 };
+  const monthlySalary = Number(employee.MonthlySalary || 0);
+  const daysInMonth = new Date(Number(monthMatch[1]), Number(monthMatch[2]), 0).getDate();
+  const holidayCount = getSheetData(SHEET_NAMES.HOLIDAYS).filter(row =>
+    Number(row.EmployeeID) === Number(employee.ID) && String(row.Date || '').startsWith(`${monthMatch[1]}-${monthMatch[2]}`)).length;
+  const paidDays = Math.max(1, daysInMonth - holidayCount);
+  const dailyRate = monthlySalary / paidDays;
+  return {
+    monthlySalary,
+    dailyRate,
+    overtimeRate: dailyRate / 9
+  };
+}
+
+function ensureAttendanceForMonth_(monthValue) {
+  const monthMatch = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
+  if (!monthMatch) return;
+  const year = Number(monthMatch[1]);
+  const month = Number(monthMatch[2]);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const employees = getSheetData(SHEET_NAMES.EMPLOYEES);
+  const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE);
+  const holidayRows = getSheetData(SHEET_NAMES.HOLIDAYS);
+  const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
+
+  employees.forEach(employee => {
+    const employeeId = Number(employee.ID);
+    const employeeHolidays = new Set(holidayRows
+      .filter(row => Number(row.EmployeeID) === employeeId)
+      .map(row => dateOnly_(row.Date)));
+    const rates = attendanceRatesForMonth_(employee, monthValue);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${monthMatch[1]}-${monthMatch[2]}-${String(day).padStart(2, '0')}`;
+      if (employeeHolidays.has(date)) continue;
+      const existing = attendanceRows.find(row => Number(row.EmployeeID) === employeeId && dateOnly_(row.Date) === date);
+      if (existing) continue;
+      const row = {
+        ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
+        EmployeeID: employeeId,
+        EmployeeCode: String(employee.EmployeeCode || ''),
+        Name: String(employee.Name || ''),
+        Date: date,
+        InTime: '',
+        OutTime: '',
+        Hours: 0,
+        OvertimeHours: 0,
+        Status: 'ABSENT',
+        PhotoUrl: String(employee.PhotoUrl || ''),
+        MonthlySalary: rates.monthlySalary,
+        DailyRate: rates.dailyRate,
+        OvertimeHourlyRate: rates.overtimeRate,
+        CreatedAt: getTimestamp()
+      };
+      sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
+    }
+  });
+}
+
+function getAttendance(month) {
+  ensureAttendanceForMonth_(month);
+  const rows = getSheetData(SHEET_NAMES.ATTENDANCE);
+  const filtered = !month ? rows : rows.filter(row => String(row.Date || '').startsWith(String(month).slice(0, 7)));
+  return { status: 'SUCCESS', data: filtered.map(attendanceRecord_) };
+}
+
+function getEmployeeAttendance(employeeId, month) {
+  ensureAttendanceForMonth_(month);
+  const rows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row => Number(row.EmployeeID) === Number(employeeId));
+  const filtered = !month ? rows : rows.filter(row => String(row.Date || '').startsWith(String(month).slice(0, 7)));
+  return { status: 'SUCCESS', data: filtered.map(attendanceRecord_) };
+}
+
+function getHolidays(month) {
+  const rows = getSheetData(SHEET_NAMES.HOLIDAYS);
+  const filtered = !month ? rows : rows.filter(row => String(row.Date || '').startsWith(String(month).slice(0, 7)));
+  return { status: 'SUCCESS', data: filtered.map(holidayRecord_) };
+}
+
+function addHoliday(data) {
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.employeeId));
+  if (!employee) throw new Error('Employee not found.');
+  const holidayDate = dateOnly_(data.date);
+  if (!holidayDate) throw new Error('Holiday date is required.');
+  const sheet = initializeSheet(SHEET_NAMES.HOLIDAYS, SHEET_HEADERS.Holidays);
+  const existing = getSheetData(SHEET_NAMES.HOLIDAYS).find(row => Number(row.EmployeeID) === Number(data.employeeId) && dateOnly_(row.Date) === holidayDate);
+  if (existing) throw new Error('This date is already marked as a holiday.');
+  const row = {
+    ID: getNextNumericId(SHEET_NAMES.HOLIDAYS, 'ID'),
+    EmployeeID: Number(data.employeeId),
+    EmployeeCode: String(employee.data.EmployeeCode || ''),
+    Name: String(employee.data.Name || ''),
+    Date: holidayDate,
+    CreatedAt: getTimestamp()
+  };
+  sheet.appendRow(SHEET_HEADERS.Holidays.map(header => row[header]));
+  return { status: 'SUCCESS', data: holidayRecord_(row) };
+}
+
+function deleteHoliday(id) {
+  const found = findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(id));
+  if (!found) throw new Error('Holiday not found.');
+  const sheet = getOrCreateSheet(SHEET_NAMES.HOLIDAYS);
+  sheet.deleteRow(found.rowIndex);
+  return { status: 'SUCCESS', data: { id: Number(id) } };
+}
+
+function clockAttendance(data) {
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.employeeId));
+  if (!employee) throw new Error('Employee not found.');
+  const date = dateOnly_(data.date);
+  if (!date) throw new Error('Attendance date is required.');
+  const monthValue = date.slice(0, 7);
+  const inTime = String(data.inTime || '').trim();
+  const outTime = String(data.outTime || '').trim();
+  if (!inTime && !outTime) throw new Error('Clock-in or clock-out time is required.');
+  const existing = getSheetData(SHEET_NAMES.ATTENDANCE).find(row => Number(row.EmployeeID) === Number(data.employeeId) && dateOnly_(row.Date) === date);
+  if (existing && inTime && existing.InTime) throw new Error('Clock-in is already recorded for this employee and date.');
+  if (existing && !outTime && existing.OutTime) throw new Error('Clock-in is already recorded; clock-out is required.');
+
+  const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
+  const hours = inTime && outTime
+    ? Math.max(0, (parseTime_(outTime) - parseTime_(inTime)) / 60)
+    : 0;
+  const overtimeHours = Math.max(0, hours - 9);
+  const rates = attendanceRatesForMonth_(employee.data, monthValue);
+  const isPresent = Boolean(inTime);
+  const row = existing
+    ? {
+        ID: Number(existing.ID),
+        EmployeeID: Number(data.employeeId),
+        EmployeeCode: String(employee.data.EmployeeCode || ''),
+        Name: String(employee.data.Name || ''),
+        Date: date,
+        InTime: existing.InTime || inTime,
+        OutTime: existing.OutTime || outTime,
+        Hours: hours,
+        OvertimeHours: overtimeHours,
+        Status: isPresent ? 'PRESENT' : 'ABSENT',
+        PhotoUrl: String(data.photoUrl || employee.data.PhotoUrl || existing.PhotoUrl || ''),
+        MonthlySalary: rates.monthlySalary,
+        DailyRate: rates.dailyRate,
+        OvertimeHourlyRate: rates.overtimeRate,
+        CreatedAt: existing.CreatedAt
+      }
+    : {
+        ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
+        EmployeeID: Number(data.employeeId),
+        EmployeeCode: String(employee.data.EmployeeCode || ''),
+        Name: String(employee.data.Name || ''),
+        Date: date,
+        InTime: inTime,
+        OutTime: outTime,
+        Hours: hours,
+        OvertimeHours: overtimeHours,
+        Status: isPresent ? 'PRESENT' : 'ABSENT',
+        PhotoUrl: String(data.photoUrl || employee.data.PhotoUrl || ''),
+        MonthlySalary: rates.monthlySalary,
+        DailyRate: rates.dailyRate,
+        OvertimeHourlyRate: rates.overtimeRate,
+        CreatedAt: getTimestamp()
+      };
+  if (existing) {
+    const found = findRowByValue(SHEET_NAMES.ATTENDANCE, 'ID', Number(row.ID));
+    found.headers.forEach((header, index) => sheet.getRange(found.rowIndex, index + 1).setValue(row[header]));
+  } else {
+    sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
+  }
+  return { status: 'SUCCESS', data: attendanceRecord_(existing || row) };
+}
+
+function getSalaries(month) {
+  const rows = getSheetData(SHEET_NAMES.SALARIES);
+  const filtered = !month ? rows : rows.filter(row => String(row.Month || '').startsWith(String(month).slice(0, 7)));
+  return { status: 'SUCCESS', data: filtered.map(salaryRecord_) };
+}
+
+function generateSalary(employeeId, month) {
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(employeeId));
+  if (!employee) throw new Error('Employee not found.');
+  const monthValue = dateOnly_(month);
+  if (!/^\d{4}-\d{2}$/.test(monthValue)) throw new Error('A valid salary month is required.');
+  const existing = getSheetData(SHEET_NAMES.SALARIES).find(row => Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Month).startsWith(monthValue));
+  if (existing) return { status: 'SUCCESS', data: salaryRecord_(existing) };
+  const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row => Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Date).startsWith(monthValue));
+  const holidayRows = getSheetData(SHEET_NAMES.HOLIDAYS).filter(row => Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Date).startsWith(monthValue));
+  const regularHours = attendanceRows.reduce((total, row) => total + Math.min(Number(row.Hours || 0), 9), 0);
+  const overtimeHours = attendanceRows.reduce((total, row) => total + Number(row.OvertimeHours || 0), 0);
+  const monthlySalary = Number(employee.data.MonthlySalary || 0);
+  const paidDays = new Date(Number(monthValue.slice(0, 4)), Number(monthValue.slice(5, 7)), 0).getDate() - holidayRows.length;
+  if (paidDays <= 0) throw new Error('At least one paid day is required to generate salary.');
+  const dailyRate = monthlySalary / paidDays;
+  const overtimeRate = dailyRate / 9;
+  const regularPay = regularHours * dailyRate;
+  const overtimePay = overtimeHours * overtimeRate;
+  const row = {
+    ID: getNextNumericId(SHEET_NAMES.SALARIES, 'ID'),
+    EmployeeID: Number(employeeId),
+    EmployeeCode: String(employee.data.EmployeeCode || ''),
+    Name: String(employee.data.Name || ''),
+    Month: `${monthValue}-01`,
+    MonthlySalary: monthlySalary,
+    DailyRate: dailyRate,
+    OvertimeHourlyRate: overtimeRate,
+    PaidDays: paidDays,
+    HolidayCount: holidayRows.length,
+    RegularHours: regularHours,
+    OvertimeHours: overtimeHours,
+    RegularPay: regularPay,
+    OvertimePay: overtimePay,
+    TotalAmount: regularPay + overtimePay,
+    Status: 'GENERATED',
+    GeneratedAt: getTimestamp(),
+    ReceivedAt: ''
+  };
+  const sheet = initializeSheet(SHEET_NAMES.SALARIES, SHEET_HEADERS.Salaries);
+  sheet.appendRow(SHEET_HEADERS.Salaries.map(header => row[header]));
+  return { status: 'SUCCESS', data: salaryRecord_(row) };
+}
+
+function updateSalaryStatus(id, status, receivedAt) {
+  const found = findRowByValue(SHEET_NAMES.SALARIES, 'ID', Number(id));
+  if (!found) throw new Error('Salary record not found.');
+  if (!['GENERATED', 'RECEIVED'].includes(String(status).toUpperCase())) throw new Error('Salary status must be GENERATED or RECEIVED.');
+  const sheet = getOrCreateSheet(SHEET_NAMES.SALARIES);
+  const statusIndex = found.headers.indexOf('Status') + 1;
+  const receivedIndex = found.headers.indexOf('ReceivedAt') + 1;
+  sheet.getRange(found.rowIndex, statusIndex).setValue(String(status).toUpperCase());
+  sheet.getRange(found.rowIndex, receivedIndex).setValue(String(status).toUpperCase() === 'RECEIVED' ? dateOnly_(receivedAt) : '');
+  return { status: 'SUCCESS', data: salaryRecord_(getSheetData(SHEET_NAMES.SALARIES).find(row => Number(row.ID) === Number(id))) };
 }
 
 // ============ ENQUIRY FUNCTIONS ============
@@ -420,6 +814,13 @@ function parseRecordAttachments_(value) {
       size: Number(attachment.size || 0),
       url: String(attachment.url)
     }));
+}
+
+function getDriveFileIdFromUrl_(url) {
+  const value = String(url || '');
+  const match = value.match(/\/d\/([A-Za-z0-9_-]+)/) || value.match(/[?&]id=([A-Za-z0-9_-]+)/);
+  if (!match) throw new Error('Unable to identify the uploaded Drive file.');
+  return match[1];
 }
 
 function addEnquiry(data) {
@@ -785,6 +1186,28 @@ function addTransformer(data) {
   lock.waitLock(30000);
   try {
     return addTransformerLocked_(data);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function addTransformers(dataList) {
+  if (!Array.isArray(dataList) || dataList.length === 0) {
+    throw new Error('Select at least one transformer.');
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return {
+      status: 'SUCCESS',
+      data: dataList.map(data => {
+        const result = addTransformerLocked_(data);
+        if (result.status !== 'SUCCESS' || !result.data) {
+          throw new Error(result.message || 'Failed to create a transformer.');
+        }
+        return result.data;
+      })
+    };
   } finally {
     lock.releaseLock();
   }
@@ -1262,6 +1685,25 @@ function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
   }
 }
 
+function addTransformersToDCBatch_(dcNo, transformerIds) {
+  if (!Array.isArray(transformerIds) || transformerIds.length === 0) {
+    throw new Error('Select at least one transformer for the challan.');
+  }
+  const uniqueIds = [...new Set(transformerIds.map(id => Number(id)))];
+  if (uniqueIds.some(id => !Number.isInteger(id) || id <= 0) || uniqueIds.length !== transformerIds.length) {
+    throw new Error('Select distinct valid transformers for the challan.');
+  }
+
+  let result = null;
+  uniqueIds.forEach(transformerId => {
+    result = updateDCTransformerAssignment_(dcNo, transformerId, true);
+    if (!result || result.status !== 'SUCCESS' || !result.data) {
+      throw new Error(result?.message || 'Failed to assign a transformer to the challan.');
+    }
+  });
+  return result;
+}
+
 function billTransformer(id, sapNo) {
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
@@ -1288,6 +1730,77 @@ function billTransformer(id, sapNo) {
   if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
 
   return getTransformerById(id);
+}
+
+function billTransformers(transformerIds, sapNo) {
+  if (!Array.isArray(transformerIds) || transformerIds.length === 0 || !String(sapNo || '').trim()) {
+    throw new Error('Provide a bill number and at least one transformer.');
+  }
+  const ids = transformerIds.map(id => Number(id));
+  if (ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+    throw new Error('Select distinct valid transformer IDs.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    ensureTNoteTransformerLinks_();
+    const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+    const rgpTransformerIds = new Set(links
+      .filter(link => String(link.IntakeType || '').toUpperCase() === 'RGP')
+      .map(link => Number(link.TransformerID)));
+    const sheet = initializeSheet(SHEET_NAMES.TRANSFORMERS, SHEET_HEADERS.Transformers);
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(String);
+    const idColumn = headers.indexOf('ID');
+    const statusColumn = headers.indexOf('Status');
+    const sapColumn = headers.indexOf('SapNo');
+    const updatedColumn = headers.indexOf('UpdatedAt');
+    const rowsById = new Map();
+    for (let index = 1; index < values.length; index += 1) {
+      rowsById.set(Number(values[index][idColumn]), { index, values: values[index] });
+    }
+
+    const selected = ids.map(id => {
+      const entry = rowsById.get(id);
+      if (!entry) throw new Error(`Transformer ${id} not found.`);
+      if (rgpTransformerIds.has(id)) {
+        throw new Error('Transformers linked to an RGP visit cannot be billed through normal SAP billing.');
+      }
+      const status = String(entry.values[statusColumn] || '').toLowerCase();
+      if (status === 'scrap') throw new Error('Scrapped transformers cannot be billed.');
+      if (status !== 'delivered') throw new Error(`Only delivered transformers can be billed (transformer ${id}).`);
+      return { id, index: entry.index, values: entry.values.slice() };
+    })
+
+    const now = getTimestamp();
+    selected.forEach(entry => {
+      entry.values[statusColumn] = 'Billed';
+      entry.values[sapColumn] = String(sapNo).trim();
+      if (updatedColumn >= 0) entry.values[updatedColumn] = now;
+    });
+
+    let group = [];
+    const flushGroup = () => {
+      if (!group.length) return;
+      sheet.getRange(group[0].index + 1, 1, group.length, headers.length)
+        .setValues(group.map(entry => entry.values));
+      group = [];
+    };
+    [...selected].sort((left, right) => left.index - right.index).forEach(entry => {
+      if (group.length && entry.index !== group[group.length - 1].index + 1) flushGroup();
+      group.push(entry);
+    });
+    flushGroup();
+
+    const updatedById = new Map(selected.map(entry => [
+      entry.id,
+      transformerRowToObj(Object.fromEntries(headers.map((header, index) => [header, entry.values[index]]))),
+    ]));
+    return { status: 'SUCCESS', data: ids.map(id => updatedById.get(id)) };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getTransformersSummary() {
@@ -1447,6 +1960,42 @@ function addTNoteAttachments(id, attachments) {
   }
 }
 
+function deleteTNoteAttachment(id, attachmentUrl) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
+    const attachmentsIdx = found.headers.indexOf('Attachments') + 1;
+    if (attachmentsIdx <= 0) throw new Error('The TNote sheet is missing its Attachments column.');
+
+    const existingAttachments = parseRecordAttachments_(found.data[attachmentsIdx - 1]);
+    const attachmentIndex = existingAttachments.findIndex(attachment => attachment.url === String(attachmentUrl || ''));
+    if (attachmentIndex < 0) return { status: 'NOT_FOUND', message: 'TNote attachment not found' };
+
+    const fileId = getDriveFileIdFromUrl_(existingAttachments[attachmentIndex].url);
+    const updatedAttachments = existingAttachments.slice();
+    updatedAttachments.splice(attachmentIndex, 1);
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.TNOTES);
+    const attachmentsCell = sheet.getRange(found.rowIndex, attachmentsIdx);
+    const originalAttachments = found.data[attachmentsIdx - 1];
+    attachmentsCell.setValue(JSON.stringify(updatedAttachments));
+    try {
+      DriveApp.getFileById(fileId).setTrashed(true);
+    } catch (error) {
+      attachmentsCell.setValue(originalAttachments);
+      throw error;
+    }
+
+    const updatedIdx = found.headers.indexOf('UpdatedAt') + 1;
+    if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+    return getTNoteById(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function deleteTNote(id) {
   const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
@@ -1549,44 +2098,133 @@ function addDC(data) {
   const now = getTimestamp();
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
-  let dcNo;
   try {
-    dcNo = nextDeliveryChallanNumber_(sheet);
+    const dcRequest = data.dc || data;
+    const transformerIds = Array.isArray(data.transformerIds)
+      ? [...new Set(data.transformerIds.map(id => Number(id)))]
+      : [];
+    const requestId = String(data.requestId || '').trim();
+    if (transformerIds.length === 0) {
+      throw new Error('Select at least one transformer for the challan.');
+    }
+    if (transformerIds.some(id => !Number.isInteger(id) || id <= 0)) {
+      throw new Error('Select distinct valid transformer IDs for the challan.');
+    }
+
+    if (requestId) {
+      const existingRequest = getSheetData(SHEET_NAMES.DCS).find(row =>
+        String(row.RequestId || '').trim() === requestId
+      );
+      if (existingRequest) {
+        return getDCByNo(String(existingRequest.DcNo || ''));
+      }
+    }
+
+    const transformers = transformerIds.map(id => findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id));
+    if (transformers.some(transformer => !transformer)) {
+      throw new Error('One or more selected transformers were not found.');
+    }
+    if (transformers.some(transformer => {
+      const status = String(transformer.data[transformer.headers.indexOf('Status')] || '');
+      const dcNoValue = String(transformer.data[transformer.headers.indexOf('DcNo')] || '');
+      return status.toLowerCase() !== 'repaired' || dcNoValue !== '';
+    })) {
+      throw new Error('Only unassigned repaired transformers can be added to a challan.');
+    }
+
+    const dcNo = nextDeliveryChallanNumber_(sheet);
     if (getSheetData(SHEET_NAMES.DCS).some(row => String(row.DcNo || '').trim().toLowerCase() === dcNo.toLowerCase())) {
       throw new Error(`Delivery challan number "${dcNo}" already exists.`);
     }
 
     const values = {
       DcNo: dcNo,
-      Date: data.date || new Date().toISOString().split('T')[0],
-      SpmCenter: data.spmCenter || '',
-      TotalTransformers: data.totalTransformers || 0,
-      CustomerName: data.customerName || '',
-      CustomerAddress: data.customerAddress || '',
-      CustomerGSTIN: data.customerGstin || '',
-      CompanyGSTIN: data.companyGstin || '',
-      TNoteNo: data.tNoteNo || '',
-      EmptyDrumsAvailable: data.emptyDrumsAvailable === undefined || data.emptyDrumsAvailable === null
+      Date: dcRequest.date || new Date().toISOString().split('T')[0],
+      SpmCenter: dcRequest.spmCenter || '',
+      TotalTransformers: dcRequest.totalTransformers || 0,
+      CustomerName: dcRequest.customerName || '',
+      CustomerAddress: dcRequest.customerAddress || '',
+      CustomerGSTIN: dcRequest.customerGstin || '',
+      CompanyGSTIN: dcRequest.companyGstin || '',
+      TNoteNo: dcRequest.tNoteNo || '',
+      EmptyDrumsAvailable: dcRequest.emptyDrumsAvailable === undefined || dcRequest.emptyDrumsAvailable === null
         ? ''
-        : data.emptyDrumsAvailable === true || String(data.emptyDrumsAvailable).toLowerCase() === 'true',
-      EmptyDrumCount: Number(data.emptyDrumCount || 0),
-      SentToTGSPDCL: data.sentToTgspdcl === true || String(data.sentToTgspdcl).toLowerCase() === 'true',
-      TransformerDetails: JSON.stringify(Array.isArray(data.transformerDetails) ? data.transformerDetails : []),
+        : dcRequest.emptyDrumsAvailable === true || String(dcRequest.emptyDrumsAvailable).toLowerCase() === 'true',
+      EmptyDrumCount: Number(dcRequest.emptyDrumCount || 0),
+      SentToTGSPDCL: dcRequest.sentToTgspdcl === true || String(dcRequest.sentToTgspdcl).toLowerCase() === 'true',
+      TransformerDetails: JSON.stringify(Array.isArray(dcRequest.transformerDetails) ? dcRequest.transformerDetails : []),
       Delivered: false,
       DeliveryAttachments: '[]',
       DeliveredAt: '',
       CreatedAt: now,
-      UpdatedAt: now
+      UpdatedAt: now,
+      RequestId: requestId
     };
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
     sheet.appendRow(headers.map(header => values[header] === undefined ? '' : values[header]));
+    const dcNoRowIndex = sheet.getLastRow();
+
+    transformers.forEach(transformer => {
+      const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+      const dcColumn = transformer.headers.indexOf('DcNo') + 1;
+      transformerSheet.getRange(transformer.rowIndex, dcColumn).setValue(dcNo);
+      const updatedColumn = transformer.headers.indexOf('UpdatedAt') + 1;
+      if (updatedColumn > 0) {
+        transformerSheet.getRange(transformer.rowIndex, updatedColumn).setValue(now);
+      }
+    });
+
+    const assignedTransformers = getSheetData(SHEET_NAMES.TRANSFORMERS)
+      .filter(row => String(row.DcNo || '').toLowerCase() === dcNo.toLowerCase())
+      .map(transformerRowToObj);
+    const tnotes = getAllTNotes().data;
+    const transformerDetails = assignedTransformers.map(item => {
+      const tNotes = tnotes.flatMap(note =>
+        (note.transformers || [])
+          .filter(link => Number(link.id) === Number(item.id))
+          .map(link => ({
+            tNoteNo: note.tNoteNo || String(note.id),
+            date: note.date || '',
+            intakeType: String(link.intakeType || 'NEW').toUpperCase()
+          }))
+      );
+      const isRgp = tNotes.some(note => note.intakeType === 'RGP');
+      const name = [
+        item.dtrNo && `DTR ${item.dtrNo}`,
+        item.sNo && `SNo ${item.sNo}`,
+        item.capacity && `${item.capacity} kVA`,
+        item.type
+      ].filter(Boolean).join(' · ');
+      return {
+        transformerId: item.id,
+        transformerName: `${name || `Transformer ${item.id}`}${isRgp ? ' (RGP)' : ''}`,
+        spmCenter: item.spmCenter || '',
+        dtrNo: item.dtrNo || '',
+        sNo: item.sNo || '',
+        capacity: item.capacity || '',
+        type: item.type || '',
+        intakeType: isRgp ? 'RGP' : 'NEW',
+        tNotes
+      };
+    });
+    const tNoteNumbers = [...new Set(transformerDetails.flatMap(detail => detail.tNotes.map(note => note.tNoteNo)))];
+    const dcSheetRow = getOrCreateSheet(SHEET_NAMES.DCS);
+    const setValue = (header, value) => {
+      const column = headers.indexOf(header);
+      if (column >= 0) dcSheetRow.getRange(dcNoRowIndex, column + 1).setValue(value);
+    };
+    setValue('TotalTransformers', assignedTransformers.length);
+    setValue('TNoteNo', tNoteNumbers.join(', '));
+    setValue('TransformerDetails', JSON.stringify(transformerDetails));
+    setValue('GeneratedChallanUrl', '');
+    setValue('GeneratedChallanFileId', '');
+    setValue('UpdatedAt', now);
     return { status: 'SUCCESS', data: {
       dcNo, date: values.Date, spmCenter: values.SpmCenter, totalTransformers: values.TotalTransformers,
       customerName: values.CustomerName, customerAddress: values.CustomerAddress,
       customerGstin: values.CustomerGSTIN, companyGstin: values.CompanyGSTIN, tNoteNo: values.TNoteNo,
       emptyDrumsAvailable: values.EmptyDrumsAvailable, emptyDrumCount: values.EmptyDrumCount,
-      sentToTgspdcl: values.SentToTGSPDCL, transformerDetails: JSON.parse(values.TransformerDetails),
-      delivered: false, attachments: []
+      sentToTgspdcl: values.SentToTGSPDCL, transformerDetails, delivered: false, attachments: []
     } };
   } finally {
     lock.releaseLock();
@@ -3473,6 +4111,9 @@ function doPost(e) {
       case 'ADDTRANSFORMER':
         result = addTransformer(payload);
         break;
+      case 'ADD_TRANSFORMERS':
+        result = addTransformers(payload.transformers);
+        break;
       case 'UPDATE_TRANSFORMER':
       case 'UPDATETRANSFORMER':
         result = updateTransformer(payload.id || raw.id, payload);
@@ -3506,6 +4147,9 @@ function doPost(e) {
       case 'BILL_TRANSFORMER':
       case 'BILLTRANSFORMER':
         result = billTransformer(payload.id || raw.id, payload.sapNo || raw.sapNo);
+        break;
+      case 'BILL_TRANSFORMERS':
+        result = billTransformers(payload.transformerIds, payload.sapNo);
         break;
       case 'GET_TRANSFORMERS_SUMMARY':
       case 'GETTRANSFORMERSSUMMARY':
@@ -3541,6 +4185,9 @@ function doPost(e) {
       case 'ADD_TNOTE_ATTACHMENTS':
         result = addTNoteAttachments(payload.id || raw.id, payload.attachments);
         break;
+      case 'DELETE_TNOTE_ATTACHMENT':
+        result = deleteTNoteAttachment(payload.id || raw.id, payload.url);
+        break;
       case 'DELETE_TNOTE':
       case 'DELETETNOTE':
         result = deleteTNote(payload.id || raw.id);
@@ -3572,6 +4219,9 @@ function doPost(e) {
       case 'ADD_TRANSFORMER_TO_DC':
         result = updateDCTransformerAssignment_(payload.dcNo, payload.transformerId, true);
         break;
+      case 'ADD_TRANSFORMERS_TO_DC_BATCH':
+        result = addTransformersToDCBatch_(payload.dcNo, payload.transformerIds);
+        break;
       case 'REMOVE_TRANSFORMER_FROM_DC':
         result = updateDCTransformerAssignment_(payload.dcNo, payload.transformerId, false);
         break;
@@ -3600,6 +4250,44 @@ function doPost(e) {
       case 'DELETE_BILL':
       case 'DELETEBILL':
         result = deleteBill(payload.sapNo || raw.sapNo);
+        break;
+
+      // Employees, attendance, and salaries
+      case 'GET_EMPLOYEES':
+        result = getAllEmployees();
+        break;
+      case 'GET_EMPLOYEE_BY_ID':
+        result = getEmployeeById(payload.id || raw.id);
+        break;
+      case 'SAVE_EMPLOYEE':
+        result = saveEmployee(payload);
+        break;
+      case 'GET_ATTENDANCE':
+        result = getAttendance(payload.month || raw.month);
+        break;
+      case 'GET_EMPLOYEE_ATTENDANCE':
+        result = getEmployeeAttendance(payload.employeeId || raw.employeeId, payload.month || raw.month);
+        break;
+      case 'CLOCK_ATTENDANCE':
+        result = clockAttendance(payload);
+        break;
+      case 'GET_HOLIDAYS':
+        result = getHolidays(payload.month || raw.month);
+        break;
+      case 'ADD_HOLIDAY':
+        result = addHoliday(payload);
+        break;
+      case 'DELETE_HOLIDAY':
+        result = deleteHoliday(payload.id || raw.id);
+        break;
+      case 'GET_SALARIES':
+        result = getSalaries(payload.month || raw.month);
+        break;
+      case 'GENERATE_SALARY':
+        result = generateSalary(payload.employeeId || raw.employeeId, payload.month || raw.month);
+        break;
+      case 'UPDATE_SALARY_STATUS':
+        result = updateSalaryStatus(payload.id || raw.id, payload.status, payload.receivedAt || raw.receivedAt);
         break;
 
       // Initializer

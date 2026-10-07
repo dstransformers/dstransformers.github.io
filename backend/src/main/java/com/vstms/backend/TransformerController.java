@@ -4,11 +4,16 @@ import com.vstms.backend.model.TransformerDTO;
 import com.vstms.backend.model.AssessmentDetailsDTO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transformers")
@@ -66,6 +71,24 @@ public class TransformerController {
         );
     }
 
+    @PostMapping("/batch")
+    public List<TransformerDTO> createTransformers(@Valid @RequestBody BatchCreateTransformerRequest request) {
+        List<Map<String, Object>> transformers = request.transformers().stream().map(transformer -> {
+            Map<String, Object> values = new HashMap<>();
+            values.put("spmCenter", transformer.spmCenter());
+            values.put("dtrNo", transformer.dtrNo());
+            values.put("sNo", transformer.sNo());
+            values.put("capacity", transformer.capacity());
+            values.put("type", transformer.type());
+            values.put("oilCapacity", transformer.oilCapacity());
+            values.put("tNoteId", transformer.tNoteId());
+            values.put("intakeType", transformer.intakeType());
+            values.put("requestId", transformer.requestId());
+            return values;
+        }).toList();
+        return googleSheetsService.createTransformers(transformers);
+    }
+
     @PatchMapping("/{id}/status")
     public TransformerDTO updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
         if ("Assesment".equalsIgnoreCase(request.status())
@@ -99,6 +122,11 @@ public class TransformerController {
     @PatchMapping("/{id}/bill")
     public TransformerDTO billTransformer(@PathVariable Long id, @RequestBody BillRequest request) {
         return googleSheetsService.billTransformer(id, request.sapNo());
+    }
+
+    @PostMapping("/bill/batch")
+    public List<TransformerDTO> billTransformers(@Valid @RequestBody BatchBillRequest request) {
+        return googleSheetsService.billTransformers(request.transformerIds(), request.sapNo());
     }
 
     @PutMapping("/{id}")
@@ -151,6 +179,9 @@ public class TransformerController {
             String requestId
     ) {}
 
+            public record BatchCreateTransformerRequest(
+                @jakarta.validation.constraints.NotEmpty List<@Valid CreateTransformerRequest> transformers) {}
+
     public record UpdateTransformerRequest(
             @NotBlank String spmCenter,
             @NotBlank String dtrNo,
@@ -168,6 +199,10 @@ public class TransformerController {
     public record DeliverRequest(@NotBlank String dcNo) {}
 
     public record BillRequest(@NotBlank String sapNo) {}
+
+        public record BatchBillRequest(
+            @NotBlank String sapNo,
+            @NotEmpty List<@NotNull @Positive Long> transformerIds) {}
 
     public record PagedResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}
 

@@ -6,6 +6,7 @@ import com.vstms.backend.model.BillDTO;
 import com.vstms.backend.model.DcDTO;
 import com.vstms.backend.security.FirebaseTokenVerifier;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
@@ -62,6 +64,13 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void blankTransformerFiltersAreIgnored() {
+		assertTrue(GoogleSheetsService.normalizeFilterValues(List.of("", "  ", "Warangal", "Warangal"))
+				.equals(List.of("Warangal")));
+		assertTrue(GoogleSheetsService.normalizeFilterValues(null).isEmpty());
+	}
+
+	@Test
 	void localDatesAreSerializedAsIsoStringsForAppsScript() throws Exception {
 		assertEquals("\"2026-10-04\"",
 				GoogleSheetsService.createObjectMapper().writeValueAsString(LocalDate.of(2026, 10, 4)));
@@ -77,6 +86,17 @@ class BackendApplicationTests {
 	void managementEndpointsRequireAdminAuthentication() throws Exception {
 		mockMvc.perform(get("/api/quotations/config"))
 				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void invalidBearerTokenIsRejectedWithoutCallingTheProtectedController() throws Exception {
+		when(tokenVerifier.verifyAdminToken("invalid-token"))
+				.thenReturn(Optional.empty());
+
+		mockMvc.perform(get("/api/tnotes")
+					.header("Authorization", "Bearer invalid-token"))
+				.andExpect(status().isUnauthorized());
+		verify(googleSheetsService, org.mockito.Mockito.never()).getAllTNotes();
 	}
 
 	@Test
@@ -153,6 +173,22 @@ class BackendApplicationTests {
 
 		verify(googleSheetsService).saveGeneratedChallanPdf(
 				"DS/26-27/501", "DS-26-27-501.pdf", "data:application/pdf;base64,QA");
+	}
+
+	@Test
+	void dcCreationForwardsRequestIdForIdempotentRetries() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		when(googleSheetsService.saveDC(any(DcDTO.class), anyList(), eq("dc-request-123")))
+				.thenReturn(new DcDTO("DS/26-27/501", LocalDate.of(2026, 10, 5), "Warangal", 1));
+
+		mockMvc.perform(post("/api/dcs")
+						.header("Authorization", "Bearer unit-test-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"requestId\":\"dc-request-123\",\"date\":\"2026-10-05\",\"spmCenter\":\"Warangal\",\"totalTransformers\":1,\"customerName\":\"Customer\",\"customerAddress\":\"Address\",\"customerGstin\":\"36AAUFM2590B1Z4\",\"companyGstin\":\"36AAUFM2590B1Z4\",\"emptyDrumsAvailable\":false,\"sentToTgspdcl\":false,\"transformerDetails\":[{}],\"transformerIds\":[1]}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).saveDC(any(DcDTO.class), anyList(), eq("dc-request-123"));
 	}
 
 	@Test
@@ -247,6 +283,56 @@ class BackendApplicationTests {
 		verify(googleSheetsService).createTransformer(
 				eq("QA"), eq("QA-DTR"), eq("QA-SN"), eq(100), eq("Distribution"), eq(50.0),
 				eq(1L), eq("NEW"), eq("request-123"));
+	}
+
+	@Test
+	void transformerBatchRequestPassesValidatedRowsToService() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		when(googleSheetsService.createTransformers(anyList()))
+				.thenReturn(java.util.List.of(new TransformerDTO(
+						1L, "QA", "QA-DTR", "QA-SN", 100, "Distribution", 50, "Recieved", 1L, null, null)));
+
+		mockMvc.perform(post("/api/transformers/batch")
+					.header("Authorization", "Bearer unit-test-token")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"transformers\":[{\"spmCenter\":\"QA\",\"dtrNo\":\"QA-DTR\",\"sNo\":\"QA-SN\",\"capacity\":100,\"type\":\"Distribution\",\"oilCapacity\":50,\"tNoteId\":1,\"intakeType\":\"NEW\",\"requestId\":\"request-123\"}]}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).createTransformers(anyList());
+	}
+
+	@Test
+	void deliveryChallanBatchRequestPassesIdsToService() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		when(googleSheetsService.addTransformersToDC(eq("DC-QA-1"), anyList()))
+				.thenReturn(new DcDTO("DC-QA-1", LocalDate.of(2026, 10, 5), "QA", 2));
+
+		mockMvc.perform(post("/api/dcs/transformers/batch")
+					.header("Authorization", "Bearer unit-test-token")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"dcNo\":\"DC-QA-1\",\"transformerIds\":[11,12]}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).addTransformersToDC(eq("DC-QA-1"), anyList());
+	}
+
+	@Test
+	void billBatchRequestPassesIdsAndBillNumberToService() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		when(googleSheetsService.billTransformers(anyList(), eq("SAP-QA-1")))
+				.thenReturn(java.util.List.of(new TransformerDTO(
+						1L, "QA", "QA-DTR", "QA-SN", 100, "Distribution", 50, "Billed", null, null, "SAP-QA-1")));
+
+		mockMvc.perform(post("/api/transformers/bill/batch")
+					.header("Authorization", "Bearer unit-test-token")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"sapNo\":\"SAP-QA-1\",\"transformerIds\":[1]}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).billTransformers(anyList(), eq("SAP-QA-1"));
 	}
 
 	@Test

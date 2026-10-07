@@ -1,4 +1,5 @@
 import { auth } from './firebase'
+import { withGlobalLoading } from './globalLoading'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '')
 
@@ -35,10 +36,14 @@ async function authenticatedFetch(input, init, allowAnonymous) {
   return refreshedResponse
 }
 
+async function fetchWithGlobalLoading(input, init, allowAnonymous) {
+  return withGlobalLoading(() => authenticatedFetch(input, init, allowAnonymous))
+}
+
 export function apiFetch(input, init = {}) {
-  return authenticatedFetch(input, init, false)
+  return fetchWithGlobalLoading(input, init, false)
 }
 
 export function publicApiFetch(input, init = {}) {
-  return authenticatedFetch(input, init, true)
+  return fetchWithGlobalLoading(input, init, true)
 }

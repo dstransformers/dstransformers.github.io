@@ -63,6 +63,13 @@ public class TNoteController {
         return googleSheetsService.addTNoteAttachments(id, request.attachments());
     }
 
+    @DeleteMapping("/{id}/attachments")
+    public TNoteDTO deleteTNoteAttachment(
+            @PathVariable Long id,
+            @Valid @RequestBody DeleteTNoteAttachmentRequest request) {
+        return googleSheetsService.deleteTNoteAttachment(id, request.url());
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTNote(@PathVariable Long id) {
         if (googleSheetsService.getTNoteById(id).isPresent()) {
@@ -98,6 +105,9 @@ public class TNoteController {
 
     public record AddTNoteAttachmentsRequest(
             @jakarta.validation.constraints.NotEmpty List<AttachmentDTO> attachments) {}
+
+        public record DeleteTNoteAttachmentRequest(
+            @jakarta.validation.constraints.NotBlank String url) {}
 
     public record UpdateVisitStatusRequest(@jakarta.validation.constraints.NotBlank String visitStatus) {}
 

@@ -1,12 +1,11 @@
-import { Fragment, useEffect, useState, useSyncExternalStore } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import LandingPage from './LandingPage'
 import { signOut } from 'firebase/auth'
 import { auth, getAuthSnapshot, subscribeToAuth } from './firebase'
 import { apiFetch } from './api'
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
-import ExcelJS from 'exceljs'
-import deliveryChallanTemplateUrl from '../../PhotoGallery/delivery_challan_template.pdf?url'
-import { generateQuotationOutput, planQuotationPages } from './quotationPdf'
+import { finishInitialLoading, hideLoading, showLoading, withGlobalLoading } from './globalLoading'
+import deliveryChallanTemplateUrl from '/assets/delivery_challan_template.pdf'
+import EmployeePage from './EmployeePage'
 import './App.css'
 
 const STATUS_ORDER = [
@@ -22,6 +21,96 @@ const MAX_ATTACHMENTS = 5
 const MAX_ATTACHMENT_SIZE = 2 * 1024 * 1024
 const ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp,.bmp,.heic,.heif,.avif,.pdf'
 const DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE = 9
+
+function uniqueValues(items, accessor) {
+  return [...new Set(items.map(accessor).filter(value => value !== undefined && value !== null && value !== ''))]
+    .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+}
+
+function columnOptions(rows, column) {
+  return uniqueValues(rows, column.value)
+}
+
+function dateInputValue(value) {
+  if (!value) return ''
+  const isoDate = String(value).match(/^(\d{4}-\d{2}-\d{2})/)
+  if (isoDate) return isoDate[1]
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function sortByDateDescending(rows, dateAccessor, tieBreaker = () => '') {
+  return [...rows].sort((a, b) => {
+    const parsedA = dateAccessor(a) ? new Date(dateAccessor(a)).getTime() : Number.NaN
+    const parsedB = dateAccessor(b) ? new Date(dateAccessor(b)).getTime() : Number.NaN
+    const dateA = Number.isNaN(parsedA) ? null : parsedA
+    const dateB = Number.isNaN(parsedB) ? null : parsedB
+    if (dateA !== dateB) {
+      if (dateA === null) return 1
+      if (dateB === null) return -1
+      return dateB - dateA
+    }
+    return String(tieBreaker(b) || '').localeCompare(String(tieBreaker(a) || ''), undefined, { numeric: true })
+  })
+}
+
+function getTNoteSpmCenter(tnote) {
+  if (!tnote || !Array.isArray(tnote.transformers)) return '-'
+  const centers = [...new Set(tnote.transformers.map(transformer => transformer.spmCenter).filter(Boolean))]
+  return centers.length === 0 ? '-' : centers.join(', ')
+}
+
+function getTNoteSpmCenters(tnote) {
+  if (!tnote || !Array.isArray(tnote.transformers)) return []
+  return [...new Set(tnote.transformers
+    .map(transformer => String(transformer.spmCenter || '').trim())
+    .filter(Boolean))]
+}
+
+function getDCSpmCenter(dc) {
+  const customerName = String(dc.customerName || '')
+  const match = customerName.match(/AE\s*\/\s*SPM\s*\/\s*(.+?)\s*\/?\s*TGSPDCL/i)
+  return match?.[1]?.trim() || dc.spmCenter || '—'
+}
+
+function getIndexedTransformerTNoteDetails(transformer, tnotesByTransformer, tnotes) {
+  const linkedNotes = tnotesByTransformer.get(String(transformer.id)) || []
+  if (linkedNotes.length > 0) return linkedNotes
+  const legacyTnote = tnotes.find(tnote => String(tnote.id) === String(transformer.tNoteId))
+  return legacyTnote
+    ? [{
+      tNoteNo: legacyTnote.tNoteNo || String(legacyTnote.id),
+      date: legacyTnote.date || '',
+      intakeType: String(transformer.intakeType || 'NEW').toUpperCase(),
+    }]
+    : []
+}
+
+const ENQUIRY_COLUMNS = [
+  { key: 'id', value: enquiry => String(enquiry.ID || '—') },
+  { key: 'date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
+  { key: 'company', value: enquiry => enquiry.CustomerName || '—' },
+  { key: 'contact', value: enquiry => enquiry.ContactPerson || '—' },
+  { key: 'mobile', value: enquiry => enquiry.CustomerPhone || '—' },
+  { key: 'capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
+  { key: 'make', value: enquiry => enquiry.TransformerMake || '—' },
+  { key: 'services', value: enquiry => enquiry.ServicesRequired || '—' },
+  { key: 'status', value: enquiry => enquiry.Status || 'NEW' },
+]
+
+const QUOTATION_COLUMNS = [
+  { key: 'documentType', value: quotation => quotation.documentType === 'BILL' ? 'Bill' : 'Quotation' },
+  { key: 'number', value: quotation => quotation.quotationNo || '—' },
+  { key: 'date', value: quotation => dateInputValue(quotation.quotationDate) || '—' },
+  { key: 'customer', value: quotation => quotation.customerName || '—' },
+  { key: 'mobile', value: quotation => quotation.mobile || '—' },
+  { key: 'capacity', value: quotation => quotation.transformerCapacity || '—' },
+  { key: 'output', value: quotation => quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG') },
+]
 
 function wrapPdfText(text, font, fontSize, maxWidth, maxLines = 2) {
   const words = String(text || '').trim().split(/\s+/).filter(Boolean)
@@ -59,6 +148,7 @@ function encodeBase64(bytes) {
 }
 
 async function generateDeliveryChallanPdf(dc, templateUrl) {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const templateResponse = await fetch(templateUrl)
   if (!templateResponse.ok) throw new Error(`Unable to load the delivery challan template (${templateResponse.status}).`)
   const templateBytes = await templateResponse.arrayBuffer()
@@ -186,6 +276,7 @@ function AttachmentUploadField({ id, attachments, onChange, onUploadingChange, l
     }
 
     onUploadingChange(true)
+    showLoading()
     try {
       const selectedAttachments = await Promise.all(files.map((file) => new Promise((resolve, reject) => {
         const reader = new FileReader()
@@ -203,6 +294,7 @@ function AttachmentUploadField({ id, attachments, onChange, onUploadingChange, l
       setError(readError instanceof Error ? readError.message : 'Unable to read the selected attachments.')
     } finally {
       onUploadingChange(false)
+      hideLoading()
     }
   }
 
@@ -243,7 +335,7 @@ function AttachmentUploadField({ id, attachments, onChange, onUploadingChange, l
   )
 }
 
-function AttachmentViewerModal({ title, attachments, onClose }) {
+function AttachmentViewerModal({ title, attachments, onClose, onDeleteAttachment, deletingAttachmentUrl, deleteError }) {
   return (
     <div className="modal-overlay attachment-viewer-overlay" onClick={onClose}>
       <div className="modal-content attachment-viewer-modal" role="dialog" aria-modal="true" aria-labelledby="attachment-viewer-title" onClick={(event) => event.stopPropagation()}>
@@ -251,14 +343,35 @@ function AttachmentViewerModal({ title, attachments, onClose }) {
           <h2 id="attachment-viewer-title">{title}</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close attachments">×</button>
         </div>
+        {deleteError && <p className="status status--error attachment-viewer-error" role="alert">{deleteError}</p>}
         <ul className="attachment-viewer-list">
           {attachments.map((attachment, index) => (
             <li key={`${attachment.url}-${index}`}>
-              <span>{attachment.name || `Attachment ${index + 1}`}</span>
-              <a href={attachment.url} target="_blank" rel="noreferrer">Open</a>
+              <div className="attachment-viewer-details">
+                <span title={attachment.name || `Attachment ${index + 1}`}>{attachment.name || `Attachment ${index + 1}`}</span>
+                {attachment.size > 0 && <small>{(attachment.size / (1024 * 1024)).toFixed(1)} MB</small>}
+              </div>
+              <div className="attachment-viewer-actions">
+                <a className="btn btn--secondary btn--small" href={attachment.url} target="_blank" rel="noreferrer">Open</a>
+                {onDeleteAttachment && (
+                  <button
+                    type="button"
+                    className="btn btn--danger btn--small btn--icon"
+                    aria-label={`Delete ${attachment.name || `attachment ${index + 1}`}`}
+                    title="Delete uploaded file"
+                    disabled={deletingAttachmentUrl === attachment.url}
+                    onClick={() => onDeleteAttachment(attachment)}
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v6m4-6v6" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
+        {attachments.length === 0 && <p className="attachment-viewer-empty">No uploaded files remain.</p>}
       </div>
     </div>
   )
@@ -431,6 +544,8 @@ function App() {
   const [tnoteAdditionalAttachmentReading, setTnoteAdditionalAttachmentReading] = useState(false)
   const [tnoteAttachmentSaveLoading, setTnoteAttachmentSaveLoading] = useState(false)
   const [tnoteAttachmentUploadError, setTnoteAttachmentUploadError] = useState('')
+  const [tnoteAttachmentDeletingUrl, setTnoteAttachmentDeletingUrl] = useState('')
+  const [tnoteAttachmentDeleteError, setTnoteAttachmentDeleteError] = useState('')
   const [dcs, setDcs] = useState([])
   const [dcLoading, setDcLoading] = useState(false)
   const [showDCModal, setShowDCModal] = useState(false)
@@ -451,8 +566,10 @@ function App() {
   const [showEditTransformerModal, setShowEditTransformerModal] = useState(false)
   const [dcCandidates, setDcCandidates] = useState([])
   const [selectedDCTransformers, setSelectedDCTransformers] = useState([])
+  const [dcTnoteTransformerIds, setDcTnoteTransformerIds] = useState(null)
   const [dcTnoteLoading, setDcTnoteLoading] = useState(false)
   const [dcCreateLoading, setDcCreateLoading] = useState(false)
+  const dcCreateSubmittingRef = useRef(false)
   const [dcPdfGeneratingNo, setDcPdfGeneratingNo] = useState('')
   const [dcGenerationError, setDcGenerationError] = useState('')
   const [bills, setBills] = useState([])
@@ -491,6 +608,7 @@ function App() {
     spmCenters: [],
     services: [],
     businessGstin: '',
+    tgspdclGstin: '',
   })
   const [dropdownDefaultsError, setDropdownDefaultsError] = useState('')
   const [quotationConfig, setQuotationConfig] = useState({ settings: {}, capacities: [], services: [], rates: {} })
@@ -522,6 +640,15 @@ function App() {
   })
 
   const navItems = [
+    {
+      id: 'employees',
+      label: 'Employees',
+      icon: (
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 8a7 7 0 0 1 14 0H5zm14-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm3 2a5 5 0 0 1 3 4h-6a5 5 0 0 1 3-4z" />
+        </svg>
+      ),
+    },
     {
       id: 'enquiries',
       label: 'Enquiries',
@@ -580,12 +707,6 @@ function App() {
   const [selectedBillTransformers, setSelectedBillTransformers] = useState([])
   const [billCreateLoading, setBillCreateLoading] = useState(false)
 
-  const getTNoteSpmCenter = (tnote) => {
-    if (!tnote || !Array.isArray(tnote.transformers)) return '-'
-    const centers = [...new Set(tnote.transformers.map((transformer) => transformer.spmCenter).filter(Boolean))]
-    return centers.length === 0 ? '-' : centers.join(', ')
-  }
-
   const hasValidTransformerId = (transformer) =>
     Number.isInteger(Number(transformer?.id)) && Number(transformer.id) > 0
 
@@ -609,47 +730,54 @@ function App() {
     emptyDrumCount: '',
   })
   const [newBill, setNewBill] = useState({ sapNo: '', agreementNo: '', date: new Date().toISOString().split('T')[0], spmCenter: '', totalTransformers: 0, billAmount: 0, gstAmount: 0 })
-  const transformerCapacityOptions = dropdownDefaults.capacities
+  const transformerCapacityOptions = useMemo(() => dropdownDefaults.capacities
     .map(capacity => {
       const match = String(capacity).trim().match(/^(\d+)(?:\s*kva)?$/i)
       return match ? { value: match[1], label: String(capacity) } : null
     })
-    .filter(Boolean)
-  const visibleDCCandidates = dcCandidates.filter(transformer =>
-    Boolean(newDC.spmCenter) &&
-    transformer.status === 'Repaired' &&
-    String(transformer.spmCenter || '').trim() === newDC.spmCenter.trim()
-  )
-  const visibleBillCandidates = billCandidates.filter(transformer =>
+    .filter(Boolean), [dropdownDefaults.capacities])
+  const visibleDCCandidates = useMemo(() => dcCandidates.filter(transformer => {
+    const isInSelectedTNote = dcTnoteTransformerIds === null || dcTnoteTransformerIds.has(String(transformer.id))
+    return Boolean(newDC.spmCenter) &&
+      transformer.status === 'Repaired' &&
+      String(transformer.spmCenter || '').trim() === newDC.spmCenter.trim() &&
+      isInSelectedTNote
+  }), [dcCandidates, dcTnoteTransformerIds, newDC.spmCenter])
+  const visibleBillCandidates = useMemo(() => billCandidates.filter(transformer =>
     Boolean(newBill.spmCenter) &&
     String(transformer.spmCenter || '').trim() === newBill.spmCenter.trim()
+  ), [billCandidates, newBill.spmCenter])
+  const dcDetailTransformerIds = useMemo(
+    () => new Set(dcDetailTransformers.map(transformer => String(transformer.id))),
+    [dcDetailTransformers],
   )
-  const availableDCTransformerCandidates = dcCandidates.filter(transformer =>
+  const availableDCTransformerCandidates = useMemo(() => dcCandidates.filter(transformer =>
     transformer.status === 'Repaired' &&
-    !dcDetailTransformers.some(assigned => String(assigned.id) === String(transformer.id))
+    !dcDetailTransformerIds.has(String(transformer.id))
+  ), [dcCandidates, dcDetailTransformerIds])
+  const visibleDCCandidateById = useMemo(
+    () => new Map(visibleDCCandidates.map(transformer => [String(transformer.id), transformer])),
+    [visibleDCCandidates],
   )
   const parsedDCTargetCount = Number(dcTargetTransformerCount)
-  const getTransformerTNoteDetails = (transformer) => {
-    const linkedNotes = tnotes.flatMap(tnote =>
-      (tnote.transformers || [])
-        .filter(linkedTransformer => String(linkedTransformer.id) === String(transformer.id))
-        .map(linkedTransformer => ({
+  const transformerTNotesById = useMemo(() => {
+    const index = new Map()
+    tnotes.forEach(tnote => {
+      (tnote.transformers || []).forEach(transformer => {
+        const key = String(transformer.id)
+        const notes = index.get(key) || []
+        notes.push({
           tNoteNo: tnote.tNoteNo || String(tnote.id),
           date: tnote.date || '',
-          intakeType: String(linkedTransformer.intakeType || 'NEW').toUpperCase(),
-        }))
-    )
-    if (linkedNotes.length > 0) return linkedNotes
-    const legacyTnote = tnotes.find(tnote => String(tnote.id) === String(transformer.tNoteId))
-    return legacyTnote
-      ? [{ tNoteNo: legacyTnote.tNoteNo || String(legacyTnote.id), date: legacyTnote.date || '', intakeType: String(transformer.intakeType || 'NEW').toUpperCase() }]
-      : []
-  }
-  const getDCSpmCenter = (dc) => {
-    const customerName = String(dc.customerName || '')
-    const match = customerName.match(/AE\s*\/\s*SPM\s*\/\s*(.+?)\s*\/?\s*TGSPDCL/i)
-    return match?.[1]?.trim() || dc.spmCenter || '—'
-  }
+          intakeType: String(transformer.intakeType || 'NEW').toUpperCase(),
+        })
+        index.set(key, notes)
+      })
+    })
+    return index
+  }, [tnotes])
+  const getTransformerTNoteDetails = transformer =>
+    getIndexedTransformerTNoteDetails(transformer, transformerTNotesById, tnotes)
   const getDCTNoteNumbers = (dc) => {
     const tNoteNumbers = [
       ...(String(dc.tNoteNo || '').split(',').map(value => value.trim()).filter(Boolean)),
@@ -661,24 +789,24 @@ function App() {
     ]
     return [...new Set(tNoteNumbers)].join(', ')
   }
-  const eligibleDCTransformerCandidates = availableDCTransformerCandidates.filter(transformer => {
+  const eligibleDCTransformerCandidates = useMemo(() => availableDCTransformerCandidates.filter(transformer => {
     const notes = getTransformerTNoteDetails(transformer)
     const hasValidTNote = notes.length > 0 && notes.every(note => note.tNoteNo && note.date)
     const matchesTgspdclCenter = activeDC?.sentToTgspdcl !== true ||
       String(transformer.spmCenter || '').trim() === String(getDCSpmCenter(activeDC) === '—' ? '' : getDCSpmCenter(activeDC)).trim()
     return hasValidTNote && matchesTgspdclCenter
-  })
+  }), [availableDCTransformerCandidates, activeDC, transformerTNotesById, tnotes])
   const maxDCTargetCount = dcDetailTransformers.length + eligibleDCTransformerCandidates.length
   const isDCTargetCountValid =
     dcTargetTransformerCount !== '' &&
     Number.isInteger(parsedDCTargetCount) &&
     parsedDCTargetCount >= 0 &&
     parsedDCTargetCount <= maxDCTargetCount
-  const selectedDCTransformerDetails = selectedDCTransformers
-    .map(id => visibleDCCandidates.find(transformer => String(transformer.id) === String(id)))
+  const selectedDCTransformerDetails = useMemo(() => selectedDCTransformers
+    .map(id => visibleDCCandidateById.get(String(id)))
     .filter(Boolean)
     .map(transformer => {
-      const tNotesForTransformer = getTransformerTNoteDetails(transformer)
+      const tNotesForTransformer = getIndexedTransformerTNoteDetails(transformer, transformerTNotesById, tnotes)
       const isRgp = tNotesForTransformer.some(note => note.intakeType === 'RGP')
       const transformerName = [
         transformer.dtrNo && `DTR ${transformer.dtrNo}`,
@@ -697,7 +825,7 @@ function App() {
         intakeType: isRgp ? 'RGP' : 'NEW',
         tNotes: tNotesForTransformer,
       }
-    })
+    }), [selectedDCTransformers, visibleDCCandidateById, transformerTNotesById, tnotes])
 
   useEffect(() => {
     if (!authUser || !initialPageReady) return
@@ -723,43 +851,13 @@ function App() {
     if (currentTab === 'bills') fetchBills()
   }, [authUser, currentTab])
 
-  const uniqueValues = (items, accessor) =>
-    [...new Set(items.map(accessor).filter((value) => value !== undefined && value !== null && value !== ''))]
-      .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
-
   const formattedDate = (value) => {
     if (!value) return ''
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
   }
 
-  const dateInputValue = (value) => {
-    if (!value) return ''
-    const isoDate = String(value).match(/^(\d{4}-\d{2}-\d{2})/)
-    if (isoDate) return isoDate[1]
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
-
-  const sortByDateDescending = (rows, dateAccessor, tieBreaker = () => '') =>
-    [...rows].sort((a, b) => {
-      const parsedA = dateAccessor(a) ? new Date(dateAccessor(a)).getTime() : Number.NaN
-      const parsedB = dateAccessor(b) ? new Date(dateAccessor(b)).getTime() : Number.NaN
-      const dateA = Number.isNaN(parsedA) ? null : parsedA
-      const dateB = Number.isNaN(parsedB) ? null : parsedB
-      if (dateA !== dateB) {
-        if (dateA === null) return 1
-        if (dateB === null) return -1
-        return dateB - dateA
-      }
-      return String(tieBreaker(b) || '').localeCompare(String(tieBreaker(a) || ''), undefined, { numeric: true })
-    })
-
-  const filteredTNotes = tnotes.filter((tnote) => {
+  const filteredTNotes = useMemo(() => tnotes.filter((tnote) => {
     const dateValue = dateInputValue(tnote.date)
     const centers = [...new Set((tnote.transformers || []).map(transformer => transformer.spmCenter).filter(Boolean))]
     return (
@@ -771,53 +869,65 @@ function App() {
           ? tnoteSpmCenterFilter.includes('-')
           : centers.some(center => tnoteSpmCenterFilter.includes(center))))
     )
-  })
-  const sortedTNotes = sortByDateDescending(filteredTNotes, (tnote) => tnote.date, (tnote) => tnote.id)
+  }), [tnotes, tnoteNoFilter, tnoteDateFilter, tnoteCountFilter, tnoteSpmCenterFilter])
+  const sortedTNotes = useMemo(
+    () => sortByDateDescending(filteredTNotes, tnote => tnote.date, tnote => tnote.id),
+    [filteredTNotes],
+  )
   const tnoteTotalPages = Math.ceil(sortedTNotes.length / tnotePageSize)
   const safeTnotePage = Math.min(tnotePage, Math.max(0, tnoteTotalPages - 1))
-  const visibleTNotes = sortedTNotes.slice(safeTnotePage * tnotePageSize, (safeTnotePage + 1) * tnotePageSize)
+  const visibleTNotes = useMemo(
+    () => sortedTNotes.slice(safeTnotePage * tnotePageSize, (safeTnotePage + 1) * tnotePageSize),
+    [sortedTNotes, safeTnotePage, tnotePageSize],
+  )
 
-  const filteredDcs = dcs.filter((dc) => {
+  const filteredDcs = useMemo(() => dcs.filter((dc) => {
     const dateValue = dateInputValue(dc.date)
     return (
       (dcNoFilter.length === 0 || dcNoFilter.some(filter => dc.dcNo.toLowerCase().includes(filter.toLowerCase()))) &&
       (dcDateFilter.length === 0 || dcDateFilter.includes(dateValue)) &&
       (dcSpmCenterFilter.length === 0 || dcSpmCenterFilter.some(filter => getDCSpmCenter(dc).toLowerCase().includes(filter.toLowerCase())))
     )
-  })
-  const sortedDcs = sortByDateDescending(filteredDcs, (dc) => dc.date, (dc) => dc.dcNo)
+  }), [dcs, dcNoFilter, dcDateFilter, dcSpmCenterFilter])
+  const sortedDcs = useMemo(() => sortByDateDescending(filteredDcs, dc => dc.date, dc => dc.dcNo), [filteredDcs])
   const dcTotalPages = Math.ceil(sortedDcs.length / dcPageSize)
   const safeDcPage = Math.min(dcPage, Math.max(0, dcTotalPages - 1))
-  const visibleDcs = sortedDcs.slice(safeDcPage * dcPageSize, (safeDcPage + 1) * dcPageSize)
+  const visibleDcs = useMemo(
+    () => sortedDcs.slice(safeDcPage * dcPageSize, (safeDcPage + 1) * dcPageSize),
+    [sortedDcs, safeDcPage, dcPageSize],
+  )
 
-  const filteredBills = bills.filter((bill) => {
+  const filteredBills = useMemo(() => bills.filter((bill) => {
     const dateValue = dateInputValue(bill.date)
     return (
       (billSapFilter.length === 0 || billSapFilter.some(filter => bill.sapNo.toLowerCase().includes(filter.toLowerCase()))) &&
       (billDateFilter.length === 0 || billDateFilter.includes(dateValue)) &&
       (billSpmCenterFilter.length === 0 || billSpmCenterFilter.some(filter => (bill.spmCenter || '').toLowerCase().includes(filter.toLowerCase())))
     )
-  })
-  const sortedBills = sortByDateDescending(filteredBills, (bill) => bill.date, (bill) => bill.sapNo)
+  }), [bills, billSapFilter, billDateFilter, billSpmCenterFilter])
+  const sortedBills = useMemo(
+    () => sortByDateDescending(filteredBills, bill => bill.date, bill => bill.sapNo),
+    [filteredBills],
+  )
 
-  const enquiryColumns = [
-    { key: 'id', label: 'ID', value: enquiry => String(enquiry.ID || '—') },
-    { key: 'date', label: 'Date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
-    { key: 'company', label: 'Company', value: enquiry => enquiry.CustomerName || '—' },
-    { key: 'contact', label: 'Contact Person', value: enquiry => enquiry.ContactPerson || '—' },
-    { key: 'mobile', label: 'Mobile', value: enquiry => enquiry.CustomerPhone || '—' },
-    { key: 'capacity', label: 'Capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
-    { key: 'make', label: 'Make', value: enquiry => enquiry.TransformerMake || '—' },
-    { key: 'services', label: 'Services Required', value: enquiry => enquiry.ServicesRequired || '—' },
-    { key: 'status', label: 'Status', value: enquiry => enquiry.Status || 'NEW' },
-  ]
-  const filteredEnquiries = sortByDateDescending(enquiries.filter(enquiry =>
-    enquiryColumns.every(({ key, value }) => {
+  const filteredEnquiries = useMemo(() => sortByDateDescending(enquiries.filter(enquiry =>
+    ENQUIRY_COLUMNS.every(({ key, value }) => {
       const selected = enquiryColumnFilters[key] || []
       return selected.length === 0 || selected.includes(value(enquiry))
     })
-  ), (enquiry) => enquiry.CreatedAt || enquiry.Date, (enquiry) => enquiry.ID)
+  ), enquiry => enquiry.CreatedAt || enquiry.Date, enquiry => enquiry.ID), [enquiries, enquiryColumnFilters])
 
+  const filteredQuotations = useMemo(() => sortByDateDescending(quotations.filter(quotation =>
+    QUOTATION_COLUMNS.every(({ key, value }) => {
+      const selected = quotationColumnFilters[key] || []
+      return selected.length === 0 || selected.includes(value(quotation))
+    })
+  ), quotation => quotation.quotationDate, quotation => quotation.createdAt || quotation.quotationNo), [quotations, quotationColumnFilters])
+
+  const onEnquiryColumnFilter = (key) => (value) =>
+    setEnquiryColumnFilters(current => ({ ...current, [key]: value }))
+  const onQuotationColumnFilter = (key) => (value) =>
+    setQuotationColumnFilters(current => ({ ...current, [key]: value }))
   const quotationColumns = [
     { key: 'documentType', label: 'Document Type', value: quotation => quotation.documentType === 'BILL' ? 'Bill' : 'Quotation' },
     { key: 'number', label: 'Document No.', value: quotation => quotation.quotationNo || '—' },
@@ -827,17 +937,6 @@ function App() {
     { key: 'capacity', label: 'Capacity', value: quotation => quotation.transformerCapacity || '—' },
     { key: 'output', label: 'Output', value: quotation => quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG') },
   ]
-  const filteredQuotations = sortByDateDescending(quotations.filter(quotation =>
-    quotationColumns.every(({ key, value }) => {
-      const selected = quotationColumnFilters[key] || []
-      return selected.length === 0 || selected.includes(value(quotation))
-    })
-  ), (quotation) => quotation.quotationDate, (quotation) => quotation.createdAt || quotation.quotationNo)
-
-  const onEnquiryColumnFilter = (key) => (value) =>
-    setEnquiryColumnFilters(current => ({ ...current, [key]: value }))
-  const onQuotationColumnFilter = (key) => (value) =>
-    setQuotationColumnFilters(current => ({ ...current, [key]: value }))
 
   const openTransformersByStatus = (status) => {
     setStatusFilter([status])
@@ -851,18 +950,17 @@ function App() {
     setCurrentTab('transformers')
   }
 
-  const columnOptions = (rows, column) => uniqueValues(rows, column.value)
-
-  const transformerOptions = {
+  const transformerOptions = useMemo(() => ({
     spmCenter: uniqueValues(transformers, (transformer) => transformer.spmCenter),
     dtrNo: uniqueValues(transformers, (transformer) => transformer.dtrNo),
     sNo: uniqueValues(transformers, (transformer) => transformer.sNo),
     tNote: uniqueValues(transformers, (transformer) => transformer.tNoteId || ''),
     capacity: uniqueValues(transformers, (transformer) => transformer.capacity),
     type: uniqueValues(transformers, (transformer) => transformer.type),
-  }
+  }), [transformers])
 
-  const tnoteOptions = {
+  const tnoteOptions = useMemo(() => {
+    const options = {
     tnoteNo: uniqueValues(tnotes, (tnote) => String(tnote.tNoteNo || tnote.id)),
     date: uniqueValues(tnotes, (tnote) => dateInputValue(tnote.date)),
     count: uniqueValues(tnotes, (tnote) => String(tnote.numberOfTransformers)),
@@ -870,22 +968,24 @@ function App() {
       tnotes.flatMap(tnote => (tnote.transformers || []).map(transformer => transformer.spmCenter).filter(Boolean)),
       center => center
     ),
-  }
-  if (tnotes.some(tnote => !tnote.transformers?.some(transformer => transformer.spmCenter))) {
-    tnoteOptions.spmCenter = [...new Set([...tnoteOptions.spmCenter, '-'])].sort()
-  }
+    }
+    if (tnotes.some(tnote => !tnote.transformers?.some(transformer => transformer.spmCenter))) {
+      options.spmCenter = [...new Set([...options.spmCenter, '-'])].sort()
+    }
+    return options
+  }, [tnotes])
 
-  const dcOptions = {
+  const dcOptions = useMemo(() => ({
     dcNo: uniqueValues(dcs, (dc) => dc.dcNo),
     date: uniqueValues(dcs, (dc) => dateInputValue(dc.date)),
     spmCenter: uniqueValues(dcs, (dc) => getDCSpmCenter(dc)),
-  }
+  }), [dcs])
 
-  const billOptions = {
+  const billOptions = useMemo(() => ({
     sapNo: uniqueValues(bills, (bill) => bill.sapNo),
     date: uniqueValues(bills, (bill) => dateInputValue(bill.date)),
     spmCenter: uniqueValues(bills, (bill) => bill.spmCenter || ''),
-  }
+  }), [bills])
 
   const fetchTransformers = async () => {
     setTransformersLoading(true)
@@ -894,13 +994,21 @@ function App() {
       const params = new URLSearchParams({
         page: String(page),
         size: String(pageSize),
-        status: Array.isArray(statusFilter) && statusFilter.length > 0 ? statusFilter.join(',') : '',
-        spmCenter: Array.isArray(spmCenterFilter) && spmCenterFilter.length > 0 ? spmCenterFilter.join(',') : '',
-        dtrNo: Array.isArray(dtrNoFilter) && dtrNoFilter.length > 0 ? dtrNoFilter.join(',') : '',
-        sNo: Array.isArray(sNoFilter) && sNoFilter.length > 0 ? sNoFilter.join(',') : '',
-        tNoteId: Array.isArray(tNoteFilter) && tNoteFilter.length > 0 ? tNoteFilter.join(',') : '',
-        type: Array.isArray(typeFilter) && typeFilter.length > 0 ? typeFilter.join(',') : '',
-        capacity: Array.isArray(capacityFilter) && capacityFilter.length > 0 ? capacityFilter.join(',') : '',
+      })
+      const filterParams = {
+        status: statusFilter,
+        spmCenter: spmCenterFilter,
+        dtrNo: dtrNoFilter,
+        sNo: sNoFilter,
+        tNoteId: tNoteFilter,
+        type: typeFilter,
+        capacity: capacityFilter,
+      }
+      Object.entries(filterParams).forEach(([key, values]) => {
+        const nonEmptyValues = (Array.isArray(values) ? values : [])
+          .map(value => String(value).trim())
+          .filter(Boolean)
+        if (nonEmptyValues.length > 0) params.set(key, nonEmptyValues.join(','))
       })
       const response = await apiFetch(`/api/transformers?${params.toString()}`)
       if (!response.ok) {
@@ -928,6 +1036,7 @@ function App() {
   const exportFilteredTransformers = async () => {
     setTransformerExportLoading(true)
     setTransformersError('')
+    showLoading()
     try {
       const filters = new URLSearchParams({
         size: '50',
@@ -949,8 +1058,10 @@ function App() {
 
       const firstPage = await fetchPage(0)
       const rows = [...(firstPage.content ?? [])]
-      for (let pageNumber = 1; pageNumber < (firstPage.totalPages ?? 0); pageNumber += 1) {
-        const result = await fetchPage(pageNumber)
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(0, (firstPage.totalPages ?? 0) - 1) }, (_, index) => fetchPage(index + 1)),
+      )
+      for (const result of remainingPages) {
         rows.push(...(result.content ?? []))
       }
       const tnotesResponse = await apiFetch('/api/tnotes')
@@ -1069,6 +1180,7 @@ ${styles}
       setTransformersError(err instanceof Error ? err.message : 'Failed to export transformer records')
     } finally {
       setTransformerExportLoading(false)
+      hideLoading()
     }
   }
 
@@ -1117,6 +1229,7 @@ ${styles}
         spmCenters: Array.isArray(result.data.spmCenters) ? result.data.spmCenters : [],
         services: Array.isArray(result.data.services) ? result.data.services : [],
         businessGstin: result.data.businessGstin || '',
+        tgspdclGstin: result.data.tgspdclGstin || '',
       })
     } catch (err) {
       setDropdownDefaultsError(err instanceof Error ? err.message : 'Failed to load dropdown defaults')
@@ -1161,8 +1274,13 @@ ${styles}
         throw new Error(`Failed to fetch tnotes (${response.status})`)
       }
       const data = await response.json()
-      setTnotes(Array.isArray(data) ? data : [])
-      return Array.isArray(data) ? data : []
+      const fetchedTnotes = Array.isArray(data) ? data.map((tnote) => {
+        const tNoteNo = [tnote.tNoteNo, tnote.TNoteNo, tnote.tnoteNo]
+          .find(value => value !== null && value !== undefined && String(value).trim() !== '')
+        return { ...tnote, tNoteNo: tNoteNo === undefined ? '' : String(tNoteNo) }
+      }) : []
+      setTnotes(fetchedTnotes)
+      return fetchedTnotes
     } catch (err) {
       setTnoteError(err instanceof Error ? err.message : 'Failed to load TNotes')
       return null
@@ -1236,8 +1354,6 @@ ${styles}
     let cancelled = false
     Promise.all([
       fetchDropdownDefaults(),
-      fetchTransformers(),
-      fetchSummary(),
       fetchQuotations(),
     ]).finally(() => {
       if (cancelled) return
@@ -1248,6 +1364,10 @@ ${styles}
       cancelled = true
     }
   }, [authUser])
+
+  useEffect(() => {
+    if (authUser === null || initialPageReady) finishInitialLoading()
+  }, [authUser, initialPageReady])
 
   const openNewQuotation = (documentType = 'QUOTATION') => {
     setQuotationsSuccess('')
@@ -1589,6 +1709,7 @@ ${styles}
   }
 
   const createQuotationDocumentFile = async (draft, existingMembers = []) => {
+    const { generateQuotationOutput, planQuotationPages } = await import('./quotationPdf')
     const members = [...existingMembers]
       .sort((left, right) => Number(left.groupPosition || 1) - Number(right.groupPosition || 1))
     const existingNumbers = members.map(member => member.quotationNo)
@@ -1689,10 +1810,10 @@ ${styles}
 
     setQuotationSaving(true)
     try {
-      const { generated, records } = await createQuotationDocumentFile(
+      const { generated, records } = await withGlobalLoading(() => createQuotationDocumentFile(
         quotationDraft,
         quotationModalMode === 'edit' ? activeQuotationGroup : [],
-      )
+      ))
       setShowQuotationModal(false)
       setActiveQuotationGroup(records.length > 1 ? records : [])
       if (generated.overflowed && quotationDraft.outputFormat === 'PNG') {
@@ -1724,7 +1845,7 @@ ${styles}
     setQuotationsError('')
     setQuotationsSuccess('')
     try {
-      const { generated } = await createQuotationDocumentFile(draft, members)
+      const { generated } = await withGlobalLoading(() => createQuotationDocumentFile(draft, members))
       setQuotationsSuccess(generated.overflowed
         ? `Regenerated the linked two-document ${draft.documentType === 'BILL' ? 'bill' : 'quotation'} PDF.`
         : `Regenerated ${draft.documentType === 'BILL' ? 'bill' : 'quotation'} ${quotation.quotationNo}.`)
@@ -1872,27 +1993,30 @@ ${styles}
       }
       const createdTNote = await tnoteResponse.json()
 
-      for (const transformer of tnoteTransformers) {
-        const requestId = crypto.randomUUID()
-        const transformerResponse = await apiFetch('/api/transformers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      const transformerResponse = await apiFetch('/api/transformers/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transformers: tnoteTransformers.map(transformer => ({
             ...transformer,
             capacity: parseInt(transformer.capacity),
             oilCapacity: parseFloat(transformer.oilCapacity),
             tNoteId: createdTNote.id,
-            requestId,
-          }),
-        })
-        if (!transformerResponse.ok) {
-          const errorBody = await transformerResponse.json().catch(() => ({}))
-          throw new Error(
-            `TNote ${createdTNote.tNoteNo || createdTNote.id} was created, but transformer registration failed: ${
-              errorBody.detail || errorBody.message || `HTTP ${transformerResponse.status}`
-            }`,
-          )
-        }
+            requestId: crypto.randomUUID(),
+          })),
+        }),
+      })
+      if (!transformerResponse.ok) {
+        const errorBody = await transformerResponse.json().catch(() => ({}))
+        throw new Error(
+          `TNote ${createdTNote.tNoteNo || createdTNote.id} was created, but transformer registration failed: ${
+            errorBody.detail || errorBody.message || `HTTP ${transformerResponse.status}`
+          }`,
+        )
+      }
+      const registeredTransformers = await transformerResponse.json()
+      if (!Array.isArray(registeredTransformers) || registeredTransformers.length !== tnoteTransformers.length) {
+        throw new Error(`TNote ${createdTNote.tNoteNo || createdTNote.id} was created, but transformer registration returned an incomplete result.`)
       }
 
       setNewTNote({ tNoteNo: '', date: new Date().toISOString().split('T')[0], numberOfTransformers: 1 })
@@ -1935,7 +2059,9 @@ ${styles}
     if (!tnote?.id || tnoteAssessmentExporting === tnote.id) return
     setTnoteAssessmentExporting(tnote.id)
     setTnoteError('')
+    showLoading()
     try {
+      const ExcelJS = (await import('exceljs')).default
       const linkedTransformers = Array.isArray(tnote.transformers) ? tnote.transformers : []
       if (linkedTransformers.length !== Number(tnote.numberOfTransformers)) {
         throw new Error(`TNote ${tnote.tNoteNo || tnote.id} reports ${tnote.numberOfTransformers} transformers but returned ${linkedTransformers.length}. The assessment sheet was not exported.`)
@@ -2134,6 +2260,7 @@ ${styles}
       setTnoteError(err instanceof Error ? err.message : 'Failed to export TNote assessment.')
     } finally {
       setTnoteAssessmentExporting(null)
+      hideLoading()
     }
   }
 
@@ -2441,10 +2568,15 @@ ${styles}
       if (!response.ok) throw new Error('Failed to load repaired transformers')
       const firstPage = await response.json()
       const candidates = [...(firstPage.content ?? [])]
-      for (let pageNumber = 1; pageNumber < (firstPage.totalPages ?? 0); pageNumber += 1) {
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(0, (firstPage.totalPages ?? 0) - 1) }, async (_, index) => {
+          const pageNumber = index + 1
         const pageResponse = await apiFetch(`/api/transformers?status=Repaired&page=${pageNumber}&size=50`)
         if (!pageResponse.ok) throw new Error(`Failed to load repaired transformers (page ${pageNumber + 1})`)
-        const pageData = await pageResponse.json()
+          return pageResponse.json()
+        }),
+      )
+      for (const pageData of remainingPages) {
         candidates.push(...(pageData.content ?? []))
       }
       setDcCandidates(candidates)
@@ -2477,29 +2609,54 @@ ${styles}
     }
   }
 
-  const openDCModal = async () => {
+  const openDCModal = async (tnote = null) => {
     setDcFormError('')
     setDcSuccessMessage('')
     setDcGenerationError('')
     setTransformersError('')
     setShowDCModal(true)
     setSelectedDCTransformers([])
-    setNewDC({
+
+    const tnoteSpmCenters = getTNoteSpmCenters(tnote)
+    const spmCenter = tnoteSpmCenters.length === 1 ? tnoteSpmCenters[0] : ''
+    const selectedTNoteTransformerIds = tnote
+      ? new Set((tnote.transformers || [])
+        .filter(transformer => String(transformer.spmCenter || '').trim() === spmCenter)
+        .map(transformer => String(transformer.id)))
+      : null
+    setDcTnoteTransformerIds(selectedTNoteTransformerIds)
+
+    let tgspdclGstin = dropdownDefaults.tgspdclGstin
+    if (!tgspdclGstin) {
+      try {
+        const defaultsResponse = await apiFetch('/api/defaults')
+        if (defaultsResponse.ok) {
+          const defaultsResult = await defaultsResponse.json()
+          tgspdclGstin = defaultsResult?.data?.tgspdclGstin || ''
+        }
+      } catch (error) {
+        setDcFormError('Unable to load the TGSPDCL GSTIN. The customer GSTIN can be entered manually.')
+      }
+    }
+
+    const initialDC = {
       date: new Date().toISOString().split('T')[0],
-      spmCenter: '',
+      spmCenter,
       totalTransformers: 0,
-      customerName: '',
-      customerAddress: '',
-      customerGstin: '',
-      sentToTgspdcl: '',
+      customerName: spmCenter ? `AE/SPM/${spmCenter}/TGSPDCL` : '',
+      customerAddress: spmCenter ? 'TGSPDCL' : '',
+      customerGstin: spmCenter ? tgspdclGstin : '',
+      sentToTgspdcl: spmCenter ? true : '',
       emptyDrumsAvailable: '',
       emptyDrumCount: '',
-    })
+    }
+    setNewDC(initialDC)
     setDcTnoteLoading(true)
     try {
       const [loadedTnotes, loadedCandidates] = await Promise.all([fetchTNotes(), loadDCCandidates()])
       if (!loadedTnotes || !loadedCandidates) {
         setDcFormError('Unable to load TNote references or repaired transformers. Close and reopen the form to retry.')
+        return
       }
     } finally {
       setDcTnoteLoading(false)
@@ -2786,6 +2943,7 @@ ${styles}
   const exportBill = async (sapNo) => {
     setBillExportingSapNo(sapNo)
     setBillExportError('')
+    showLoading()
     try {
       const [billResponse, transformersResponse, tnotesResponse] = await Promise.all([
         apiFetch(`/api/bills/${encodeURIComponent(sapNo)}`),
@@ -2932,6 +3090,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       setBillExportError(err instanceof Error ? err.message : `Failed to export bill ${sapNo}`)
     } finally {
       setBillExportingSapNo('')
+      hideLoading()
     }
   }
 
@@ -2972,7 +3131,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     )
   }
 
-  const renderAttachmentViewerButton = (title, attachments) => {
+  const renderAttachmentViewerButton = (title, attachments, onDeleteAttachment = null) => {
     const availableAttachments = Array.isArray(attachments)
       ? attachments.filter((attachment) => attachment.url)
       : []
@@ -2984,7 +3143,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         aria-label={availableAttachments.length ? `View ${availableAttachments.length} attachments for ${title}` : `No attachments for ${title}`}
         title={availableAttachments.length ? `View ${availableAttachments.length} attachment${availableAttachments.length === 1 ? '' : 's'}` : 'No attachments'}
         disabled={availableAttachments.length === 0}
-        onClick={() => setAttachmentViewer({ title: `${title} Attachments`, attachments: availableAttachments })}
+        onClick={() => {
+          setTnoteAttachmentDeleteError('')
+          setAttachmentViewer({ title: `${title} Attachments`, attachments: availableAttachments, onDeleteAttachment })
+        }}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
@@ -2993,6 +3155,35 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         {availableAttachments.length > 0 && <span>{availableAttachments.length}</span>}
       </button>
     )
+  }
+
+  const deleteTNoteAttachment = async (tnote, attachment) => {
+    if (!tnote?.id || !attachment?.url || tnoteAttachmentDeletingUrl) return
+    const attachmentName = attachment.name || 'this file'
+    if (!window.confirm(`Delete ${attachmentName} from TNote ${tnote.tNoteNo || tnote.id}? The uploaded file will be moved to Drive trash.`)) return
+
+    setTnoteAttachmentDeletingUrl(attachment.url)
+    setTnoteAttachmentDeleteError('')
+    try {
+      const response = await apiFetch(`/api/tnotes/${tnote.id}/attachments`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: attachment.url }),
+      })
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody.detail || errorBody.message || `Failed to delete attachment (${response.status})`)
+      }
+      const updatedTNote = await response.json()
+      setTnotes(current => current.map(item => item.id === updatedTNote.id ? updatedTNote : item))
+      setAttachmentViewer(current => current
+        ? { ...current, attachments: Array.isArray(updatedTNote.attachments) ? updatedTNote.attachments : [] }
+        : current)
+    } catch (error) {
+      setTnoteAttachmentDeleteError(error instanceof Error ? error.message : 'Failed to delete the uploaded file.')
+    } finally {
+      setTnoteAttachmentDeletingUrl('')
+    }
   }
 
   const openTNoteAttachmentUpload = (tnote) => {
@@ -3067,6 +3258,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         ? `AE/SPM/${current.spmCenter}/TGSPDCL`
         : '',
       customerAddress: sentToTgspdcl === true ? 'TGSPDCL' : '',
+      customerGstin: sentToTgspdcl === true ? dropdownDefaults.tgspdclGstin : '',
     }))
     setDcFormError('')
   }
@@ -3085,6 +3277,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       spmCenter,
       customerName: current.sentToTgspdcl && spmCenter ? `AE/SPM/${spmCenter}/TGSPDCL` : current.customerName,
       customerAddress: current.sentToTgspdcl ? 'TGSPDCL' : current.customerAddress,
+      customerGstin: current.sentToTgspdcl ? dropdownDefaults.tgspdclGstin : current.customerGstin,
     }))
     setDcFormError('')
   }
@@ -3104,7 +3297,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   }
 
   const createAndSaveDCFile = async (dc) => {
-    const generatedPdf = await generateDeliveryChallanPdf(dc, deliveryChallanTemplateUrl)
+    const generatedPdf = await withGlobalLoading(() => generateDeliveryChallanPdf(dc, deliveryChallanTemplateUrl))
     const response = await apiFetch('/api/dcs/generated-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3173,6 +3366,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       setDcFormError('One or more selected transformers are no longer available for delivery. Review your selection.')
       return
     }
+    if (dcCreateSubmittingRef.current) {
+      setDcFormError('The delivery challan is already being saved. Please wait for it to finish.')
+      return
+    }
+    dcCreateSubmittingRef.current = true
     setDcCreateLoading(true)
     let createdDcNo = ''
     let transformerAssignmentsCompleted = false
@@ -3189,10 +3387,15 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         transformerDetails: selectedDCTransformerDetails,
         totalTransformers: selectedDCTransformers.length,
       }
+      const requestId = globalThis.crypto?.randomUUID?.() || `dc-${Date.now()}-${Math.random().toString(36).slice(2)}`
       const response = await apiFetch('/api/dcs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dcRequest),
+        body: JSON.stringify({
+          ...dcRequest,
+          requestId,
+          transformerIds: selectedDCTransformers,
+        }),
       })
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}))
@@ -3201,17 +3404,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       const createdDC = await response.json()
       if (!createdDC.dcNo) throw new Error('The delivery challan service returned no DC number.')
       createdDcNo = createdDC.dcNo
-      for (const id of selectedDCTransformers) {
-        const assignRes = await apiFetch('/api/dcs/transformers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dcNo: createdDcNo, transformerId: id }),
-        })
-        if (!assignRes.ok) {
-          const errorBody = await assignRes.json().catch(() => ({}))
-          throw new Error(errorBody.detail || errorBody.message || `Failed to assign transformer ${id} to the challan`)
-        }
-      }
       transformerAssignmentsCompleted = true
       setDcPdfGeneratingNo(createdDcNo)
       await createAndSaveDCFile({ ...createdDC, ...dcRequest })
@@ -3248,6 +3440,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           : message)
       }
     } finally {
+      dcCreateSubmittingRef.current = false
       setDcPdfGeneratingNo('')
       setDcCreateLoading(false)
     }
@@ -3302,16 +3495,18 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         const errorBody = await response.json().catch(() => ({}))
         throw new Error(errorBody.detail || errorBody.message || `Failed to create bill (${response.status}).`)
       }
-      for (const id of selectedBillTransformers) {
-        const billRes = await apiFetch(`/api/transformers/${id}/bill`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sapNo }),
-        })
-        if (!billRes.ok) {
-          const errorBody = await billRes.json().catch(() => ({}))
-          throw new Error(errorBody.detail || errorBody.message || `Failed to assign transformer ${id} to bill ${sapNo} (${billRes.status}).`)
-        }
+      const assignmentResponse = await apiFetch('/api/transformers/bill/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sapNo, transformerIds: selectedBillTransformers }),
+      })
+      if (!assignmentResponse.ok) {
+        const errorBody = await assignmentResponse.json().catch(() => ({}))
+        throw new Error(errorBody.detail || errorBody.message || `Failed to assign transformers to bill ${sapNo} (${assignmentResponse.status}).`)
+      }
+      const billedTransformers = await assignmentResponse.json()
+      if (!Array.isArray(billedTransformers) || billedTransformers.length !== selectedBillTransformers.length) {
+        throw new Error(`Bill ${sapNo} was saved, but transformer billing returned an incomplete result.`)
       }
       setNewBill({ sapNo: '', agreementNo: '', date: new Date().toISOString().split('T')[0], spmCenter: '', totalTransformers: 0, billAmount: 0, gstAmount: 0 })
       setBillAttachments([])
@@ -3581,13 +3776,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     )
   }
 
-  if (authUser === undefined || (authUser && !initialPageReady)) {
-    return (
-      <div className="auth-loading" role="status" aria-live="polite" aria-busy="true">
-        <span className="page-loading-spinner" aria-hidden="true" />
-        <span>{authUser === undefined ? 'Checking access...' : 'Loading application...'}</span>
-      </div>
-    )
+  if ((authUser === undefined && adminLoginOnly) || (authUser && !initialPageReady)) {
+    return null
   }
 
   if (!authUser || showPublicSite) {
@@ -3656,48 +3846,12 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         </header>
         {dropdownDefaultsError && <p className="status status--error jobs-feedback" role="alert">{dropdownDefaultsError}</p>}
 
-        {currentTab !== 'enquiries' && currentTab !== 'quotations' && (
-          <section className="kpis">
-            <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
-              <p>Recieved</p>
-              <h3>{summary.recieve}</h3>
-              <small>New inward entries</small>
-            </button>
-            <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Assesment')} aria-label={`View ${summary.assesment} transformers awaiting assessment`}>
-              <p>Assesment</p>
-              <h3>{summary.assesment}</h3>
-              <small>Fault verification pending</small>
-            </button>
-            <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repair In Progress')} aria-label={`View ${summary.repairInProgress} transformers in repair`}>
-              <p>Repair In Progress</p>
-              <h3>{summary.repairInProgress}</h3>
-              <small>Workshop jobs in progress</small>
-            </button>
-            <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repaired')} aria-label={`View ${summary.repaired} repaired transformers`}>
-              <p>Repaired</p>
-              <h3>{summary.repaired}</h3>
-              <small>Ready for dispatch planning</small>
-            </button>
-            <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Delivered')} aria-label={`View ${summary.delivered} delivered transformers`}>
-              <p>Delivered</p>
-              <h3>{summary.delivered}</h3>
-              <small>Customer handover completed</small>
-            </button>
-            <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Billed')} aria-label={`View ${summary.billed} billed transformers`}>
-              <p>Billed</p>
-              <h3>{summary.billed}</h3>
-              <small>Invoice posted after delivery</small>
-            </button>
-          </section>
-        )}
-
       {currentTab === 'enquiries' && (
         <section className="panel jobs-panel">
           <div className="panel-header">
             <h2>Service Enquiries</h2>
           </div>
           {enquiriesError && <p className="status status--error jobs-feedback">{enquiriesError}</p>}
-          {enquiriesLoading && <p className="status jobs-feedback">Loading enquiries...</p>}
           
           {showEnquiryForm && (
             <form onSubmit={submitEnquiry} className="enquiry-form">
@@ -3927,7 +4081,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           </div>
           {quotationsError && <p className="status status--error jobs-feedback" role="alert">{quotationsError}</p>}
           {quotationsSuccess && <p className="quotation-settings-summary" role="status">{quotationsSuccess}</p>}
-          {quotationsLoading && <p className="status jobs-feedback">Loading quotations and rate defaults...</p>}
           <div className="jobs-table-wrap">
             <table className="jobs-table">
               <thead>
@@ -4249,11 +4402,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <p className="quotation-financial-year">Financial Year: {quotationDraft.financialYear || quotationConfig.settings['Financial Year']}</p>
                 <div className="quotation-modal-actions">
                   <button type="submit" className="btn btn--primary" disabled={quotationSaving}>
-                    {quotationSaving
-                      ? 'Generating...'
-                      : quotationModalMode === 'edit'
-                        ? `Save Changes & Generate ${quotationDraft.outputFormat || 'PDF'}`
-                        : `Generate ${quotationDraft.outputFormat || 'PDF'}`}
+                    {quotationModalMode === 'edit'
+                      ? `Save Changes & Generate ${quotationDraft.outputFormat || 'PDF'}`
+                      : `Generate ${quotationDraft.outputFormat || 'PDF'}`}
                   </button>
                   <button type="button" className="btn btn--ghost" onClick={() => setShowQuotationModal(false)}>Cancel</button>
                 </div>
@@ -4262,6 +4413,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           </section>
         </div>
       )}
+
+      {currentTab === 'employees' && <EmployeePage />}
 
       {currentTab === 'transformers' && (
         <section className="panel jobs-panel">
@@ -4288,12 +4441,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 onClick={exportFilteredTransformers}
                 disabled={transformerExportLoading}
               >
-                {transformerExportLoading ? 'Exporting...' : 'Export Filtered Excel Sheet'}
+                Export Filtered Excel Sheet
               </button>
             </div>
           </div>
           {transformersError && <p className="status status--error jobs-feedback">{transformersError}</p>}
-          {transformersLoading && <p className="status jobs-feedback">Loading transformers...</p>}
           <div className="jobs-table-wrap">
             <table className="jobs-table">
               <thead>
@@ -4473,7 +4625,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               </button>
             </div>
           </div>
-          {tnoteLoading && <p className="status jobs-feedback">Loading TNotes...</p>}
           {tnoteError && <p className="status status--error jobs-feedback">{tnoteError}</p>}
           <div className="jobs-table-wrap">
             <table className="jobs-table">
@@ -4522,7 +4673,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <tbody>
                 {visibleTNotes.map((tnote) => (
                   <tr key={tnote.id}>
-                    <td>{tnote.tNoteNo || tnote.id}</td>
+                    <td>{tnote.tNoteNo || '—'}</td>
                     <td>{getTNoteSpmCenter(tnote)}</td>
                     <td>{formattedDate(tnote.date) || '—'}</td>
                     <td>
@@ -4537,10 +4688,14 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     </td>
                     <td>
                       <div className="tnote-attachment-actions">
-                        {renderAttachmentViewerButton(`TNote ${tnote.id}`, tnote.attachments)}
+                        {renderAttachmentViewerButton(
+                          `TNote ${tnote.tNoteNo || tnote.id}`,
+                          tnote.attachments,
+                          attachment => deleteTNoteAttachment(tnote, attachment),
+                        )}
                         <button
                           type="button"
-                          className="btn btn--ghost btn--small"
+                          className="btn btn--ghost btn--small btn--icon"
                           onClick={() => openTNoteAttachmentUpload(tnote)}
                           aria-label={`Add attachments to TNote ${tnote.tNoteNo || tnote.id}`}
                           title={Array.isArray(tnote.attachments) && tnote.attachments.length >= MAX_ATTACHMENTS
@@ -4548,11 +4703,29 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                             : 'Add attachments'}
                           disabled={Array.isArray(tnote.attachments) && tnote.attachments.length >= MAX_ATTACHMENTS}
                         >
-                          Add upload
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 16V4M7 9l5-5 5 5M5 14v5h14v-5" />
+                          </svg>
                         </button>
                       </div>
                     </td>
                     <td className="actions-cell">
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small btn--icon"
+                        aria-label={`Generate delivery challan for TNote ${tnote.tNoteNo || tnote.id}`}
+                        title={tnote.transformers?.some(transformer => transformer.status === 'Repaired')
+                          ? 'Generate delivery challan from this TNote'
+                          : 'No transformers in this TNote have a Repaired status'}
+                        onClick={() => openDCModal(tnote)}
+                        disabled={!tnote.transformers?.some(transformer => transformer.status === 'Repaired')}
+                      >
+                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h11l4 4v9H3z" />
+                          <path d="M14 6v4h4M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM18 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+                          <path d="M7 10h7M7 14h5" />
+                        </svg>
+                      </button>
                       <button
                         type="button"
                         className="btn btn--ghost btn--small btn--icon"
@@ -4562,8 +4735,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         disabled={tnoteAssessmentExporting === tnote.id}
                       >
                         <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 3h11l4 4v14H5z" />
-                          <path d="M16 3v5h5M8 12h8M8 16h8M8 8h4" />
+                          <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
+                          <path d="M5 3h14v4M5 3v18" />
                         </svg>
                       </button>
                       <button
@@ -4620,7 +4793,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           </div>
           {dcSuccessMessage && <p className="status status--ok jobs-feedback" role="status">{dcSuccessMessage}</p>}
           {dcGenerationError && <p className="status status--error jobs-feedback" role="alert">{dcGenerationError}</p>}
-          {dcLoading && <p className="status jobs-feedback">Loading DCs...</p>}
           <div className="jobs-table-wrap">
             <table className="jobs-table">
               <thead>
@@ -4844,6 +5016,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   title="Enter a valid 15-character GSTIN."
                   required
                   disabled={dcCreateLoading}
+                  readOnly={newDC.sentToTgspdcl}
                 />
               </div>
               <div className="form-group">
@@ -4889,9 +5062,13 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 </div>
               )}
               <h3>Select delivered transformers</h3>
-              <p className="status">Select one or more repaired transformers from the selected SPM Center. Linked TNote numbers and dates are shown automatically and saved with the challan.</p>
+              <p className="status">
+                {dcTnoteTransformerIds === null
+                  ? 'Select one or more repaired transformers from the selected SPM Center. Linked TNote numbers and dates are shown automatically and saved with the challan.'
+                  : 'Select unselected repaired transformers from this TNote. Linked TNote numbers and dates are shown automatically and saved with the challan.'}
+              </p>
               {dcFormError && <p className="status status--error" role="alert">{dcFormError}</p>}
-              <p className="status">{visibleDCCandidates.length} repaired transformer(s) available.</p>
+              <p className="status">{visibleDCCandidates.length} unselected repaired transformer(s) available.</p>
               <div className="jobs-table-wrap">
                 <table className="jobs-table">
                   <thead>
@@ -4963,7 +5140,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               )}
               <div className="modal-actions">
                 <button type="submit" className="btn btn--primary" disabled={dcCreateLoading || dcTnoteLoading}>
-                  {dcCreateLoading ? 'Generating...' : 'Generate Delivery Challan'}
+                  Generate Delivery Challan
                 </button>
                 <button type="button" className="btn btn--ghost" onClick={() => setShowDCModal(false)}>
                   Cancel
@@ -5074,7 +5251,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     onClick={markActiveDCAsDelivered}
                     disabled={dcMarkDeliveredLoading || dcDeliveryAttachmentReading || dcDeliveryAttachments.length === 0}
                   >
-                    {dcMarkDeliveredLoading ? 'Marking delivered...' : 'Mark Challan Delivered'}
+                    Mark Challan Delivered
                   </button>
                 </div>
               </>
@@ -5164,7 +5341,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                                 dcDetailTransformers.length <= parsedDCTargetCount
                               }
                             >
-                              {dcTransformerUpdateId === transformer.id ? 'Updating...' : 'Remove'}
+                              Remove
                             </button>
                           </div>
                         </td>
@@ -5227,7 +5404,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                                 ? 'Transformer requires a linked TNote number and date'
                                 : !sameTgspdclCenter ? 'TGSPDCL challans only accept their selected SPM Center' : 'Add to challan'}
                             >
-                              {dcTransformerUpdateId === candidate.id ? 'Adding...' : 'Add'}
+                              Add
                             </button>
                           </td>
                         </tr>
@@ -5299,15 +5476,15 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <fieldset className="assessment-group">
                 <legend>HV Coils</legend>
                 <label className="assessment-field">No. of coils damaged<input type="number" min="0" step="1" value={assessmentForm.hvDamagedCoils} onChange={event => setAssessmentForm(current => ({ ...current, hvDamagedCoils: event.target.value }))} disabled={assessmentSaving} /></label>
-                <label className="assessment-field">Wt. of old coils<input type="number" min="0" step="0.01" value={assessmentForm.hvOldCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, hvOldCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
-                <label className="assessment-field">Wt. of new coils<input type="number" min="0" step="0.01" value={assessmentForm.hvNewCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, hvNewCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
+                <label className="assessment-field">Wt. of old coils(Kg)<input type="number" min="0" step="0.01" value={assessmentForm.hvOldCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, hvOldCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
+                <label className="assessment-field">Wt. of new coils(Kg)<input type="number" min="0" step="0.01" value={assessmentForm.hvNewCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, hvNewCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
               </fieldset>
 
               <fieldset className="assessment-group">
                 <legend>LV Coils</legend>
                 <label className="assessment-field">No. of reinsulated coils<input type="number" min="0" step="1" value={assessmentForm.lvReinsulatedCoils} onChange={event => setAssessmentForm(current => ({ ...current, lvReinsulatedCoils: event.target.value }))} disabled={assessmentSaving} /></label>
-                <label className="assessment-field">Wt. of old coils<input type="number" min="0" step="0.01" value={assessmentForm.lvOldCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, lvOldCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
-                <label className="assessment-field">Wt. of new coils<input type="number" min="0" step="0.01" value={assessmentForm.lvNewCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, lvNewCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
+                <label className="assessment-field">Wt. of old coils(Kg)<input type="number" min="0" step="0.01" value={assessmentForm.lvOldCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, lvOldCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
+                <label className="assessment-field">Wt. of new coils(Kg)<input type="number" min="0" step="0.01" value={assessmentForm.lvNewCoilWeight} onChange={event => setAssessmentForm(current => ({ ...current, lvNewCoilWeight: event.target.value }))} disabled={assessmentSaving} /></label>
               </fieldset>
 
               <fieldset className="assessment-group assessment-group--paired">
@@ -5346,11 +5523,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 ) : (
                   <>
                     <button type="submit" className="btn btn--primary" disabled={assessmentSaving}>
-                      {assessmentSaving
-                        ? 'Saving assessment...'
-                        : assessmentMode === 'stage'
-                          ? 'Save and move to Assessment'
-                          : 'Save changes'}
+                      {assessmentMode === 'stage' ? 'Save Assessment' : 'Save changes'}
                     </button>
                     {!['Delivered', 'Billed', 'Scrap'].includes(assessmentTransformer.status) && (
                       <button
@@ -5587,7 +5760,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   onClick={() => updateBillStatus('RECEIVED')}
                   disabled={billStatusSaving || !billReceiptAmount || Number(billReceiptAmount) <= 0 || !billReceiptDate}
                 >
-                  {billStatusSaving ? 'Saving...' : 'Mark Bill Received'}
+                  Mark Bill Received
                 </button>
               </section>
             )}
@@ -5619,7 +5792,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   onClick={() => updateBillStatus('GST_FILED')}
                   disabled={billStatusSaving || !billGstFilingMonth || !billInvoiceNo.trim()}
                 >
-                  {billStatusSaving ? 'Saving...' : 'Mark GST Filed'}
+                  Mark GST Filed
                 </button>
               </section>
             )}
@@ -5722,7 +5895,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               Create New Bill
             </button>
           </div>
-          {billLoading && <p className="status jobs-feedback">Loading Bills...</p>}
           {billExportError && <p className="status status--error" role="alert">{billExportError}</p>}
           <div className="jobs-table-wrap">
             <table className="jobs-table">
@@ -5950,7 +6122,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               </div>
               <div className="modal-actions">
                 <button type="submit" className="btn btn--primary" disabled={billCreateLoading || billAttachmentReading}>
-                  {billCreateLoading ? 'Creating...' : billAttachmentReading ? 'Reading attachments...' : 'Create Bill and Assign'}
+                  Create Bill and Assign
                 </button>
                 <button type="button" className="btn btn--ghost" onClick={closeBillModal}>
                   Cancel
@@ -6046,7 +6218,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                           />
                         </label>
                         <button type="submit" className="btn btn--primary" disabled={rgpLookupLoading || addingTNoteTransformer || !rgpLookupValue.trim()}>
-                          {rgpLookupLoading ? 'Searching...' : 'Search Transformer'}
+                          Search Transformer
                         </button>
                       </form>
                       {rgpLookupPerformed && rgpLookupResults.length > 0 && (
@@ -6056,7 +6228,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                             <div className="tnote-rgp-result" key={transformer.id}>
                               <span><strong>{transformer.dtrNo || 'No DTR No'}</strong> · S/N {transformer.sNo || '—'} · {transformer.capacity || '—'} kVA · {transformer.spmCenter || '—'} · {transformer.status || '—'}</span>
                               <button type="button" className="btn btn--primary btn--small" onClick={() => linkExistingRgpTransformer(transformer)} disabled={addingTNoteTransformer}>
-                                {addingTNoteTransformer ? 'Linking...' : 'Link as RGP'}
+                                Link as RGP
                               </button>
                             </div>
                           ))}
@@ -6147,7 +6319,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   </label>
                   <div className="tnote-add-transformer-actions">
                     <button type="submit" className="btn btn--primary" disabled={addingTNoteTransformer}>
-                      {addingTNoteTransformer ? 'Adding Transformer...' : rgpManualEntry ? 'Register RGP Transformer' : 'Save Transformer'}
+                      {rgpManualEntry ? 'Register RGP Transformer' : 'Save Transformer'}
                     </button>
                     <button type="button" className="btn btn--ghost" onClick={() => {
                       if (rgpManualEntry) setRgpManualEntry(false)
@@ -6164,6 +6336,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <table className="jobs-table tnote-transformers-table">
                   <thead>
                     <tr>
+                      <th>Serial No</th>
                       <th>SPM Center</th>
                       <th>DTR No</th>
                       <th>Serial No</th>
@@ -6174,8 +6347,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     </tr>
                   </thead>
                   <tbody>
-                    {(activeTNote.transformers || []).map((transformer) => (
+                    {(activeTNote.transformers || []).map((transformer, index) => (
                       <tr key={transformer.id}>
+                        <td>{index + 1}</td>
                         <td>{transformer.spmCenter || '—'}</td>
                         <td>{transformer.dtrNo || '—'}</td>
                         <td>{transformer.sNo || '—'}</td>
@@ -6335,7 +6509,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 onClick={saveTNoteAttachments}
                 disabled={tnoteAttachmentSaveLoading || tnoteAdditionalAttachmentReading || tnoteAdditionalAttachments.length === 0}
               >
-                {tnoteAttachmentSaveLoading ? 'Uploading...' : 'Save Attachments'}
+                Save Attachments
               </button>
               <button type="button" className="btn btn--ghost" onClick={closeTNoteAttachmentUpload} disabled={tnoteAttachmentSaveLoading || tnoteAdditionalAttachmentReading}>
                 Cancel
@@ -6447,7 +6621,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 </button>
                 <div>
                   <button type="submit" className="btn btn--primary" disabled={tnoteCreateLoading || tnoteAttachmentReading}>
-                    {tnoteCreateLoading ? 'Creating...' : tnoteAttachmentReading ? 'Reading attachments...' : 'Create TNote & Transformers'}
+                    Create TNote &amp; Transformers
                   </button>
                   <button type="button" className="btn btn--ghost" onClick={closeTNoteModal}>
                     Cancel
@@ -6462,6 +6636,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         <AttachmentViewerModal
           title={attachmentViewer.title}
           attachments={attachmentViewer.attachments}
+          onDeleteAttachment={attachmentViewer.onDeleteAttachment}
+          deletingAttachmentUrl={tnoteAttachmentDeletingUrl}
+          deleteError={tnoteAttachmentDeleteError}
           onClose={() => setAttachmentViewer(null)}
         />
       )}
