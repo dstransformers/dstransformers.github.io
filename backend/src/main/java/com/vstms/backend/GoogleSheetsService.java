@@ -12,6 +12,10 @@ import com.vstms.backend.model.BillDTO;
 import com.vstms.backend.model.DcDTO;
 import com.vstms.backend.model.AttachmentDTO;
 import com.vstms.backend.model.AssessmentDetailsDTO;
+import com.vstms.backend.model.AttendanceDTO;
+import com.vstms.backend.model.EmployeeDTO;
+import com.vstms.backend.model.HolidayDTO;
+import com.vstms.backend.model.SalaryDTO;
 import com.vstms.backend.model.TNoteDTO;
 import com.vstms.backend.model.TransformerDTO;
 import org.slf4j.Logger;
@@ -45,6 +49,7 @@ import java.util.regex.Pattern;
 public class GoogleSheetsService {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsService.class);
+    private static final long SHEET_READ_CACHE_TTL_NANOS = Duration.ofSeconds(2).toNanos();
 
     private static final List<String> STATUS_ORDER = List.of(
             "Recieved",
@@ -58,6 +63,9 @@ public class GoogleSheetsService {
     @Value("${google.apps.script.url}")
     private String appsScriptUrl;
 
+    @Value("${google.apps.script.request-timeout:45s}")
+    private Duration appsScriptRequestTimeout;
+
     private final ObjectMapper objectMapper = createObjectMapper();
     private final HttpClient httpClient;
 
@@ -66,6 +74,12 @@ public class GoogleSheetsService {
     private final Map<Long, TNoteDTO> tnoteCache = new ConcurrentHashMap<>();
     private final Map<String, DcDTO> dcCache = new ConcurrentHashMap<>();
     private final Map<String, BillDTO> billCache = new ConcurrentHashMap<>();
+    private final Object transformerSnapshotLock = new Object();
+    private final Object tnoteSnapshotLock = new Object();
+    private volatile List<TransformerDTO> transformerSnapshot;
+    private volatile long transformerSnapshotExpiresAtNanos;
+    private volatile List<TNoteDTO> tnoteSnapshot;
+    private volatile long tnoteSnapshotExpiresAtNanos;
     private volatile boolean cacheInitialized = false;
 
     public GoogleSheetsService() {
@@ -110,10 +124,13 @@ public class GoogleSheetsService {
     // ============ CORE HTTP CLIENT ============
 
     public Map<String, Object> postToAppsScript(Map<String, Object> payload) {
-        return postToAppsScript(payload, Duration.ofSeconds(25));
+        return postToAppsScript(payload, appsScriptRequestTimeout);
     }
 
     private Map<String, Object> postToAppsScript(Map<String, Object> payload, Duration requestTimeout) {
+        String action = String.valueOf(payload.getOrDefault("action", "")).toUpperCase(Locale.ROOT);
+        boolean readOnlyAction = action.startsWith("GET") || action.startsWith("FIND");
+        if (!readOnlyAction) invalidateSheetReadSnapshots();
         try {
             String jsonPayload = objectMapper.writeValueAsString(payload);
             HttpRequest request = HttpRequest.newBuilder()
@@ -140,12 +157,25 @@ public class GoogleSheetsService {
 
             String body = response.body();
             if (body != null && !body.isBlank()) {
-                return objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+                Map<String, Object> result = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+                if (!readOnlyAction) invalidateSheetReadSnapshots();
+                return result;
             }
             return errorResponse("Empty response from Google Apps Script");
         } catch (Exception e) {
             log.warn("Communication with Google Apps Script failed: {}", e.getMessage());
             return errorResponse("Google Apps Script error: " + e.getMessage());
+        }
+    }
+
+    private void invalidateSheetReadSnapshots() {
+        synchronized (transformerSnapshotLock) {
+            transformerSnapshot = null;
+            transformerSnapshotExpiresAtNanos = 0;
+        }
+        synchronized (tnoteSnapshotLock) {
+            tnoteSnapshot = null;
+            tnoteSnapshotExpiresAtNanos = 0;
         }
     }
 
@@ -155,6 +185,164 @@ public class GoogleSheetsService {
         res.put("message", message);
         res.put("data", Collections.emptyList());
         return res;
+    }
+
+    private <T> T mappedResult(Map<String, Object> response, Class<T> type) {
+        Object data = response.get("data");
+        if (!(data instanceof Map<?, ?>)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Google Apps Script returned an invalid employee response.");
+        }
+        return objectMapper.convertValue(data, type);
+    }
+
+    // ============ EMPLOYEES, ATTENDANCE, AND SALARIES ============
+
+    public List<EmployeeDTO> getAllEmployees() {
+        return getEmployeeList("GET_EMPLOYEES");
+    }
+
+    public Optional<EmployeeDTO> getEmployeeById(Long id) {
+        Map<String, Object> response = postToAppsScript(employeePayload("GET_EMPLOYEE_BY_ID", id));
+        if ("NOT_FOUND".equals(response.get("status"))) return Optional.empty();
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return Optional.of(mappedResult(response, EmployeeDTO.class));
+    }
+
+    public EmployeeDTO saveEmployee(EmployeeDTO employee) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", employee.getId());
+        payload.put("employeeCode", employee.getEmployeeCode());
+        payload.put("name", employee.getName());
+        payload.put("department", employee.getDepartment());
+        payload.put("salary", employee.getSalary());
+        payload.put("photoUrl", employee.getPhotoUrl());
+        payload.put("photoName", employee.getPhotoName());
+        payload.put("active", employee.getActive() == null || employee.getActive());
+        Map<String, Object> response = postToAppsScript(employeePayload("SAVE_EMPLOYEE", employee.getId(), payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, EmployeeDTO.class);
+    }
+
+    public List<AttendanceDTO> getAllAttendance(String month) {
+        Map<String, Object> payload = new HashMap<>();
+        if (month != null && !month.isBlank()) payload.put("month", month);
+        Map<String, Object> response = postToAppsScript(employeePayload("GET_ATTENDANCE", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return listResult(response, AttendanceDTO.class);
+    }
+
+    public List<AttendanceDTO> getAttendance(Long employeeId, String month) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("employeeId", employeeId);
+        if (month != null && !month.isBlank()) payload.put("month", month);
+        Map<String, Object> response = postToAppsScript(employeePayload("GET_EMPLOYEE_ATTENDANCE", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return listResult(response, AttendanceDTO.class);
+    }
+
+    public AttendanceDTO clockAttendance(Long employeeId, LocalDate date, String inTime, String outTime, String photoUrl) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("employeeId", employeeId);
+        payload.put("date", date);
+        payload.put("inTime", inTime);
+        payload.put("outTime", outTime);
+        payload.put("photoUrl", photoUrl);
+        Map<String, Object> response = postToAppsScript(employeePayload("CLOCK_ATTENDANCE", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, AttendanceDTO.class);
+    }
+
+    public List<HolidayDTO> getAllHolidays(String month) {
+        Map<String, Object> payload = new HashMap<>();
+        if (month != null && !month.isBlank()) payload.put("month", month);
+        Map<String, Object> response = postToAppsScript(employeePayload("GET_HOLIDAYS", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return listResult(response, HolidayDTO.class);
+    }
+
+    public HolidayDTO addHoliday(Long employeeId, LocalDate date) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("employeeId", employeeId);
+        payload.put("date", date);
+        Map<String, Object> response = postToAppsScript(employeePayload("ADD_HOLIDAY", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, HolidayDTO.class);
+    }
+
+    public void deleteHoliday(Long id) {
+        Map<String, Object> response = postToAppsScript(employeePayload("DELETE_HOLIDAY", id));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+    }
+
+    public List<SalaryDTO> getAllSalaries(String month) {
+        Map<String, Object> payload = new HashMap<>();
+        if (month != null && !month.isBlank()) payload.put("month", month);
+        Map<String, Object> response = postToAppsScript(employeePayload("GET_SALARIES", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return listResult(response, SalaryDTO.class);
+    }
+
+    public SalaryDTO generateSalary(Long employeeId, LocalDate month) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("employeeId", employeeId);
+        payload.put("month", month);
+        Map<String, Object> response = postToAppsScript(employeePayload("GENERATE_SALARY", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, SalaryDTO.class);
+    }
+
+    public SalaryDTO updateSalaryStatus(Long id, String status, LocalDate receivedAt) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", id);
+        payload.put("status", status);
+        payload.put("receivedAt", receivedAt);
+        Map<String, Object> response = postToAppsScript(employeePayload("UPDATE_SALARY_STATUS", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, SalaryDTO.class);
+    }
+
+    private List<EmployeeDTO> getEmployeeList(String action) {
+        Map<String, Object> response = postToAppsScript(employeePayload(action));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return listResult(response, EmployeeDTO.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> List<T> listResult(Map<String, Object> response, Class<T> type) {
+        Object data = response.get("data");
+        if (!(data instanceof List<?>)) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Google Apps Script returned an invalid list response.");
+        }
+        return ((List<Object>) data).stream()
+                .map(value -> objectMapper.convertValue(value, type))
+                .toList();
+    }
+
+    private Map<String, Object> employeePayload(String action) {
+        return employeePayload(action, null, null);
+    }
+
+    private Map<String, Object> employeePayload(String action, Object payload) {
+        return employeePayload(action, null, payload);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> employeePayload(String action, Object id, Object payload) {
+        Map<String, Object> request = new HashMap<>();
+        request.put("action", action);
+        Map<String, Object> data = new HashMap<>();
+        if (id != null) data.put("id", id);
+        if (payload != null) data.putAll((Map<String, Object>) payload);
+        request.put("payload", data);
+        return request;
+    }
+
+    private ResponseStatusException appsScriptException(Map<String, Object> response) {
+        return new ResponseStatusException(
+                HttpStatus.BAD_GATEWAY,
+                String.valueOf(response.getOrDefault("message", "Google Apps Script operation failed.")));
     }
 
     // ============ ENQUIRIES ============
@@ -260,26 +448,42 @@ public class GoogleSheetsService {
     // ============ TRANSFORMERS ============
 
     public List<TransformerDTO> fetchAllTransformersFromSheets() {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("action", "GET_TRANSFORMERS");
-        Map<String, Object> res = postToAppsScript(payload);
-
-        if ("SUCCESS".equals(res.get("status")) && res.get("data") instanceof List<?> list) {
-            List<TransformerDTO> dtos = new ArrayList<>();
-            for (Object item : list) {
-                TransformerDTO dto = objectMapper.convertValue(item, TransformerDTO.class);
-                if (dto != null && dto.getId() != null) {
-                    dtos.add(dto);
-                    transformerCache.put(dto.getId(), dto);
-                }
-            }
-            cacheInitialized = true;
-            return dtos;
+        long now = System.nanoTime();
+        List<TransformerDTO> snapshot = transformerSnapshot;
+        if (snapshot != null && now < transformerSnapshotExpiresAtNanos) {
+            return new ArrayList<>(snapshot);
         }
 
-        // Fallback to cache or seed defaults if cache is empty
-        ensureCacheSeeded();
-        return new ArrayList<>(transformerCache.values());
+        synchronized (transformerSnapshotLock) {
+            now = System.nanoTime();
+            snapshot = transformerSnapshot;
+            if (snapshot != null && now < transformerSnapshotExpiresAtNanos) {
+                return new ArrayList<>(snapshot);
+            }
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("action", "GET_TRANSFORMERS");
+            Map<String, Object> res = postToAppsScript(payload);
+
+            if ("SUCCESS".equals(res.get("status")) && res.get("data") instanceof List<?> list) {
+                List<TransformerDTO> dtos = new ArrayList<>();
+                for (Object item : list) {
+                    TransformerDTO dto = objectMapper.convertValue(item, TransformerDTO.class);
+                    if (dto != null && dto.getId() != null) {
+                        dtos.add(dto);
+                        transformerCache.put(dto.getId(), dto);
+                    }
+                }
+                snapshot = List.copyOf(dtos);
+                transformerSnapshot = snapshot;
+                transformerSnapshotExpiresAtNanos = System.nanoTime() + SHEET_READ_CACHE_TTL_NANOS;
+                cacheInitialized = true;
+                return new ArrayList<>(snapshot);
+            }
+
+            ensureCacheSeeded();
+            return new ArrayList<>(transformerCache.values());
+        }
     }
 
     public TransformerController.PagedResponse<TransformerDTO> getTransformers(
@@ -300,17 +504,25 @@ public class GoogleSheetsService {
                     linkedTNotesByTransformer.computeIfAbsent(transformer.getId(), ignored -> new HashSet<>()).add(tNote.getId())));
         }
 
+        List<String> normalizedStatuses = normalizeFilterValues(statuses);
+        List<String> normalizedSpmCenters = normalizeFilterValues(spmCenters);
+        List<String> normalizedDtrNos = normalizeFilterValues(dtrNos);
+        List<String> normalizedSNos = normalizeFilterValues(sNos);
+        List<String> normalizedTypes = normalizeFilterValues(types);
+        List<Integer> normalizedCapacities = normalizeCapacityFilters(capacities);
+        List<Long> normalizedTNoteIds = normalizeTNoteFilters(tNoteIds);
+
         // Apply filters
         List<TransformerDTO> filtered = all.stream().filter(t -> {
-            if (statuses != null && !statuses.isEmpty() && !statuses.contains(t.getStatus())) return false;
-            if (spmCenters != null && !spmCenters.isEmpty() && !spmCenters.contains(t.getSpmCenter())) return false;
-            if (dtrNos != null && !dtrNos.isEmpty() && !dtrNos.contains(t.getDtrNo())) return false;
-            if (sNos != null && !sNos.isEmpty() && !sNos.contains(t.getSNo())) return false;
-            if (tNoteIds != null && !tNoteIds.isEmpty()
-                    && !tNoteIds.stream().anyMatch(id -> linkedTNotesByTransformer
+            if (!normalizedStatuses.isEmpty() && !normalizedStatuses.contains(t.getStatus())) return false;
+            if (!normalizedSpmCenters.isEmpty() && !normalizedSpmCenters.contains(t.getSpmCenter())) return false;
+            if (!normalizedDtrNos.isEmpty() && !normalizedDtrNos.contains(t.getDtrNo())) return false;
+            if (!normalizedSNos.isEmpty() && !normalizedSNos.contains(t.getSNo())) return false;
+            if (!normalizedTNoteIds.isEmpty()
+                    && !normalizedTNoteIds.stream().anyMatch(id -> linkedTNotesByTransformer
                             .getOrDefault(t.getId(), Collections.emptySet()).contains(id))) return false;
-            if (types != null && !types.isEmpty() && !types.contains(t.getType())) return false;
-            if (capacities != null && !capacities.isEmpty() && !capacities.contains(t.getCapacity())) return false;
+            if (!normalizedTypes.isEmpty() && !normalizedTypes.contains(t.getType())) return false;
+            if (!normalizedCapacities.isEmpty() && !normalizedCapacities.contains(t.getCapacity())) return false;
             return true;
         }).sorted(Comparator
                 .comparing(TransformerDTO::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -327,6 +539,32 @@ public class GoogleSheetsService {
         List<TransformerDTO> content = filtered.subList(fromIndex, toIndex);
 
         return new TransformerController.PagedResponse<>(content, safePage, safeSize, totalElements, totalPages);
+    }
+
+    static List<String> normalizeFilterValues(List<String> values) {
+        if (values == null) return List.of();
+        return values.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    static List<Integer> normalizeCapacityFilters(List<Integer> values) {
+        if (values == null) return List.of();
+        return values.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    static List<Long> normalizeTNoteFilters(List<Long> values) {
+        if (values == null) return List.of();
+        return values.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     public TransformerController.SummaryResponse getSummary() {
@@ -415,6 +653,36 @@ public class GoogleSheetsService {
         }
         throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                 String.valueOf(res.getOrDefault("message", "Failed to create transformer.")));
+    }
+
+    public List<TransformerDTO> createTransformers(List<Map<String, Object>> transformers) {
+        if (transformers == null || transformers.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select at least one transformer.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "ADD_TRANSFORMERS");
+        payload.put("payload", Map.of("transformers", transformers));
+        Map<String, Object> res = postToAppsScript(payload);
+        if ("SUCCESS".equals(res.get("status")) && res.get("data") instanceof List<?> list) {
+            List<TransformerDTO> created = new ArrayList<>();
+            for (Object item : list) {
+                TransformerDTO transformer = objectMapper.convertValue(item, TransformerDTO.class);
+                if (transformer == null || transformer.getId() == null || transformer.getId() <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Apps Script returned a transformer without a valid ID.");
+                }
+                created.add(transformer);
+                transformerCache.put(transformer.getId(), transformer);
+            }
+            if (created.size() != transformers.size()) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Apps Script returned an incomplete transformer batch. Verify records before retrying.");
+            }
+            return created;
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                String.valueOf(res.getOrDefault("message", "Failed to create transformers.")));
     }
 
     public List<TransformerDTO> findTransformersByIdentity(String field, String value) {
@@ -718,6 +986,36 @@ public class GoogleSheetsService {
         return updateDCTransformerAssignment(dcNo, transformerId, true);
     }
 
+    public DcDTO addTransformersToDC(String dcNo, List<Long> transformerIds) {
+        if (transformerIds == null || transformerIds.isEmpty()
+                || transformerIds.stream().anyMatch(Objects::isNull)
+                || transformerIds.stream().distinct().count() != transformerIds.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select distinct transformers to assign.");
+        }
+        DcDTO current = getDCById(dcNo)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Delivery challan not found."));
+        if (Boolean.TRUE.equals(current.getDelivered())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A delivered challan cannot be edited.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "ADD_TRANSFORMERS_TO_DC_BATCH");
+        payload.put("payload", Map.of("dcNo", dcNo, "transformerIds", transformerIds));
+        Map<String, Object> response = postToAppsScript(payload);
+        if (!"SUCCESS".equals(response.get("status")) || response.get("data") == null) {
+            String message = String.valueOf(response.getOrDefault("message", "Failed to update challan transformers."));
+            HttpStatus status = message.toLowerCase(Locale.ROOT).contains("not found")
+                    ? HttpStatus.NOT_FOUND
+                    : message.toLowerCase(Locale.ROOT).contains("delivered")
+                        ? HttpStatus.CONFLICT
+                        : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, message);
+        }
+        DcDTO updated = objectMapper.convertValue(response.get("data"), DcDTO.class);
+        dcCache.put(updated.getDcNo(), updated);
+        return updated;
+    }
+
     public DcDTO removeTransformerFromDC(String dcNo, Long transformerId) {
         return updateDCTransformerAssignment(dcNo, transformerId, false);
     }
@@ -833,6 +1131,46 @@ public class GoogleSheetsService {
         return dto;
     }
 
+    public List<TransformerDTO> billTransformers(List<Long> transformerIds, String sapNo) {
+        if (sapNo == null || sapNo.isBlank() || transformerIds == null || transformerIds.isEmpty()
+                || transformerIds.stream().anyMatch(Objects::isNull)
+                || transformerIds.stream().distinct().count() != transformerIds.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provide a bill number and distinct transformer IDs.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("action", "BILL_TRANSFORMERS");
+        payload.put("payload", Map.of("transformerIds", transformerIds, "sapNo", sapNo.trim()));
+        Map<String, Object> result = postToAppsScript(payload);
+        if ("SUCCESS".equals(result.get("status")) && result.get("data") instanceof List<?> list) {
+            List<TransformerDTO> billed = new ArrayList<>();
+            for (Object item : list) {
+                TransformerDTO transformer = objectMapper.convertValue(item, TransformerDTO.class);
+                if (transformer == null || transformer.getId() == null || transformer.getId() <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Apps Script returned a billed transformer without a valid ID.");
+                }
+                transformerCache.put(transformer.getId(), transformer);
+                billed.add(transformer);
+            }
+            if (billed.size() != transformerIds.size()) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Apps Script returned an incomplete billing batch. Verify transformer statuses before retrying.");
+            }
+            return billed;
+        }
+
+        String message = String.valueOf(result.getOrDefault("message", "Failed to bill transformers."));
+        HttpStatus status = message.toLowerCase(Locale.ROOT).contains("not found")
+                ? HttpStatus.NOT_FOUND
+                : message.toLowerCase(Locale.ROOT).contains("only delivered")
+                    || message.toLowerCase(Locale.ROOT).contains("scrapped")
+                    || message.toLowerCase(Locale.ROOT).contains("rgp")
+                        ? HttpStatus.BAD_REQUEST
+                        : HttpStatus.BAD_GATEWAY;
+        throw new ResponseStatusException(status, message);
+    }
+
     public List<TransformerDTO> getTransformersByDcNo(String dcNo) {
         List<TransformerDTO> all = fetchAllTransformersFromSheets();
         return all.stream()
@@ -892,27 +1230,44 @@ public class GoogleSheetsService {
     // ============ TNOTES ============
 
     public List<TNoteDTO> getAllTNotes() {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("action", "GET_TNOTES");
-        Map<String, Object> res = postToAppsScript(payload);
-
-        if ("SUCCESS".equals(res.get("status")) && res.get("data") instanceof List<?> list) {
-            List<TNoteDTO> dtos = new ArrayList<>();
-            for (Object item : list) {
-                TNoteDTO dto = normalizeTNoteTransformers(
-                        objectMapper.convertValue(item, TNoteDTO.class));
-                if (dto == null || dto.getId() == null || dto.getId() <= 0) {
-                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                            "Apps Script returned a TNote without a valid ID.");
-                }
-                dtos.add(dto);
-                tnoteCache.put(dto.getId(), dto);
-            }
-            return dtos;
+        long now = System.nanoTime();
+        List<TNoteDTO> snapshot = tnoteSnapshot;
+        if (snapshot != null && now < tnoteSnapshotExpiresAtNanos) {
+            return new ArrayList<>(snapshot);
         }
 
-        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                String.valueOf(res.getOrDefault("message", "Failed to fetch TNotes from Apps Script.")));
+        synchronized (tnoteSnapshotLock) {
+            now = System.nanoTime();
+            snapshot = tnoteSnapshot;
+            if (snapshot != null && now < tnoteSnapshotExpiresAtNanos) {
+                return new ArrayList<>(snapshot);
+            }
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("action", "GET_TNOTES");
+            Map<String, Object> res = postToAppsScript(payload);
+
+            if ("SUCCESS".equals(res.get("status")) && res.get("data") instanceof List<?> list) {
+                List<TNoteDTO> dtos = new ArrayList<>();
+                for (Object item : list) {
+                    TNoteDTO dto = normalizeTNoteTransformers(
+                            objectMapper.convertValue(item, TNoteDTO.class));
+                    if (dto == null || dto.getId() == null || dto.getId() <= 0) {
+                        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                                "Apps Script returned a TNote without a valid ID.");
+                    }
+                    dtos.add(dto);
+                    tnoteCache.put(dto.getId(), dto);
+                }
+                snapshot = List.copyOf(dtos);
+                tnoteSnapshot = snapshot;
+                tnoteSnapshotExpiresAtNanos = System.nanoTime() + SHEET_READ_CACHE_TTL_NANOS;
+                return new ArrayList<>(snapshot);
+            }
+
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    String.valueOf(res.getOrDefault("message", "Failed to fetch TNotes from Apps Script.")));
+        }
     }
 
     public Optional<TNoteDTO> getTNoteById(Long id) {
@@ -1034,6 +1389,46 @@ public class GoogleSheetsService {
                 String.valueOf(res.getOrDefault("message", "Failed to add TNote attachments.")));
     }
 
+            public TNoteDTO deleteTNoteAttachment(Long id, String attachmentUrl) {
+            if (attachmentUrl == null || attachmentUrl.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select a TNote attachment to delete.");
+            }
+
+            TNoteDTO current = getTNoteById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "TNote not found."));
+            List<AttachmentDTO> existingAttachments = current.getAttachments() == null
+                ? List.of()
+                : current.getAttachments();
+            boolean attachmentExists = existingAttachments.stream()
+                .anyMatch(attachment -> Objects.equals(attachment.getUrl(), attachmentUrl));
+            if (!attachmentExists) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "TNote attachment not found.");
+            }
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("action", "DELETE_TNOTE_ATTACHMENT");
+            payload.put("payload", Map.of("id", id, "url", attachmentUrl));
+            Map<String, Object> res = postToAppsScript(payload);
+            if ("SUCCESS".equals(res.get("status")) && res.get("data") != null) {
+                TNoteDTO updated = normalizeTNoteTransformers(
+                    objectMapper.convertValue(res.get("data"), TNoteDTO.class));
+                if (updated != null && Objects.equals(id, updated.getId())
+                    && updated.getAttachments() != null
+                    && updated.getAttachments().size() == existingAttachments.size() - 1
+                    && updated.getAttachments().stream()
+                        .noneMatch(attachment -> Objects.equals(attachment.getUrl(), attachmentUrl))) {
+                tnoteCache.put(updated.getId(), updated);
+                return updated;
+                }
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Apps Script returned an incomplete TNote after deleting the attachment.");
+            }
+
+            HttpStatus status = "NOT_FOUND".equals(res.get("status")) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY;
+            throw new ResponseStatusException(status,
+                String.valueOf(res.getOrDefault("message", "Failed to delete TNote attachment.")));
+            }
+
     public void deleteTNote(Long id) {
         TNoteDTO tNote = getTNoteById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "TNote not found."));
@@ -1099,18 +1494,22 @@ public class GoogleSheetsService {
         return Optional.ofNullable(dcCache.get(dcNo));
     }
 
-    public DcDTO saveDC(DcDTO dc) {
+    public DcDTO saveDC(DcDTO dc, List<Long> transformerIds, String requestId) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "ADD_DC");
-        payload.put("payload", dc);
-        return persistDC(payload, null);
+        Map<String, Object> request = new HashMap<>();
+        request.put("dc", dc);
+        request.put("transformerIds", transformerIds);
+        request.put("requestId", requestId);
+        payload.put("payload", request);
+        return persistDC(payload, null, Duration.ofSeconds(90));
     }
 
     public DcDTO updateDC(DcDTO dc) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "UPDATE_DC");
         payload.put("payload", dc);
-        return persistDC(payload, dc.getDcNo());
+        return persistDC(payload, dc.getDcNo(), appsScriptRequestTimeout);
     }
 
     public DcDTO saveGeneratedChallanPdf(String dcNo, String fileName, String dataUrl) {
@@ -1140,8 +1539,8 @@ public class GoogleSheetsService {
         return saved;
     }
 
-    private DcDTO persistDC(Map<String, Object> payload, String requestedDcNo) {
-        Map<String, Object> res = postToAppsScript(payload);
+    private DcDTO persistDC(Map<String, Object> payload, String requestedDcNo, Duration requestTimeout) {
+        Map<String, Object> res = postToAppsScript(payload, requestTimeout);
         if (!"SUCCESS".equals(res.get("status")) || res.get("data") == null) {
             HttpStatus status = String.valueOf(res.getOrDefault("message", "")).toLowerCase().contains("already exists")
                     ? HttpStatus.CONFLICT
