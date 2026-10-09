@@ -273,6 +273,10 @@
   min-width: 0;
 }
 
+.calendar-action-short {
+  display: none;
+}
+
 .calendar-weekday {
   padding: 8px;
   color: #64748b;
@@ -294,6 +298,10 @@
   background: #f8fafc;
   color: #334155;
   font-size: 0.78rem;
+}
+
+.calendar-day--empty {
+  visibility: hidden;
 }
 
 .calendar-day-date {
@@ -458,6 +466,11 @@
   background: #fff;
 }
 
+.employee-modal input[readonly] {
+  background: #f8fafc;
+  color: #475569;
+}
+
 .employee-modal input[type="checkbox"] {
   width: auto;
   justify-self: start;
@@ -466,6 +479,12 @@
 .form-grid--full {
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+.employee-code-hint {
+  margin: -10px 0 0;
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .employee-photo-preview {
@@ -644,24 +663,74 @@
   .attendance-calendar-scroll {
     width: 100%;
     max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
   }
 
   .attendance-calendar {
-    min-width: 616px;
-    grid-template-columns: repeat(7, minmax(76px, 1fr));
+    min-width: 0;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 3px;
   }
 
   .calendar-day {
-    min-height: 96px;
-    padding: 7px;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 0;
+    min-height: 94px;
+    padding: 4px 2px;
+    font-size: 0.66rem;
+  }
+
+  .calendar-day--empty {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .calendar-weekday {
+    padding: 5px 0;
+    font-size: 0.62rem;
+  }
+
+  .calendar-day-info {
+    min-width: 0;
+    width: 100%;
+    text-align: center;
+  }
+
+  .calendar-day-date {
+    font-size: 0.8rem;
+  }
+
+  .calendar-day-info > small {
+    overflow-wrap: anywhere;
+    margin-top: 2px;
+    font-size: 0.52rem;
+  }
+
+  .calendar-day-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    gap: 2px;
+    margin-top: auto;
   }
 
   .calendar-day-actions button {
-    min-height: 40px;
-    padding: 7px 6px;
+    min-width: 0;
+    min-height: 24px;
+    padding: 2px 0;
+    font-size: 0.52rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .calendar-action-full {
+    display: none;
+  }
+
+  .calendar-action-short {
+    display: block;
   }
 
   .salary-row {

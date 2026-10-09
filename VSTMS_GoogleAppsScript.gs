@@ -475,71 +475,93 @@ function getEmployeeById(id) {
 }
 
 function saveEmployee(data) {
-  const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
-  const employeeCode = String(data.employeeCode || '').trim();
-  const name = String(data.name || '').trim();
-  const department = String(data.department || '').trim();
-  const monthlySalary = Number(data.salary);
-  if (!employeeCode || !name || !department || !Number.isFinite(monthlySalary) || monthlySalary < 0) {
-    throw new Error('Employee code, name, department, and monthly salary are required.');
+  const isNewEmployee = !data.id;
+  const lock = isNewEmployee ? LockService.getScriptLock() : null;
+  if (lock) lock.waitLock(30000);
+  try {
+    const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
+    let employeeCode = String(data.employeeCode || '').trim();
+    const name = String(data.name || '').trim();
+    const department = String(data.department || '').trim();
+    const monthlySalary = Number(data.salary);
+    if ((!isNewEmployee && !employeeCode) || !name || !department ||
+        !Number.isFinite(monthlySalary) || monthlySalary < 0) {
+      throw new Error('Employee code, name, department, and monthly salary are required.');
+    }
+    const employeeRows = getSheetData(SHEET_NAMES.EMPLOYEES);
+    if (isNewEmployee) employeeCode = nextEmployeeCode_(employeeRows, new Date());
+    const existingById = data.id ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.id)) : null;
+    if (data.id && !existingById) throw new Error('Employee not found.');
+    const existingEmployee = rowObject_(existingById);
+    const normalizedEmployeeCode = employeeCode.toLowerCase();
+    const existingByCode = employeeRows.find(row =>
+      String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode);
+    const employeeCodeUnchanged = existingEmployee &&
+      String(existingEmployee.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode;
+    const conflictingEmployeeCode = employeeRows.find(row =>
+      String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode &&
+      (!existingEmployee || Number(row.ID) !== Number(existingEmployee.ID)));
+    if (conflictingEmployeeCode && !employeeCodeUnchanged) {
+      throw new Error('An employee with this employee code already exists.');
+    }
+    const existing = existingEmployee || existingByCode;
+    const existingRow = existingById || (existingByCode
+      ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(existingByCode.ID))
+      : null);
+    const id = existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
+    const now = getTimestamp();
+    const photoUrl = saveEmployeePhoto_(data.photoUrl, data.photoName);
+    const supportingDocuments = Array.isArray(data.supportingDocuments) ? data.supportingDocuments : [];
+    const existingDocuments = supportingDocuments.filter(document => document && !document.dataUrl);
+    const newDocumentFiles = supportingDocuments.filter(document => document && document.dataUrl);
+    if (existingDocuments.length + newDocumentFiles.length > 5) {
+      throw new Error('Please upload no more than 5 supporting documents.');
+    }
+    const savedDocuments = [
+      ...existingDocuments,
+      ...saveRecordAttachments_(newDocumentFiles, 'D.S. Transformer Employee Documents')
+    ];
+    const values = {
+      ID: id,
+      EmployeeCode: employeeCode,
+      Name: name,
+      Department: department,
+      MonthlySalary: monthlySalary,
+      PhotoUrl: photoUrl,
+      PhotoName: String(data.photoName || ''),
+      SupportingDocuments: JSON.stringify(savedDocuments),
+      Active: data.active === false ? false : true,
+      CreatedAt: existing ? existing.CreatedAt : now,
+      UpdatedAt: now
+    };
+    if (existing) {
+      existingRow.headers.forEach((header, index) => {
+        if (Object.prototype.hasOwnProperty.call(values, header)) {
+          sheet.getRange(existingRow.rowIndex, index + 1).setValue(values[header]);
+        }
+      });
+    } else {
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+      sheet.appendRow(headers.map(header =>
+        Object.prototype.hasOwnProperty.call(values, header) ? values[header] : ''));
+    }
+    return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
+  } finally {
+    if (lock) lock.releaseLock();
   }
-  const employeeRows = getSheetData(SHEET_NAMES.EMPLOYEES);
-  const existingById = data.id ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.id)) : null;
-  if (data.id && !existingById) throw new Error('Employee not found.');
-  const existingEmployee = rowObject_(existingById);
-  const normalizedEmployeeCode = employeeCode.toLowerCase();
-  const existingByCode = employeeRows.find(row =>
-    String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode);
-  const employeeCodeUnchanged = existingEmployee &&
-    String(existingEmployee.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode;
-  const conflictingEmployeeCode = employeeRows.find(row =>
-    String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode &&
-    (!existingEmployee || Number(row.ID) !== Number(existingEmployee.ID)));
-  if (conflictingEmployeeCode && !employeeCodeUnchanged) {
-    throw new Error('An employee with this employee code already exists.');
-  }
-  const existing = existingEmployee || existingByCode;
-  const existingRow = existingById || (existingByCode
-    ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(existingByCode.ID))
-    : null);
-  const id = existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
-  const now = getTimestamp();
-  const photoUrl = saveEmployeePhoto_(data.photoUrl, data.photoName);
-  const supportingDocuments = Array.isArray(data.supportingDocuments) ? data.supportingDocuments : [];
-  const existingDocuments = supportingDocuments.filter(document => document && !document.dataUrl);
-  const newDocumentFiles = supportingDocuments.filter(document => document && document.dataUrl);
-  if (existingDocuments.length + newDocumentFiles.length > 5) {
-    throw new Error('Please upload no more than 5 supporting documents.');
-  }
-  const savedDocuments = [
-    ...existingDocuments,
-    ...saveRecordAttachments_(newDocumentFiles, 'D.S. Transformer Employee Documents')
-  ];
-  const values = {
-    ID: id,
-    EmployeeCode: employeeCode,
-    Name: name,
-    Department: department,
-    MonthlySalary: monthlySalary,
-    PhotoUrl: photoUrl,
-    PhotoName: String(data.photoName || ''),
-    SupportingDocuments: JSON.stringify(savedDocuments),
-    Active: data.active === false ? false : true,
-    CreatedAt: existing ? existing.CreatedAt : now,
-    UpdatedAt: now
-  };
-  if (existing) {
-    existingRow.headers.forEach((header, index) => {
-      if (Object.prototype.hasOwnProperty.call(values, header)) {
-        sheet.getRange(existingRow.rowIndex, index + 1).setValue(values[header]);
-      }
-    });
-  } else {
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
-    sheet.appendRow(headers.map(header =>
-      Object.prototype.hasOwnProperty.call(values, header) ? values[header] : ''));
-  }
-  return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
+}
+
+function nextEmployeeCode_(employees, currentDate) {
+  const month = Number(Utilities.formatDate(currentDate, 'Asia/Kolkata', 'M'));
+  const calendarYear = Number(Utilities.formatDate(currentDate, 'Asia/Kolkata', 'yyyy'));
+  const fiscalYearStart = month >= 4 ? calendarYear : calendarYear - 1;
+  const fiscalYear = `${String(fiscalYearStart).slice(-2)}-${String((fiscalYearStart + 1) % 100).padStart(2, '0')}`;
+  const pattern = new RegExp(`^DS/${fiscalYear}/(\\d+)$`, 'i');
+  const highestSequence = employees.reduce((highest, employee) => {
+    const match = String(employee.EmployeeCode || '').trim().match(pattern);
+    return match ? Math.max(highest, Number(match[1]) || 0) : highest;
+  }, 0);
+  return `DS/${fiscalYear}/${String(highestSequence + 1).padStart(3, '0')}`;
 }
 
 function saveEmployeePhoto_(photoUrl, photoName) {

@@ -10,7 +10,6 @@ import java.time.LocalDate;
 
 public class EmployeeDTO {
     private Long id;
-    @NotBlank
     private String employeeCode;
     @NotBlank
     private String name;

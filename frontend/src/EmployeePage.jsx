@@ -28,6 +28,24 @@ const STATUS_CLASS = {
   RECEIVED: 'received',
 }
 
+function getNextEmployeeCode(employees) {
+  const dateParts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    month: 'numeric',
+    year: 'numeric',
+  }).formatToParts(new Date())
+  const month = Number(dateParts.find(part => part.type === 'month')?.value)
+  const year = Number(dateParts.find(part => part.type === 'year')?.value)
+  const fiscalYearStart = month >= 4 ? year : year - 1
+  const fiscalYear = `${String(fiscalYearStart).slice(-2)}-${String((fiscalYearStart + 1) % 100).padStart(2, '0')}`
+  const pattern = new RegExp(`^DS/${fiscalYear}/(\\d+)$`, 'i')
+  const highestSequence = employees.reduce((highest, employee) => {
+    const match = String(employee.employeeCode || '').trim().match(pattern)
+    return match ? Math.max(highest, Number(match[1]) || 0) : highest
+  }, 0)
+  return `DS/${fiscalYear}/${String(highestSequence + 1).padStart(3, '0')}`
+}
+
 function toDateInput(value) {
   if (!value) return ''
   if (value instanceof Date) {
@@ -189,7 +207,7 @@ export default function EmployeePage() {
 
   const openNewEmployee = () => {
     setEditingEmployee(null)
-    setEmployeeForm({ ...EMPTY_EMPLOYEE })
+    setEmployeeForm({ ...EMPTY_EMPLOYEE, employeeCode: getNextEmployeeCode(employees) })
     setShowEmployeeForm(true)
     setError('')
   }
@@ -268,7 +286,7 @@ export default function EmployeePage() {
         )
       }
       setShowEmployeeForm(false)
-      setMessage(editingEmployee ? 'Employee updated.' : 'Employee added.')
+      setMessage(editingEmployee ? 'Employee updated.' : `Employee added with code ${saved.employeeCode}.`)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to save employee.')
     }
@@ -698,16 +716,22 @@ export default function EmployeePage() {
         <div className="attendance-calendar-scroll">
           <div className="attendance-calendar">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div className="calendar-weekday" key={day}>{day}</div>)}
+            {calendarDays.length > 0 && Array.from(
+              { length: calendarDays[0].date.getDay() },
+              (_, index) => <div className="calendar-day calendar-day--empty" aria-hidden="true" key={`empty-${index}`} />,
+            )}
             {calendarDays.map(({ date, record, holiday, isAbsent }) => (
               <div
                 className={`calendar-day ${record ? `calendar-day--${record.status.toLowerCase()}` : ''} ${isAbsent ? 'calendar-day--absent' : ''} ${record?.overtimeHours > 0 ? 'calendar-day--overtime' : ''} ${holiday ? 'calendar-day--holiday' : ''}`}
                 key={date.toISOString()}
               >
-                <span className="calendar-day-date">{date.getDate()}</span>
-                {holiday && <small>HOLIDAY</small>}
-                {record?.status === 'LEAVE' && <small>LEAVE</small>}
-                {record && (record.inTime || record.outTime) && <small>{record.inTime || '—'} / {record.outTime || '—'}</small>}
-                {record?.overtimeHours > 0 && <small>OT {formatOvertimeHours(record.overtimeHours)}h</small>}
+                <div className="calendar-day-info">
+                  <span className="calendar-day-date">{date.getDate()}</span>
+                  {holiday && <small>HOLIDAY</small>}
+                  {record?.status === 'LEAVE' && <small>LEAVE</small>}
+                  {record && (record.inTime || record.outTime) && <small>{record.inTime || '—'} / {record.outTime || '—'}</small>}
+                  {record?.overtimeHours > 0 && <small>OT {formatOvertimeHours(record.overtimeHours)}h</small>}
+                </div>
                 <div className="calendar-day-actions">
                   {holidayEmployeeId && (
                     <button
@@ -720,7 +744,7 @@ export default function EmployeePage() {
                       title="Add or complete attendance for this date"
                       aria-label={`Edit attendance for ${toDateInput(date)}`}
                     >
-                      Times
+                      <span className="calendar-action-short">Times</span>
                     </button>
                   )}
                   <button
@@ -730,7 +754,8 @@ export default function EmployeePage() {
                     title={holiday ? 'Remove holiday for all employees' : 'Mark holiday for all employees'}
                     aria-label={`${holiday ? 'Remove' : 'Mark'} holiday for all employees on ${toDateInput(date)}`}
                   >
-                    {holiday ? 'Unmark holiday' : 'Holiday (all)'}
+                    <span className="calendar-action-full">{holiday ? 'Unmark holiday' : 'Holiday (all)'}</span>
+                    <span className="calendar-action-short">{holiday ? 'Unmark' : 'Holiday'}</span>
                   </button>
                   {holidayEmployeeId && (
                     <button
@@ -742,7 +767,8 @@ export default function EmployeePage() {
                       title={record?.status === 'LEAVE' ? 'Remove leave' : 'Mark leave'}
                       aria-label={`${record?.status === 'LEAVE' ? 'Remove' : 'Mark'} leave for the selected employee on ${toDateInput(date)}`}
                     >
-                      {record?.status === 'LEAVE' ? 'Unmark leave' : 'Leave'}
+                      <span className="calendar-action-full">{record?.status === 'LEAVE' ? 'Unmark leave' : 'Leave'}</span>
+                      <span className="calendar-action-short">{record?.status === 'LEAVE' ? 'Unmark' : 'Leave'}</span>
                     </button>
                   )}
                 </div>
@@ -778,7 +804,8 @@ export default function EmployeePage() {
           <form className="modal-content employee-modal" onSubmit={saveEmployee} onClick={event => event.stopPropagation()}>
             <div className="modal-header"><div><h2>{editingEmployee ? 'Edit Employee' : 'Add Employee'}</h2></div><button type="button" className="modal-close" onClick={() => setShowEmployeeForm(false)}>×</button></div>
             <div className="form-grid">
-              <label>Employee Code<input required value={employeeForm.employeeCode} onChange={event => setEmployeeForm(current => ({ ...current, employeeCode: event.target.value }))} /></label>
+              <label>Employee Code<input value={employeeForm.employeeCode} readOnly /></label>
+              {!editingEmployee && <p className="form-grid--full employee-code-hint">Assigned automatically for the current financial year.</p>}
               <label>Name<input required value={employeeForm.name} onChange={event => setEmployeeForm(current => ({ ...current, name: event.target.value }))} /></label>
               <label>Department<input required value={employeeForm.department} onChange={event => setEmployeeForm(current => ({ ...current, department: event.target.value }))} /></label>
               <label>Monthly Salary (₹)<input required type="number" min="0" step="0.01" value={employeeForm.salary} onChange={event => setEmployeeForm(current => ({ ...current, salary: event.target.value }))} /></label>
