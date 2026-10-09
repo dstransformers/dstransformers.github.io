@@ -666,8 +666,8 @@ export default function EmployeePage() {
                     </span>
                   </button>
                   <div className="employee-card-actions">
-                    <button type="button" onClick={() => openEditEmployee(employee)} title="Edit employee">✎</button>
-                    <button type="button" onClick={() => openClock(employee, 'out')} title="Clock out">↗</button>
+                    <button type="button" onClick={() => openEditEmployee(employee)} title="Edit employee" aria-label={`Edit ${employee.name}`}>✎</button>
+                    <button type="button" onClick={() => openClock(employee, 'out')} title="Clock out" aria-label={`Edit attendance for ${employee.name}`}>↗</button>
                   </div>
                 </div>
                 <div className="employee-card-copy">
@@ -718,6 +718,7 @@ export default function EmployeePage() {
                       }}
                       disabled={Boolean(attendanceAction) || Boolean(holiday) || record?.status === 'LEAVE'}
                       title="Add or complete attendance for this date"
+                      aria-label={`Edit attendance for ${toDateInput(date)}`}
                     >
                       Times
                     </button>
@@ -727,6 +728,7 @@ export default function EmployeePage() {
                     onClick={() => toggleHoliday(date)}
                     disabled={Boolean(attendanceAction) || employees.length === 0}
                     title={holiday ? 'Remove holiday for all employees' : 'Mark holiday for all employees'}
+                    aria-label={`${holiday ? 'Remove' : 'Mark'} holiday for all employees on ${toDateInput(date)}`}
                   >
                     {holiday ? 'Unmark holiday' : 'Holiday (all)'}
                   </button>
@@ -738,6 +740,7 @@ export default function EmployeePage() {
                         (Boolean(record) && record.status !== 'LEAVE' &&
                           (record.status === 'PRESENT' || record.inTime || record.outTime))}
                       title={record?.status === 'LEAVE' ? 'Remove leave' : 'Mark leave'}
+                      aria-label={`${record?.status === 'LEAVE' ? 'Remove' : 'Mark'} leave for the selected employee on ${toDateInput(date)}`}
                     >
                       {record?.status === 'LEAVE' ? 'Unmark leave' : 'Leave'}
                     </button>
