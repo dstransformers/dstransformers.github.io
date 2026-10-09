@@ -49,7 +49,8 @@
   font-weight: 700;
 }
 
-.employee-toolbar input[type="month"] {
+.employee-toolbar input[type="month"],
+.employee-toolbar input[type="date"] {
   min-width: 160px;
   padding: 8px 10px;
   border: 1px solid #cbd5e1;
@@ -99,6 +100,10 @@
   border: 0;
   background: transparent;
   cursor: pointer;
+}
+
+.employee-photo:disabled {
+  cursor: wait;
 }
 
 .employee-photo img {
@@ -200,6 +205,11 @@
   color: #991b1b;
 }
 
+.attendance-badge.leave {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .attendance-badge.received {
   background: #dbeafe;
   color: #1d4ed8;
@@ -253,6 +263,10 @@
   gap: 6px;
 }
 
+.attendance-calendar-scroll {
+  min-width: 0;
+}
+
 .calendar-weekday {
   padding: 8px;
   color: #64748b;
@@ -263,6 +277,10 @@
 }
 
 .calendar-day {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   min-height: 76px;
   padding: 8px;
   border: 1px solid #e2e8f0;
@@ -270,8 +288,32 @@
   background: #f8fafc;
   color: #334155;
   font-size: 0.78rem;
-  text-align: left;
+}
+
+.calendar-day-date {
+  font-weight: 700;
+}
+
+.calendar-day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: auto;
+}
+
+.calendar-day-actions button {
+  padding: 3px 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #334155;
+  font-size: 0.62rem;
   cursor: pointer;
+}
+
+.calendar-day-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .calendar-day:disabled {
@@ -299,8 +341,10 @@
 
 .calendar-day--present { background: #dcfce7; border-color: #86efac; }
 .calendar-day--absent { background: #dcfce7; border-color: #86efac; }
+.calendar-day--leave { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
 .calendar-day--overtime { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
 .calendar-day--overtime small { color: #92400e; }
+.calendar-day--holiday { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
 .calendar-day--holiday small { color: #991b1b; }
 
 .salary-list {
@@ -332,10 +376,16 @@
 .employee-clock-modal {
   box-sizing: border-box;
   width: min(720px, 94vw);
-  max-height: 92vh;
+  max-height: min(92vh, 900px);
   padding: 22px;
   overflow-y: auto;
   background: #fff;
+}
+
+.employee-modal *,
+.employee-modal *::before,
+.employee-modal *::after {
+  box-sizing: border-box;
 }
 
 .employee-clock-modal {
@@ -373,11 +423,17 @@
 .employee-modal .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
+  align-content: start;
+}
+
+.employee-modal .form-grid > * {
+  min-width: 0;
 }
 
 .employee-modal label,
 .employee-clock-modal label {
+  min-width: 0;
   display: grid;
   gap: 6px;
   color: #334155;
@@ -388,14 +444,22 @@
 .employee-modal input,
 .employee-clock-modal input {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 9px 10px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #fff;
 }
 
+.employee-modal input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+
 .form-grid--full {
   grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .employee-photo-preview {
@@ -420,6 +484,30 @@
   white-space: nowrap;
 }
 
+.employee-supporting-documents {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.employee-supporting-documents li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.employee-supporting-documents a,
+.employee-supporting-documents li > span {
+  overflow-wrap: anywhere;
+}
+
 .employee-modal .modal-actions,
 .employee-clock-modal .modal-actions {
   display: flex;
@@ -440,31 +528,152 @@
 
 @media (max-width: 760px) {
   .employee-page .page-heading,
-  .employee-toolbar,
-  .salary-row {
+  .employee-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .employee-page .page-heading .btn {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .employee-toolbar label {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .employee-toolbar input[type="month"],
+  .employee-toolbar input[type="date"] {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+  }
+
   .employee-toolbar-actions {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .employee-toolbar-actions .btn {
-    flex: 1;
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+
+  .employee-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .employee-card {
+    min-width: 0;
+    border-radius: 13px;
+  }
+
+  .employee-photo-wrap {
+    aspect-ratio: 1 / 1;
+  }
+
+  .employee-photo-hint {
+    bottom: 7px;
+    max-width: calc(100% - 12px);
+    padding: 5px 7px;
+    font-size: 0.62rem;
+    opacity: 1;
+    transform: translate(-50%, 0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .employee-card-actions {
+    top: 7px;
+    right: 7px;
+    gap: 4px;
+  }
+
+  .employee-card-actions button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .employee-card-copy {
+    padding: 10px;
+  }
+
+  .employee-card-copy h3 {
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+  }
+
+  .employee-card-copy p {
+    line-height: 1.4;
+  }
+
+  .attendance-badge {
+    line-height: 1.35;
+  }
+
+  .employee-section {
+    padding: 14px 12px;
+  }
+
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .holiday-employee-select {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .holiday-employee-select select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .attendance-calendar-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .attendance-calendar {
-    grid-template-columns: repeat(7, minmax(52px, 1fr));
-    overflow-x: auto;
+    min-width: 560px;
+    grid-template-columns: repeat(7, minmax(70px, 1fr));
   }
 
   .calendar-day {
-    min-width: 58px;
+    min-height: 82px;
+    padding: 7px;
+  }
+
+  .calendar-day-actions button {
+    min-height: 30px;
+    padding: 5px 6px;
+  }
+
+  .salary-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 13px;
+  }
+
+  .salary-amount {
+    text-align: left;
   }
 
   .salary-actions {
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .salary-actions .btn {
+    min-height: 42px;
+    padding-inline: 8px;
   }
 
   .employee-modal .form-grid {
@@ -473,5 +682,53 @@
 
   .form-grid--full {
     grid-column: auto;
+  }
+
+  .employee-modal .modal-header,
+  .employee-clock-modal .modal-header {
+    position: sticky;
+    top: -18px;
+    z-index: 1;
+    margin: -18px -14px 16px;
+    padding: 16px 14px 12px;
+    background: #fff;
+  }
+
+  .employee-modal .modal-actions,
+  .employee-clock-modal .modal-actions {
+    position: sticky;
+    bottom: -18px;
+    margin: 18px -14px -18px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: #fff;
+  }
+
+  .employee-modal .modal-actions .btn,
+  .employee-clock-modal .modal-actions .btn {
+    flex: 1;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 380px) {
+  .employee-grid {
+    gap: 8px;
+  }
+
+  .employee-card-copy {
+    padding: 8px;
+  }
+
+  .employee-card-copy h3 {
+    font-size: 0.84rem;
+  }
+
+  .employee-card-actions button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .employee-toolbar-actions {
+    grid-template-columns: 1fr;
   }
 }

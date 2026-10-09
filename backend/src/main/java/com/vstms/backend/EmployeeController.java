@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.List;
 
 @RestController
@@ -33,14 +34,28 @@ public class EmployeeController {
     }
 
     @PostMapping
-    public EmployeeDTO createEmployee(@Valid @RequestBody EmployeeDTO employee) {
-        return googleSheetsService.saveEmployee(employee);
+    public ResponseEntity<?> createEmployee(@Valid @RequestBody EmployeeDTO employee) {
+        try {
+            return ResponseEntity.ok(googleSheetsService.saveEmployee(employee));
+        } catch (ResponseStatusException exception) {
+            return employeeSaveError(exception);
+        }
     }
 
     @PutMapping("/{id}")
-    public EmployeeDTO updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeDTO employee) {
+    public ResponseEntity<?> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeDTO employee) {
         employee.setId(id);
-        return googleSheetsService.saveEmployee(employee);
+        try {
+            return ResponseEntity.ok(googleSheetsService.saveEmployee(employee));
+        } catch (ResponseStatusException exception) {
+            return employeeSaveError(exception);
+        }
+    }
+
+    private ResponseEntity<Map<String, String>> employeeSaveError(ResponseStatusException exception) {
+        String reason = exception.getReason();
+        return ResponseEntity.status(exception.getStatusCode())
+                .body(Map.of("message", reason == null ? "Employee save failed." : reason));
     }
 
     @PostMapping("/{id}/photo")
@@ -59,7 +74,8 @@ public class EmployeeController {
 
     @PostMapping("/attendance/clock")
     public AttendanceDTO clockAttendance(@Valid @RequestBody ClockRequest request) {
-        return googleSheetsService.clockAttendance(request.employeeId(), request.date(), request.inTime(), request.outTime(), request.photoUrl());
+        return googleSheetsService.clockAttendance(
+                request.employeeId(), request.date(), request.inTime(), request.outTime(), request.photoUrl(), request.replaceTimes());
     }
 
     @GetMapping("/holidays")
@@ -75,6 +91,16 @@ public class EmployeeController {
     @DeleteMapping("/holidays/{id}")
     public void deleteHoliday(@PathVariable Long id) {
         googleSheetsService.deleteHoliday(id);
+    }
+
+    @PostMapping("/attendance/leave")
+    public AttendanceDTO markEmployeeLeave(@Valid @RequestBody LeaveRequest request) {
+        return googleSheetsService.markEmployeeLeave(request.employeeId(), request.date());
+    }
+
+    @DeleteMapping("/attendance/leave")
+    public AttendanceDTO clearEmployeeLeave(@RequestParam Long employeeId, @RequestParam LocalDate date) {
+        return googleSheetsService.clearEmployeeLeave(employeeId, date);
     }
 
     @GetMapping("/attendance")
@@ -98,8 +124,15 @@ public class EmployeeController {
     }
 
     public record PhotoRequest(String photoUrl, String photoName) {}
-    public record ClockRequest(@NotNull Long employeeId, @NotNull LocalDate date, String inTime, String outTime, String photoUrl) {}
+    public record ClockRequest(
+            @NotNull Long employeeId,
+            @NotNull LocalDate date,
+            String inTime,
+            String outTime,
+            String photoUrl,
+            boolean replaceTimes) {}
     public record HolidayRequest(@NotNull Long employeeId, @NotNull LocalDate date) {}
+    public record LeaveRequest(@NotNull Long employeeId, @NotNull LocalDate date) {}
     public record GenerateSalaryRequest(@NotNull Long employeeId, @NotNull LocalDate month) {}
     public record SalaryStatusRequest(@NotBlank String status, LocalDate receivedAt) {}
 }

@@ -14,6 +14,9 @@ public class AttendanceDTO {
     private Double overtimeHours;
     private String status;
     private String photoUrl;
+    private Double monthlySalary;
+    private Double dailyRate;
+    private Double overtimeRate;
     private LocalDate createdAt;
 
     public AttendanceDTO() {}
@@ -39,6 +42,12 @@ public class AttendanceDTO {
     public void setStatus(String status) { this.status = status; }
     public String getPhotoUrl() { return photoUrl; }
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
+    public Double getMonthlySalary() { return monthlySalary; }
+    public void setMonthlySalary(Double monthlySalary) { this.monthlySalary = monthlySalary; }
+    public Double getDailyRate() { return dailyRate; }
+    public void setDailyRate(Double dailyRate) { this.dailyRate = dailyRate; }
+    public Double getOvertimeRate() { return overtimeRate; }
+    public void setOvertimeRate(Double overtimeRate) { this.overtimeRate = overtimeRate; }
     public LocalDate getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDate createdAt) { this.createdAt = createdAt; }
 }

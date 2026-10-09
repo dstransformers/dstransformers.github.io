@@ -1,5 +1,7 @@
 package com.vstms.backend.model;
 
+import java.util.ArrayList;
+import java.util.List;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -19,6 +21,7 @@ public class EmployeeDTO {
     private Double salary;
     private String photoUrl;
     private String photoName;
+    private List<AttachmentDTO> supportingDocuments = new ArrayList<>();
     private Boolean active;
     private LocalDate createdAt;
     private LocalDate updatedAt;
@@ -39,6 +42,10 @@ public class EmployeeDTO {
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
     public String getPhotoName() { return photoName; }
     public void setPhotoName(String photoName) { this.photoName = photoName; }
+    public List<AttachmentDTO> getSupportingDocuments() { return supportingDocuments; }
+    public void setSupportingDocuments(List<AttachmentDTO> supportingDocuments) {
+        this.supportingDocuments = supportingDocuments == null ? new ArrayList<>() : supportingDocuments;
+    }
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
     public LocalDate getCreatedAt() { return createdAt; }

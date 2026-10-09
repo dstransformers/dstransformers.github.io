@@ -52,7 +52,7 @@ const SHEET_HEADERS = {
   'Quotation Settings': ['Setting', 'Value'],
   'Quotation Rates': ['TransformerCapacity', 'Service', 'Rate'],
   'Dropdown Defaults': ['Category', 'Value', 'Active'],
-  Employees: ['ID', 'EmployeeCode', 'Name', 'Department', 'MonthlySalary', 'PhotoUrl', 'PhotoName', 'Active', 'CreatedAt', 'UpdatedAt'],
+  Employees: ['ID', 'EmployeeCode', 'Name', 'Department', 'MonthlySalary', 'PhotoUrl', 'PhotoName', 'SupportingDocuments', 'Active', 'CreatedAt', 'UpdatedAt'],
   Attendance: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Date', 'InTime', 'OutTime', 'Hours', 'OvertimeHours', 'Status', 'PhotoUrl', 'MonthlySalary', 'DailyRate', 'OvertimeHourlyRate', 'CreatedAt'],
   Holidays: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Date', 'CreatedAt'],
   Salaries: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Month', 'MonthlySalary', 'DailyRate', 'OvertimeHourlyRate', 'PaidDays', 'HolidayCount', 'RegularHours', 'OvertimeHours', 'RegularPay', 'OvertimePay', 'TotalAmount', 'Status', 'GeneratedAt', 'ReceivedAt']
@@ -216,12 +216,14 @@ function initializeSheet(sheetName, headers) {
 function migrateEmployeeSalary_() {
   const sheet = getOrCreateSheet(SHEET_NAMES.EMPLOYEES);
   const data = sheet.getDataRange().getValues();
-  if (data.length <= 1 || !data[0].includes('DailyRate') || data[0].includes('MonthlySalary')) return;
+  if (data.length <= 1) return;
 
-  const rows = data.slice(1);
   const monthlySalaryIndex = data[0].indexOf('MonthlySalary');
   const dailyRateIndex = data[0].indexOf('DailyRate');
+  if (monthlySalaryIndex < 0 || dailyRateIndex < 0) return;
+  const rows = data.slice(1);
   rows.forEach((row, index) => {
+    if (row[monthlySalaryIndex] !== '' && row[monthlySalaryIndex] != null) return;
     const dailyRate = Number(row[dailyRateIndex] || 0);
     if (Number.isFinite(dailyRate) && dailyRate >= 0) {
       sheet.getRange(index + 2, monthlySalaryIndex + 1).setValue(dailyRate * 26);
@@ -337,6 +339,14 @@ function findRowByValue(sheetName, columnName, value) {
   return null;
 }
 
+function rowObject_(found) {
+  if (!found) return null;
+  return found.headers.reduce((row, header, index) => {
+    row[header] = found.data[index];
+    return row;
+  }, {});
+}
+
 function getNextNumericId(sheetName, idColumnName) {
   const data = getSheetData(sheetName);
   if (data.length === 0) return 1;
@@ -359,6 +369,26 @@ function dateOnly_(value) {
   const isoDate = text.match(/^(\d{4}-\d{2}-\d{2})/);
   if (isoDate) return isoDate[1];
 
+  const expandedSerialDate = text.match(/^(\d{5,})-01-01$/);
+  if (expandedSerialDate) {
+    const serial = Number(expandedSerialDate[1]);
+    if (Number.isFinite(serial) && serial <= 2958465) {
+      const serialDate = new Date(1899, 11, 30);
+      serialDate.setDate(serialDate.getDate() + serial);
+      return Utilities.formatDate(serialDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+  }
+
+  const serialMatch = text.match(/^\d+(?:\.\d+)?$/);
+  if (serialMatch) {
+    const serial = Number(text);
+    if (Number.isFinite(serial) && serial >= 0 && serial <= 2958465) {
+      const serialDate = new Date(1899, 11, 30);
+      serialDate.setDate(serialDate.getDate() + Math.floor(serial));
+      return Utilities.formatDate(serialDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+  }
+
   const parsed = new Date(text);
   if (isNaN(parsed.getTime())) throw new Error(`Invalid date value in spreadsheet: ${text}`);
   return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -373,6 +403,7 @@ function employeeRecord_(row) {
     salary: Number(row.MonthlySalary || 0),
     photoUrl: String(row.PhotoUrl || ''),
     photoName: String(row.PhotoName || ''),
+    supportingDocuments: parseRecordAttachments_(row.SupportingDocuments),
     active: String(row.Active || 'true').toLowerCase() !== 'false',
     createdAt: dateOnly_(row.CreatedAt),
     updatedAt: dateOnly_(row.UpdatedAt)
@@ -386,8 +417,8 @@ function attendanceRecord_(row) {
     employeeCode: String(row.EmployeeCode || ''),
     employeeName: String(row.Name || ''),
     date: dateOnly_(row.Date),
-    inTime: String(row.InTime || ''),
-    outTime: String(row.OutTime || ''),
+    inTime: normalizeAttendanceTime_(row.InTime),
+    outTime: normalizeAttendanceTime_(row.OutTime),
     hours: Number(row.Hours || 0),
     overtimeHours: Number(row.OvertimeHours || 0),
     status: String(row.Status || 'PRESENT'),
@@ -440,7 +471,7 @@ function getAllEmployees() {
 function getEmployeeById(id) {
   const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(id));
   if (!employee) return { status: 'NOT_FOUND', message: 'Employee not found.' };
-  return { status: 'SUCCESS', data: employeeRecord_(employee.data) };
+  return { status: 'SUCCESS', data: employeeRecord_(rowObject_(employee)) };
 }
 
 function saveEmployee(data) {
@@ -452,32 +483,90 @@ function saveEmployee(data) {
   if (!employeeCode || !name || !department || !Number.isFinite(monthlySalary) || monthlySalary < 0) {
     throw new Error('Employee code, name, department, and monthly salary are required.');
   }
-  const existing = getSheetData(SHEET_NAMES.EMPLOYEES).find(row => String(row.EmployeeCode || '').trim().toLowerCase() === employeeCode.toLowerCase());
-  const id = data.id ? Number(data.id) : existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
+  const employeeRows = getSheetData(SHEET_NAMES.EMPLOYEES);
+  const existingById = data.id ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.id)) : null;
+  if (data.id && !existingById) throw new Error('Employee not found.');
+  const existingEmployee = rowObject_(existingById);
+  const normalizedEmployeeCode = employeeCode.toLowerCase();
+  const existingByCode = employeeRows.find(row =>
+    String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode);
+  const employeeCodeUnchanged = existingEmployee &&
+    String(existingEmployee.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode;
+  const conflictingEmployeeCode = employeeRows.find(row =>
+    String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode &&
+    (!existingEmployee || Number(row.ID) !== Number(existingEmployee.ID)));
+  if (conflictingEmployeeCode && !employeeCodeUnchanged) {
+    throw new Error('An employee with this employee code already exists.');
+  }
+  const existing = existingEmployee || existingByCode;
+  const existingRow = existingById || (existingByCode
+    ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(existingByCode.ID))
+    : null);
+  const id = existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
   const now = getTimestamp();
+  const photoUrl = saveEmployeePhoto_(data.photoUrl, data.photoName);
+  const supportingDocuments = Array.isArray(data.supportingDocuments) ? data.supportingDocuments : [];
+  const existingDocuments = supportingDocuments.filter(document => document && !document.dataUrl);
+  const newDocumentFiles = supportingDocuments.filter(document => document && document.dataUrl);
+  if (existingDocuments.length + newDocumentFiles.length > 5) {
+    throw new Error('Please upload no more than 5 supporting documents.');
+  }
+  const savedDocuments = [
+    ...existingDocuments,
+    ...saveRecordAttachments_(newDocumentFiles, 'D.S. Transformer Employee Documents')
+  ];
   const values = {
     ID: id,
     EmployeeCode: employeeCode,
     Name: name,
     Department: department,
     MonthlySalary: monthlySalary,
-    PhotoUrl: String(data.photoUrl || ''),
+    PhotoUrl: photoUrl,
     PhotoName: String(data.photoName || ''),
+    SupportingDocuments: JSON.stringify(savedDocuments),
     Active: data.active === false ? false : true,
     CreatedAt: existing ? existing.CreatedAt : now,
     UpdatedAt: now
   };
   if (existing) {
-    const found = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', id);
-    found.headers.forEach((header, index) => sheet.getRange(found.rowIndex, index + 1).setValue(values[header]));
+    existingRow.headers.forEach((header, index) => {
+      if (Object.prototype.hasOwnProperty.call(values, header)) {
+        sheet.getRange(existingRow.rowIndex, index + 1).setValue(values[header]);
+      }
+    });
   } else {
-    sheet.appendRow(SHEET_HEADERS.Employees.map(header => values[header]));
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    sheet.appendRow(headers.map(header =>
+      Object.prototype.hasOwnProperty.call(values, header) ? values[header] : ''));
   }
   return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
 }
 
+function saveEmployeePhoto_(photoUrl, photoName) {
+  const value = String(photoUrl || '');
+  if (!value.startsWith('data:')) return value;
+
+  const match = value.match(/^data:(image\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+  const maxPhotoSize = 2 * 1024 * 1024;
+  const allowedImageType = /^image\/(jpeg|png|gif|webp|bmp|heic|heif|avif)$/i;
+  if (!match || !allowedImageType.test(match[1]) ||
+      match[2].length > Math.ceil(maxPhotoSize * 4 / 3) + 4) {
+    throw new Error('Employee photo must be a supported image no larger than 2 MB.');
+  }
+
+  const bytes = Utilities.base64Decode(match[2]);
+  if (bytes.length > maxPhotoSize) {
+    throw new Error('Employee photo must be a supported image no larger than 2 MB.');
+  }
+  const folders = DriveApp.getFoldersByName('D.S. Transformer Employee Photos');
+  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('D.S. Transformer Employee Photos');
+  const safeName = String(photoName || 'employee-photo').replace(/[^\w.-]/g, '_').slice(0, 120);
+  const file = folder.createFile(Utilities.newBlob(bytes, match[1], safeName));
+  return file.getDownloadUrl();
+}
+
 function parseTime_(value) {
-  const text = String(value || '').trim();
+  const text = normalizeAttendanceTime_(value);
   const match = text.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) throw new Error('Enter a valid clock time.');
   const hours = Number(match[1]);
@@ -486,15 +575,24 @@ function parseTime_(value) {
   return hours * 60 + minutes;
 }
 
+function roundHours_(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function normalizeAttendanceTime_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'HH:mm');
+  }
+  return String(value).trim();
+}
+
 function attendanceRatesForMonth_(employee, monthValue) {
   const monthMatch = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
   if (!monthMatch) return { monthlySalary: 0, dailyRate: 0, overtimeRate: 0 };
   const monthlySalary = Number(employee.MonthlySalary || 0);
   const daysInMonth = new Date(Number(monthMatch[1]), Number(monthMatch[2]), 0).getDate();
-  const holidayCount = getSheetData(SHEET_NAMES.HOLIDAYS).filter(row =>
-    Number(row.EmployeeID) === Number(employee.ID) && String(row.Date || '').startsWith(`${monthMatch[1]}-${monthMatch[2]}`)).length;
-  const paidDays = Math.max(1, daysInMonth - holidayCount);
-  const dailyRate = monthlySalary / paidDays;
+  const dailyRate = monthlySalary / daysInMonth;
   return {
     monthlySalary,
     dailyRate,
@@ -515,9 +613,7 @@ function ensureAttendanceForMonth_(monthValue) {
 
   employees.forEach(employee => {
     const employeeId = Number(employee.ID);
-    const employeeHolidays = new Set(holidayRows
-      .filter(row => Number(row.EmployeeID) === employeeId)
-      .map(row => dateOnly_(row.Date)));
+    const employeeHolidays = new Set(holidayRows.map(row => dateOnly_(row.Date)));
     const rates = attendanceRatesForMonth_(employee, monthValue);
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = `${monthMatch[1]}-${monthMatch[2]}-${String(day).padStart(2, '0')}`;
@@ -549,54 +645,187 @@ function ensureAttendanceForMonth_(monthValue) {
 function getAttendance(month) {
   ensureAttendanceForMonth_(month);
   const rows = getSheetData(SHEET_NAMES.ATTENDANCE);
-  const filtered = !month ? rows : rows.filter(row => String(row.Date || '').startsWith(String(month).slice(0, 7)));
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Date).startsWith(monthValue));
   return { status: 'SUCCESS', data: filtered.map(attendanceRecord_) };
 }
 
 function getEmployeeAttendance(employeeId, month) {
   ensureAttendanceForMonth_(month);
   const rows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row => Number(row.EmployeeID) === Number(employeeId));
-  const filtered = !month ? rows : rows.filter(row => String(row.Date || '').startsWith(String(month).slice(0, 7)));
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Date).startsWith(monthValue));
   return { status: 'SUCCESS', data: filtered.map(attendanceRecord_) };
 }
 
 function getHolidays(month) {
   const rows = getSheetData(SHEET_NAMES.HOLIDAYS);
-  const filtered = !month ? rows : rows.filter(row => String(row.Date || '').startsWith(String(month).slice(0, 7)));
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Date).startsWith(monthValue));
   return { status: 'SUCCESS', data: filtered.map(holidayRecord_) };
 }
 
 function addHoliday(data) {
-  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.employeeId));
-  if (!employee) throw new Error('Employee not found.');
   const holidayDate = dateOnly_(data.date);
   if (!holidayDate) throw new Error('Holiday date is required.');
   const sheet = initializeSheet(SHEET_NAMES.HOLIDAYS, SHEET_HEADERS.Holidays);
-  const existing = getSheetData(SHEET_NAMES.HOLIDAYS).find(row => Number(row.EmployeeID) === Number(data.employeeId) && dateOnly_(row.Date) === holidayDate);
-  if (existing) throw new Error('This date is already marked as a holiday.');
-  const row = {
-    ID: getNextNumericId(SHEET_NAMES.HOLIDAYS, 'ID'),
-    EmployeeID: Number(data.employeeId),
-    EmployeeCode: String(employee.data.EmployeeCode || ''),
-    Name: String(employee.data.Name || ''),
-    Date: holidayDate,
-    CreatedAt: getTimestamp()
-  };
-  sheet.appendRow(SHEET_HEADERS.Holidays.map(header => row[header]));
+  const matches = getSheetData(SHEET_NAMES.HOLIDAYS)
+    .filter(row => dateOnly_(row.Date) === holidayDate);
+  let row;
+  if (matches.length) {
+    row = { ...matches[0], EmployeeID: 0, EmployeeCode: '', Name: 'All Employees' };
+    const found = findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(row.ID));
+    found.headers.forEach((header, index) => {
+      if (Object.prototype.hasOwnProperty.call(row, header)) {
+        sheet.getRange(found.rowIndex, index + 1).setValue(row[header]);
+      }
+    });
+    matches.slice(1)
+      .map(match => findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(match.ID)))
+      .filter(Boolean)
+      .sort((a, b) => b.rowIndex - a.rowIndex)
+      .forEach(match => sheet.deleteRow(match.rowIndex));
+  } else {
+    row = {
+      ID: getNextNumericId(SHEET_NAMES.HOLIDAYS, 'ID'),
+      EmployeeID: 0,
+      EmployeeCode: '',
+      Name: 'All Employees',
+      Date: holidayDate,
+      CreatedAt: getTimestamp()
+    };
+    sheet.appendRow(SHEET_HEADERS.Holidays.map(header => row[header]));
+  }
+  invalidateGeneratedSalariesForDate_(holidayDate);
   return { status: 'SUCCESS', data: holidayRecord_(row) };
 }
 
 function deleteHoliday(id) {
   const found = findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(id));
   if (!found) throw new Error('Holiday not found.');
+  const holidayDate = dateOnly_(found.data[found.headers.indexOf('Date')]);
   const sheet = getOrCreateSheet(SHEET_NAMES.HOLIDAYS);
-  sheet.deleteRow(found.rowIndex);
+  getSheetData(SHEET_NAMES.HOLIDAYS)
+    .filter(row => dateOnly_(row.Date) === holidayDate)
+    .map(row => findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(row.ID)))
+    .filter(Boolean)
+    .sort((a, b) => b.rowIndex - a.rowIndex)
+    .forEach(match => sheet.deleteRow(match.rowIndex));
+  invalidateGeneratedSalariesForDate_(holidayDate);
   return { status: 'SUCCESS', data: { id: Number(id) } };
+}
+
+function invalidateGeneratedSalariesForDate_(date) {
+  const month = date.slice(0, 7);
+  const sheet = getOrCreateSheet(SHEET_NAMES.SALARIES);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return;
+  const headers = values[0].map(String);
+  const monthIndex = headers.indexOf('Month');
+  const statusIndex = headers.indexOf('Status');
+  if (monthIndex < 0 || statusIndex < 0) return;
+  const rowsToDelete = values.slice(1)
+    .map((row, index) => ({ row, rowIndex: index + 2 }))
+    .filter(({ row }) =>
+      dateOnly_(row[monthIndex]).startsWith(month) &&
+      String(row[statusIndex] || '').toUpperCase() === 'GENERATED')
+    .map(item => item.rowIndex)
+    .sort((a, b) => b - a);
+  rowsToDelete.forEach(rowIndex => sheet.deleteRow(rowIndex));
+}
+
+function markEmployeeLeave(data) {
+  const employeeId = Number(data.employeeId);
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', employeeId);
+  if (!employee) throw new Error('Employee not found.');
+  const employeeData = rowObject_(employee);
+  const date = dateOnly_(data.date);
+  if (!date) throw new Error('Leave date is required.');
+  const holiday = getSheetData(SHEET_NAMES.HOLIDAYS).find(row =>
+    dateOnly_(row.Date) === date);
+  if (holiday) throw new Error('This date is already marked as a holiday.');
+
+  const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE);
+  const existing = attendanceRows.find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Date) === date);
+  if (existing && (String(existing.InTime || '').trim() || String(existing.OutTime || '').trim() ||
+      String(existing.Status || '').toUpperCase() === 'PRESENT')) {
+    throw new Error('Leave cannot be marked on a day with recorded attendance.');
+  }
+  ensureSalaryCanRecalculateForDate_(employeeId, date, 'Leave');
+
+  const rates = attendanceRatesForMonth_(employeeData, date.slice(0, 7));
+  const row = existing ? { ...existing, Status: 'LEAVE' } : {
+    ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
+    EmployeeID: employeeId,
+    EmployeeCode: String(employeeData.EmployeeCode || ''),
+    Name: String(employeeData.Name || ''),
+    Date: date,
+    InTime: '',
+    OutTime: '',
+    Hours: 0,
+    OvertimeHours: 0,
+    Status: 'LEAVE',
+    PhotoUrl: String(employeeData.PhotoUrl || ''),
+    MonthlySalary: rates.monthlySalary,
+    DailyRate: rates.dailyRate,
+    OvertimeHourlyRate: rates.overtimeRate,
+    CreatedAt: getTimestamp()
+  };
+  const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
+  if (existing) {
+    const found = findRowByValue(SHEET_NAMES.ATTENDANCE, 'ID', Number(existing.ID));
+    found.headers.forEach((header, index) => {
+      if (Object.prototype.hasOwnProperty.call(row, header)) {
+        sheet.getRange(found.rowIndex, index + 1).setValue(row[header]);
+      }
+    });
+  } else {
+    sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
+  }
+  invalidateGeneratedSalaryForDate_(employeeId, date);
+  return { status: 'SUCCESS', data: attendanceRecord_(row) };
+}
+
+function clearEmployeeLeave(data) {
+  const employeeId = Number(data.employeeId);
+  const date = dateOnly_(data.date);
+  if (!employeeId || !date) throw new Error('Employee and leave date are required.');
+  const found = getSheetData(SHEET_NAMES.ATTENDANCE).find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Date) === date &&
+    String(row.Status || '').toUpperCase() === 'LEAVE');
+  if (!found) throw new Error('Leave record not found.');
+  ensureSalaryCanRecalculateForDate_(employeeId, date);
+
+  const attendanceRow = findRowByValue(SHEET_NAMES.ATTENDANCE, 'ID', Number(found.ID));
+  const sheet = getOrCreateSheet(SHEET_NAMES.ATTENDANCE);
+  sheet.getRange(attendanceRow.rowIndex, attendanceRow.headers.indexOf('Status') + 1).setValue('ABSENT');
+  invalidateGeneratedSalaryForDate_(employeeId, date);
+  return { status: 'SUCCESS', data: attendanceRecord_({ ...found, Status: 'ABSENT' }) };
+}
+
+function ensureSalaryCanRecalculateForDate_(employeeId, date, recordType = 'Attendance') {
+  const month = date.slice(0, 7);
+  const existing = getSheetData(SHEET_NAMES.SALARIES).find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Month).startsWith(month));
+  if (existing && String(existing.Status || '').toUpperCase() === 'RECEIVED') {
+    throw new Error(`${recordType} cannot be changed after this month's salary is marked received.`);
+  }
+}
+
+function invalidateGeneratedSalaryForDate_(employeeId, date) {
+  const month = date.slice(0, 7);
+  const existing = getSheetData(SHEET_NAMES.SALARIES).find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Month).startsWith(month));
+  if (!existing || String(existing.Status || '').toUpperCase() !== 'GENERATED') return;
+  const found = findRowByValue(SHEET_NAMES.SALARIES, 'ID', Number(existing.ID));
+  if (found) getOrCreateSheet(SHEET_NAMES.SALARIES).deleteRow(found.rowIndex);
 }
 
 function clockAttendance(data) {
   const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.employeeId));
   if (!employee) throw new Error('Employee not found.');
+  const employeeData = rowObject_(employee);
   const date = dateOnly_(data.date);
   if (!date) throw new Error('Attendance date is required.');
   const monthValue = date.slice(0, 7);
@@ -604,29 +833,44 @@ function clockAttendance(data) {
   const outTime = String(data.outTime || '').trim();
   if (!inTime && !outTime) throw new Error('Clock-in or clock-out time is required.');
   const existing = getSheetData(SHEET_NAMES.ATTENDANCE).find(row => Number(row.EmployeeID) === Number(data.employeeId) && dateOnly_(row.Date) === date);
-  if (existing && inTime && existing.InTime) throw new Error('Clock-in is already recorded for this employee and date.');
-  if (existing && !outTime && existing.OutTime) throw new Error('Clock-in is already recorded; clock-out is required.');
+  if (existing && String(existing.Status || '').toUpperCase() === 'LEAVE') {
+    throw new Error('Remove the leave record before recording attendance.');
+  }
+  const effectiveInTime = data.replaceTimes
+    ? inTime
+    : existing && existing.InTime ? normalizeAttendanceTime_(existing.InTime) : inTime;
+  const effectiveOutTime = data.replaceTimes
+    ? outTime
+    : existing && existing.OutTime ? normalizeAttendanceTime_(existing.OutTime) : outTime;
+  if (data.replaceTimes && !effectiveInTime && !effectiveOutTime) {
+    throw new Error('Enter an in time or out time before saving attendance.');
+  }
+  if (outTime && !effectiveInTime) throw new Error('Clock-in must be recorded before clock-out.');
+  if (!data.replaceTimes && existing && inTime && existing.InTime) throw new Error('Clock-in is already recorded for this employee and date.');
+  if (!data.replaceTimes && existing && !outTime && existing.OutTime) throw new Error('Clock-in is already recorded; clock-out is required.');
+  ensureSalaryCanRecalculateForDate_(Number(data.employeeId), date);
 
   const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
-  const hours = inTime && outTime
-    ? Math.max(0, (parseTime_(outTime) - parseTime_(inTime)) / 60)
+  const hours = effectiveInTime && effectiveOutTime
+    ? Math.max(0, (parseTime_(effectiveOutTime) - parseTime_(effectiveInTime)) / 60)
     : 0;
-  const overtimeHours = Math.max(0, hours - 9);
-  const rates = attendanceRatesForMonth_(employee.data, monthValue);
-  const isPresent = Boolean(inTime);
+  const roundedHours = roundHours_(hours);
+  const overtimeHours = roundHours_(Math.max(0, roundedHours - 9));
+  const rates = attendanceRatesForMonth_(employeeData, monthValue);
+  const isPresent = Boolean(effectiveInTime);
   const row = existing
     ? {
         ID: Number(existing.ID),
         EmployeeID: Number(data.employeeId),
-        EmployeeCode: String(employee.data.EmployeeCode || ''),
-        Name: String(employee.data.Name || ''),
+        EmployeeCode: String(employeeData.EmployeeCode || ''),
+        Name: String(employeeData.Name || ''),
         Date: date,
-        InTime: existing.InTime || inTime,
-        OutTime: existing.OutTime || outTime,
-        Hours: hours,
+        InTime: effectiveInTime,
+        OutTime: effectiveOutTime,
+        Hours: roundedHours,
         OvertimeHours: overtimeHours,
         Status: isPresent ? 'PRESENT' : 'ABSENT',
-        PhotoUrl: String(data.photoUrl || employee.data.PhotoUrl || existing.PhotoUrl || ''),
+        PhotoUrl: String(data.photoUrl || employeeData.PhotoUrl || existing.PhotoUrl || ''),
         MonthlySalary: rates.monthlySalary,
         DailyRate: rates.dailyRate,
         OvertimeHourlyRate: rates.overtimeRate,
@@ -635,15 +879,15 @@ function clockAttendance(data) {
     : {
         ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
         EmployeeID: Number(data.employeeId),
-        EmployeeCode: String(employee.data.EmployeeCode || ''),
-        Name: String(employee.data.Name || ''),
+        EmployeeCode: String(employeeData.EmployeeCode || ''),
+        Name: String(employeeData.Name || ''),
         Date: date,
         InTime: inTime,
         OutTime: outTime,
-        Hours: hours,
+        Hours: roundedHours,
         OvertimeHours: overtimeHours,
         Status: isPresent ? 'PRESENT' : 'ABSENT',
-        PhotoUrl: String(data.photoUrl || employee.data.PhotoUrl || ''),
+        PhotoUrl: String(data.photoUrl || employeeData.PhotoUrl || ''),
         MonthlySalary: rates.monthlySalary,
         DailyRate: rates.dailyRate,
         OvertimeHourlyRate: rates.overtimeRate,
@@ -655,56 +899,90 @@ function clockAttendance(data) {
   } else {
     sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
   }
-  return { status: 'SUCCESS', data: attendanceRecord_(existing || row) };
+  invalidateGeneratedSalaryForDate_(Number(data.employeeId), date);
+  return { status: 'SUCCESS', data: attendanceRecord_(row) };
 }
 
 function getSalaries(month) {
   const rows = getSheetData(SHEET_NAMES.SALARIES);
-  const filtered = !month ? rows : rows.filter(row => String(row.Month || '').startsWith(String(month).slice(0, 7)));
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Month).startsWith(monthValue));
   return { status: 'SUCCESS', data: filtered.map(salaryRecord_) };
 }
 
 function generateSalary(employeeId, month) {
-  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(employeeId));
-  if (!employee) throw new Error('Employee not found.');
-  const monthValue = dateOnly_(month);
-  if (!/^\d{4}-\d{2}$/.test(monthValue)) throw new Error('A valid salary month is required.');
-  const existing = getSheetData(SHEET_NAMES.SALARIES).find(row => Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Month).startsWith(monthValue));
-  if (existing) return { status: 'SUCCESS', data: salaryRecord_(existing) };
-  const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row => Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Date).startsWith(monthValue));
-  const holidayRows = getSheetData(SHEET_NAMES.HOLIDAYS).filter(row => Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Date).startsWith(monthValue));
-  const regularHours = attendanceRows.reduce((total, row) => total + Math.min(Number(row.Hours || 0), 9), 0);
-  const overtimeHours = attendanceRows.reduce((total, row) => total + Number(row.OvertimeHours || 0), 0);
-  const monthlySalary = Number(employee.data.MonthlySalary || 0);
-  const paidDays = new Date(Number(monthValue.slice(0, 4)), Number(monthValue.slice(5, 7)), 0).getDate() - holidayRows.length;
-  if (paidDays <= 0) throw new Error('At least one paid day is required to generate salary.');
-  const dailyRate = monthlySalary / paidDays;
-  const overtimeRate = dailyRate / 9;
-  const regularPay = regularHours * dailyRate;
-  const overtimePay = overtimeHours * overtimeRate;
-  const row = {
-    ID: getNextNumericId(SHEET_NAMES.SALARIES, 'ID'),
-    EmployeeID: Number(employeeId),
-    EmployeeCode: String(employee.data.EmployeeCode || ''),
-    Name: String(employee.data.Name || ''),
-    Month: `${monthValue}-01`,
-    MonthlySalary: monthlySalary,
-    DailyRate: dailyRate,
-    OvertimeHourlyRate: overtimeRate,
-    PaidDays: paidDays,
-    HolidayCount: holidayRows.length,
-    RegularHours: regularHours,
-    OvertimeHours: overtimeHours,
-    RegularPay: regularPay,
-    OvertimePay: overtimePay,
-    TotalAmount: regularPay + overtimePay,
-    Status: 'GENERATED',
-    GeneratedAt: getTimestamp(),
-    ReceivedAt: ''
-  };
-  const sheet = initializeSheet(SHEET_NAMES.SALARIES, SHEET_HEADERS.Salaries);
-  sheet.appendRow(SHEET_HEADERS.Salaries.map(header => row[header]));
-  return { status: 'SUCCESS', data: salaryRecord_(row) };
+  const monthMatch = String(month || '').trim().match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+  if (!monthMatch || Number(monthMatch[2]) < 1 || Number(monthMatch[2]) > 12) {
+    throw new Error('A valid salary month is required.');
+  }
+  const monthValue = `${monthMatch[1]}-${monthMatch[2]}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(employeeId));
+    if (!employee) throw new Error('Employee not found.');
+    const employeeData = rowObject_(employee);
+    const existing = getSheetData(SHEET_NAMES.SALARIES).find(row =>
+      Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Month).startsWith(monthValue));
+    if (existing && String(existing.Status || '').toUpperCase() === 'RECEIVED') {
+      return { status: 'SUCCESS', data: salaryRecord_(existing) };
+    }
+
+    ensureAttendanceForMonth_(monthValue);
+    const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row =>
+      Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Date).startsWith(monthValue));
+    const holidayRows = getSheetData(SHEET_NAMES.HOLIDAYS).filter(row =>
+      dateOnly_(row.Date).startsWith(monthValue));
+    const holidayDates = new Set(holidayRows.map(row => dateOnly_(row.Date)));
+    const regularHours = roundHours_(attendanceRows.reduce((total, row) => total + Math.min(Number(row.Hours || 0), 9), 0));
+    const overtimeHours = roundHours_(attendanceRows.reduce((total, row) => total + Number(row.OvertimeHours || 0), 0));
+    const absentDays = attendanceRows.filter(row =>
+      ['ABSENT', 'LEAVE'].includes(String(row.Status || '').toUpperCase()) &&
+      !holidayDates.has(dateOnly_(row.Date))).length;
+    const paidDaysInMonth = new Date(Number(monthMatch[1]), Number(monthMatch[2]), 0).getDate();
+    const unpaidAbsences = Math.max(0, absentDays - 2);
+    const monthlySalary = Number(employeeData.MonthlySalary || 0);
+    const dailyRate = monthlySalary / paidDaysInMonth;
+    const overtimeRate = dailyRate / 9;
+    const paidDays = paidDaysInMonth - unpaidAbsences;
+    const regularPay = Math.max(0, monthlySalary - unpaidAbsences * dailyRate);
+    const overtimePay = Math.round(overtimeHours * overtimeRate * 100) / 100;
+    const row = {
+      ID: existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.SALARIES, 'ID'),
+      EmployeeID: Number(employeeId),
+      EmployeeCode: String(employeeData.EmployeeCode || ''),
+      Name: String(employeeData.Name || ''),
+      Month: `${monthValue}-01`,
+      MonthlySalary: monthlySalary,
+      DailyRate: dailyRate,
+      OvertimeHourlyRate: overtimeRate,
+      PaidDays: paidDays,
+      HolidayCount: new Set(holidayRows.map(row => dateOnly_(row.Date))).size,
+      RegularHours: regularHours,
+      OvertimeHours: overtimeHours,
+      RegularPay: Math.round(regularPay * 100) / 100,
+      OvertimePay: overtimePay,
+      TotalAmount: Math.round((regularPay + overtimePay) * 100) / 100,
+      Status: 'GENERATED',
+      GeneratedAt: getTimestamp(),
+      ReceivedAt: ''
+    };
+    const sheet = initializeSheet(SHEET_NAMES.SALARIES, SHEET_HEADERS.Salaries);
+    if (existing) {
+      const found = findRowByValue(SHEET_NAMES.SALARIES, 'ID', Number(existing.ID));
+      if (!found) throw new Error('Generated salary record could not be found for recalculation.');
+      found.headers.forEach((header, index) => {
+        if (Object.prototype.hasOwnProperty.call(row, header)) {
+          sheet.getRange(found.rowIndex, index + 1).setValue(row[header]);
+        }
+      });
+    } else {
+      sheet.appendRow(SHEET_HEADERS.Salaries.map(header => row[header]));
+    }
+    return { status: 'SUCCESS', data: salaryRecord_(row) };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function updateSalaryStatus(id, status, receivedAt) {
@@ -4270,6 +4548,12 @@ function doPost(e) {
         break;
       case 'CLOCK_ATTENDANCE':
         result = clockAttendance(payload);
+        break;
+      case 'MARK_EMPLOYEE_LEAVE':
+        result = markEmployeeLeave(payload);
+        break;
+      case 'CLEAR_EMPLOYEE_LEAVE':
+        result = clearEmployeeLeave(payload);
         break;
       case 'GET_HOLIDAYS':
         result = getHolidays(payload.month || raw.month);

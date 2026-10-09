@@ -204,7 +204,7 @@ public class GoogleSheetsService {
     }
 
     public Optional<EmployeeDTO> getEmployeeById(Long id) {
-        Map<String, Object> response = postToAppsScript(employeePayload("GET_EMPLOYEE_BY_ID", id));
+        Map<String, Object> response = postToAppsScript(employeePayload("GET_EMPLOYEE_BY_ID", id, null));
         if ("NOT_FOUND".equals(response.get("status"))) return Optional.empty();
         if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
         return Optional.of(mappedResult(response, EmployeeDTO.class));
@@ -219,6 +219,7 @@ public class GoogleSheetsService {
         payload.put("salary", employee.getSalary());
         payload.put("photoUrl", employee.getPhotoUrl());
         payload.put("photoName", employee.getPhotoName());
+        payload.put("supportingDocuments", employee.getSupportingDocuments());
         payload.put("active", employee.getActive() == null || employee.getActive());
         Map<String, Object> response = postToAppsScript(employeePayload("SAVE_EMPLOYEE", employee.getId(), payload));
         if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
@@ -242,13 +243,20 @@ public class GoogleSheetsService {
         return listResult(response, AttendanceDTO.class);
     }
 
-    public AttendanceDTO clockAttendance(Long employeeId, LocalDate date, String inTime, String outTime, String photoUrl) {
+    public AttendanceDTO clockAttendance(
+            Long employeeId,
+            LocalDate date,
+            String inTime,
+            String outTime,
+            String photoUrl,
+            boolean replaceTimes) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("employeeId", employeeId);
         payload.put("date", date);
         payload.put("inTime", inTime);
         payload.put("outTime", outTime);
         payload.put("photoUrl", photoUrl);
+        payload.put("replaceTimes", replaceTimes);
         Map<String, Object> response = postToAppsScript(employeePayload("CLOCK_ATTENDANCE", payload));
         if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
         return mappedResult(response, AttendanceDTO.class);
@@ -272,8 +280,26 @@ public class GoogleSheetsService {
     }
 
     public void deleteHoliday(Long id) {
-        Map<String, Object> response = postToAppsScript(employeePayload("DELETE_HOLIDAY", id));
+        Map<String, Object> response = postToAppsScript(employeePayload("DELETE_HOLIDAY", id, null));
         if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+    }
+
+    public AttendanceDTO markEmployeeLeave(Long employeeId, LocalDate date) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("employeeId", employeeId);
+        payload.put("date", date);
+        Map<String, Object> response = postToAppsScript(employeePayload("MARK_EMPLOYEE_LEAVE", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, AttendanceDTO.class);
+    }
+
+    public AttendanceDTO clearEmployeeLeave(Long employeeId, LocalDate date) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("employeeId", employeeId);
+        payload.put("date", date);
+        Map<String, Object> response = postToAppsScript(employeePayload("CLEAR_EMPLOYEE_LEAVE", payload));
+        if (!"SUCCESS".equals(response.get("status"))) throw appsScriptException(response);
+        return mappedResult(response, AttendanceDTO.class);
     }
 
     public List<SalaryDTO> getAllSalaries(String month) {
@@ -324,17 +350,16 @@ public class GoogleSheetsService {
         return employeePayload(action, null, null);
     }
 
-    private Map<String, Object> employeePayload(String action, Object payload) {
+    private Map<String, Object> employeePayload(String action, Map<String, Object> payload) {
         return employeePayload(action, null, payload);
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> employeePayload(String action, Object id, Object payload) {
+    private Map<String, Object> employeePayload(String action, Object id, Map<String, Object> payload) {
         Map<String, Object> request = new HashMap<>();
         request.put("action", action);
         Map<String, Object> data = new HashMap<>();
         if (id != null) data.put("id", id);
-        if (payload != null) data.putAll((Map<String, Object>) payload);
+        if (payload != null) data.putAll(payload);
         request.put("payload", data);
         return request;
     }

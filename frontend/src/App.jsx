@@ -445,7 +445,7 @@ function App() {
   const [initialPageLoadedFor, setInitialPageLoadedFor] = useState('')
   const initialPageReady = Boolean(authUser && initialPageLoadedFor === authUser.uid)
   const adminLoginOnly = window.location.pathname.replace(/\/+$/, '') === '/admin'
-  const [currentTab, setCurrentTab] = useState('quotations')
+  const [currentTab, setCurrentTab] = useState('employees')
   const [transformers, setTransformers] = useState([])
   const [transformersLoading, setTransformersLoading] = useState(false)
   const [transformerExportLoading, setTransformerExportLoading] = useState(false)
