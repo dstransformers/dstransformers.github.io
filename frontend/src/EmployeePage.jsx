@@ -744,6 +744,7 @@ export default function EmployeePage() {
                       title="Add or complete attendance for this date"
                       aria-label={`Edit attendance for ${toDateInput(date)}`}
                     >
+                      <span className="calendar-action-full">Edit times</span>
                       <span className="calendar-action-short">Times</span>
                     </button>
                   )}

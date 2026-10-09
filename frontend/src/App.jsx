@@ -4393,7 +4393,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                                 onChange={event => updateQuotationLine(index, 'rate', event.target.value)}
                                 required
                               />
-                              {(item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil') && <small className="quotation-rate-note">Rate per litre</small>}
+                              {(item.service === 'New Transformer Oil') && <small className="quotation-rate-note">Rate per litre</small>}
                               {item.service === 'Earth Pit Testing' && <small className="quotation-rate-note">Rate per pit</small>}
                             </td>
                             {quotationDraft.documentType === 'BILL' && <td>₹{(Number(item.quantity || 0) * Number(item.rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
