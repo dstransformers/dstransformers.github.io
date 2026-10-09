@@ -3806,7 +3806,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             <button
               key={item.id}
               className={`nav-item ${currentTab === item.id ? 'active' : ''}`}
-              onClick={() => setCurrentTab(item.id)}
+              onClick={() => {
+                setCurrentTab(item.id)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
               aria-label={item.label}
             >
               <span className="nav-icon">{item.icon}</span>
@@ -3845,6 +3848,41 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           </div>
         </header>
         {dropdownDefaultsError && <p className="status status--error jobs-feedback" role="alert">{dropdownDefaultsError}</p>}
+
+      {currentTab !== 'quotations' && currentTab !== 'employees' && (
+        <section className="kpis">
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
+            <p>Recieved</p>
+            <h3>{summary.recieve}</h3>
+            <small>New inward entries</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Assesment')} aria-label={`View ${summary.assesment} transformers awaiting assessment`}>
+            <p>Assesment</p>
+            <h3>{summary.assesment}</h3>
+            <small>Fault verification pending</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repair In Progress')} aria-label={`View ${summary.repairInProgress} transformers in repair`}>
+            <p>Repair In Progress</p>
+            <h3>{summary.repairInProgress}</h3>
+            <small>Workshop jobs in progress</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repaired')} aria-label={`View ${summary.repaired} repaired transformers`}>
+            <p>Repaired</p>
+            <h3>{summary.repaired}</h3>
+            <small>Ready for dispatch planning</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Delivered')} aria-label={`View ${summary.delivered} delivered transformers`}>
+            <p>Delivered</p>
+            <h3>{summary.delivered}</h3>
+            <small>Customer handover completed</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Billed')} aria-label={`View ${summary.billed} billed transformers`}>
+            <p>Billed</p>
+            <h3>{summary.billed}</h3>
+            <small>Invoice posted after delivery</small>
+          </button>
+        </section>
+      )}
 
       {currentTab === 'enquiries' && (
         <section className="panel jobs-panel">
