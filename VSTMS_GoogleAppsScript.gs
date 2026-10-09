@@ -2,15 +2,16 @@
  * VSTMS Google Apps Script - Single Source of Truth
  *
  * Manages data in Google Sheets for the complete VSTMS application:
- * Sheets: Enquiries, Services, Jobs, Transformers, TNotes, DCs, Bills
+ * Sheets: Enquiries, Services, Jobs, Transformers, TNotes, DCs, Bills,
+ * Employees, Attendance, Holidays, Salaries
  *
  * Deployment:
  * 1. Open Google Sheet > Extensions > Apps Script
- * 2. Replace all code with this file
- * 3. Click Deploy > Manage deployments > Edit > New version
+ * 2. Replace the code and set appsscript.json oauthScopes from this repository
+ * 3. Run authorizeVstmsAccess() in the editor and approve the requested scopes
+ * 4. Click Deploy > Manage deployments > Edit > New version
  *    - Execute as: Me
  *    - Who has access: Anyone
- * 4. Authorize Google Drive, Google Slides, and external request access when prompted
  * 5. Enable the Google Slides API in the Apps Script project's linked Cloud project for PNG exports
  * 6. Keep the Web App URL in backend application.properties (google.apps.script.url)
  */
@@ -23,32 +24,44 @@ const SHEET_NAMES = {
   JOBS: 'Jobs',
   TRANSFORMERS: 'Transformers',
   TNOTES: 'TNotes',
+  TNOTE_TRANSFORMERS: 'TNote Transformers',
   DCS: 'DCs',
   BILLS: 'Bills',
   QUOTATIONS: 'Quotations',
   QUOTATION_FORM: 'Quotation_Form',
   QUOTATION_SETTINGS: 'Quotation Settings',
-  QUOTATION_RATES: 'Quotation Rates'
+  QUOTATION_RATES: 'Quotation Rates',
+  DROPDOWN_DEFAULTS: 'Dropdown Defaults',
+  EMPLOYEES: 'Employees',
+  ATTENDANCE: 'Attendance',
+  HOLIDAYS: 'Holidays',
+  SALARIES: 'Salaries'
 };
 
 const SHEET_HEADERS = {
   Enquiries: ['ID', 'Date', 'CustomerName', 'CustomerPhone', 'CustomerEmail', 'ServicesRequired', 'TransformerLocation', 'LeakageLocation', 'BreakdownTiming', 'SiteLocation', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt', 'ContactPerson', 'TransformerCapacity', 'TransformerMake', 'TransformerStatus', 'ServicePriority', 'ProblemDescription', 'PhotoLinks'],
   Services: ['ServiceID', 'ServiceName', 'Description', 'Icon'],
   Jobs: ['JobID', 'EnquiryID', 'TransformerID', 'Status', 'StartDate', 'EndDate', 'Technician', 'Description', 'Cost', 'CreatedAt', 'UpdatedAt'],
-  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt'],
-  TNotes: ['ID', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt'],
-  DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CreatedAt', 'UpdatedAt'],
-  Bills: ['SapNo', 'Date', 'SpmCenter', 'TotalTransformers', 'BillAmount', 'CreatedAt', 'UpdatedAt'],
-  Quotations: ['QuotationNo', 'CustomerName', 'CustomerAddress', 'ContactPerson', 'Mobile', 'Email', 'TransformerMake', 'TransformerCapacity', 'TransformerSerialNo', 'TransformerLocation', 'QuotationDate', 'FinancialYear', 'LineItems', 'Subtotal', 'PdfUrl', 'FileUrl', 'FileId', 'OutputFormat', 'CreatedAt', 'UpdatedAt', 'DocumentType', 'GSTApplicable', 'GSTRate', 'GSTAmount', 'GrandTotal', 'WarrantyMonths', 'Terms'],
-  Quotation_Form: ['QuotationNo', 'CustomerName', 'CustomerAddress', 'ContactPerson', 'Mobile', 'TransformerMake', 'TransformerCapacity', 'TransformerSerialNo', 'TransformerLocation', 'QuotationDate', 'FinancialYear', 'LineItems', 'OutputFormat', 'UpdatedAt', 'DocumentType', 'Subtotal', 'GSTApplicable', 'GSTRate', 'GSTAmount', 'GrandTotal', 'WarrantyMonths', 'Terms'],
+  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID', 'AssessmentDetails', 'AssessmentRound'],
+  TNotes: ['ID', 'TNoteNo', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt', 'Attachments'],
+  'TNote Transformers': ['LinkID', 'TNoteID', 'TransformerID', 'IntakeType', 'VisitStatus', 'Billable', 'CreatedAt', 'UpdatedAt'],
+  DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CustomerName', 'CustomerAddress', 'CustomerGSTIN', 'CompanyGSTIN', 'TNoteNo', 'EmptyDrumsAvailable', 'EmptyDrumCount', 'SentToTGSPDCL', 'TransformerDetails', 'Delivered', 'DeliveryAttachments', 'DeliveredAt', 'CreatedAt', 'UpdatedAt', 'GeneratedChallanUrl', 'GeneratedChallanFileId', 'RequestId'],
+  Bills: ['SapNo', 'Date', 'SpmCenter', 'TotalTransformers', 'BillAmount', 'CreatedAt', 'UpdatedAt', 'Attachments', 'AgreementNo', 'GSTAmount', 'Status', 'AmountCredited', 'CreditedDate', 'GSTFilingMonth', 'InvoiceNo'],
+  Quotations: ['QuotationNo', 'CustomerName', 'CustomerAddress', 'ContactPerson', 'Mobile', 'Email', 'TransformerMake', 'TransformerCapacity', 'TransformerSerialNo', 'TransformerLocation', 'QuotationDate', 'FinancialYear', 'LineItems', 'Subtotal', 'PdfUrl', 'FileUrl', 'FileId', 'OutputFormat', 'CreatedAt', 'UpdatedAt', 'DocumentType', 'GSTApplicable', 'GSTRate', 'GSTAmount', 'GrandTotal', 'WarrantyMonths', 'Terms', 'DocumentGroupId', 'GroupPosition', 'GroupCount'],
+  Quotation_Form: ['QuotationNo', 'CustomerName', 'CustomerAddress', 'ContactPerson', 'Mobile', 'Email', 'TransformerMake', 'TransformerCapacity', 'TransformerSerialNo', 'TransformerLocation', 'QuotationDate', 'FinancialYear', 'LineItems', 'OutputFormat', 'UpdatedAt', 'DocumentType', 'Subtotal', 'GSTApplicable', 'GSTRate', 'GSTAmount', 'GrandTotal', 'WarrantyMonths', 'Terms', 'DocumentGroupId', 'GroupPosition', 'GroupCount'],
   'Quotation Settings': ['Setting', 'Value'],
-  'Quotation Rates': ['TransformerCapacity', 'Service', 'Rate']
+  'Quotation Rates': ['TransformerCapacity', 'Service', 'Rate'],
+  'Dropdown Defaults': ['Category', 'Value', 'Active'],
+  Employees: ['ID', 'EmployeeCode', 'Name', 'Department', 'MonthlySalary', 'PhotoUrl', 'PhotoName', 'SupportingDocuments', 'Active', 'CreatedAt', 'UpdatedAt'],
+  Attendance: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Date', 'InTime', 'OutTime', 'Hours', 'OvertimeHours', 'Status', 'PhotoUrl', 'MonthlySalary', 'DailyRate', 'OvertimeHourlyRate', 'CreatedAt'],
+  Holidays: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Date', 'CreatedAt'],
+  Salaries: ['ID', 'EmployeeID', 'EmployeeCode', 'Name', 'Month', 'MonthlySalary', 'DailyRate', 'OvertimeHourlyRate', 'PaidDays', 'HolidayCount', 'RegularHours', 'OvertimeHours', 'RegularPay', 'OvertimePay', 'TotalAmount', 'Status', 'GeneratedAt', 'ReceivedAt']
 };
 
 const DEFAULT_QUOTATION_SETTINGS = [
-  ['Business Name', 'D.S. TRANSFORMERS & ELECTRICAL CONTRACTOR'],
+  ['Business Name', 'M/s. D.S. TRANSFORMERS & ELECTRICAL CONTRACTOR'],
   ['Business Email', 'ds.transformerelectrical@gmail.com'],
-  ['WhatsApp', '919949396530'],
+  ['WhatsApp', '918885250302'],
   ['Financial Year', '26-27'],
   ['Starting Quotation Number', '710'],
   ['Letterhead Presentation ID', '1W7qyj0bRI5jbMlgc-RtXA-UYnbOvxBaqvBk-nrvF-5U'],
@@ -114,7 +127,6 @@ const DEFAULT_QUOTATION_RATES = [
   ['1000 kVA', 'Earth Pit Testing', 2000]
 ];
 
-const QUOTATION_CAPACITIES = ['25 kVA', '63 kVA', '100 kVA', '160 kVA', '250 kVA', '315 kVA', '500 kVA', '630 kVA', '1000 kVA'];
 const QUOTATION_SERVICES = [
   'Transformer Oil Filtration',
   'Gasket Changing',
@@ -142,12 +154,73 @@ const DEFAULT_SERVICES = [
   { ServiceName: 'Custom Repairs', Description: 'Custom repair solutions', Icon: '🎯' }
 ];
 
+const DEFAULT_DROPDOWN_VALUES = {
+  Capacity: [
+    '25 kVA', '63 kVA', '100 kVA', '160 kVA', '250 kVA', '315 kVA',
+    '500 kVA', '630 kVA', '750 kVA', '1000 kVA', '1250 kVA', '1600 kVA',
+    'Other', 'Not sure'
+  ],
+  Make: [
+    'Vijay', 'Venu Gopal', 'Manu', 'VVE', 'SNR', 'Bhavani',
+    'Tejas Electrical', 'ECE', 'Victory', 'Kirloskar', 'Transcon'
+  ],
+  'SPM Center': ['Madannapet', 'Saroor Nagar'],
+  Service: [
+    'Transformer Oil Filtration',
+    'Gasket Changing',
+    'Repair & Servicing of Sick DTR',
+    'New Breather',
+    'Transformer Painting',
+    'Transformer Rewinding',
+    'Transformer Assembly',
+    'Oven / Drying Charges',
+    'New Transformer Oil',
+    'Earth Pit Testing',
+    'Oil Leakage Rectification',
+    'Transformer Inspection / Fault Assessment',
+    'Emergency Breakdown Support',
+    'Transformer Breakdown Repair',
+    'Coil Rewinding',
+    'Oil Filtration',
+    'Gasket Replacement',
+    'Testing & Diagnostics',
+    'Annual Maintenance',
+    'Custom Repairs',
+    'Transformer Inspection',
+    'Sick Transformer Repair / Restoration',
+    'Transformer Coil Rewinding',
+    'Preventive Maintenance',
+    'Transformer Servicing',
+    'Other'
+  ]
+};
+
+const QUOTATION_CAPACITIES = DEFAULT_DROPDOWN_VALUES.Capacity;
+
 const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Delivered', 'Billed'];
 
 // ============ UTILITY FUNCTIONS ============
 
 function getSpreadsheet() {
   return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function authorizeVstmsAccess() {
+  const spreadsheet = getSpreadsheet();
+  if (!spreadsheet) {
+    throw new Error('No active spreadsheet is available. Open this script from the VSTMS spreadsheet.');
+  }
+  spreadsheet.getId();
+  const driveRoot = DriveApp.getRootFolder();
+  const probeFile = driveRoot.createFile(
+    Utilities.newBlob('VSTMS Drive authorization check', 'text/plain', `vstms-drive-auth-check-${Utilities.getUuid()}.txt`)
+  );
+  try {
+    probeFile.setTrashed(true);
+  } catch (error) {
+    throw new Error(`Drive file creation succeeded, but the temporary authorization check file could not be trashed (${probeFile.getId()}): ${error.message}`);
+  }
+  return 'Sheets and Drive file creation authorization confirmed; temporary test file trashed.';
 }
 
 function getOrCreateSheet(sheetName) {
@@ -170,7 +243,31 @@ function initializeSheet(sheetName, headers) {
       sheet.getRange(1, existingHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
     }
   }
+  if (sheetName === SHEET_NAMES.EMPLOYEES) {
+    migrateEmployeeSalary_();
+  }
+  if (sheetName === SHEET_NAMES.BILLS && sheet.getLastColumn() > 0) {
+    sheet.getRange(1, 1, 1, sheet.getLastColumn()).setHorizontalAlignment('left');
+  }
   return sheet;
+}
+
+function migrateEmployeeSalary_() {
+  const sheet = getOrCreateSheet(SHEET_NAMES.EMPLOYEES);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return;
+
+  const monthlySalaryIndex = data[0].indexOf('MonthlySalary');
+  const dailyRateIndex = data[0].indexOf('DailyRate');
+  if (monthlySalaryIndex < 0 || dailyRateIndex < 0) return;
+  const rows = data.slice(1);
+  rows.forEach((row, index) => {
+    if (row[monthlySalaryIndex] !== '' && row[monthlySalaryIndex] != null) return;
+    const dailyRate = Number(row[dailyRateIndex] || 0);
+    if (Number.isFinite(dailyRate) && dailyRate >= 0) {
+      sheet.getRange(index + 2, monthlySalaryIndex + 1).setValue(dailyRate * 26);
+    }
+  });
 }
 
 function getSheetData(sheetName) {
@@ -191,6 +288,78 @@ function getSheetData(sheetName) {
   return rows;
 }
 
+function initializeDropdownDefaults_() {
+  const sheet = initializeSheet(SHEET_NAMES.DROPDOWN_DEFAULTS, SHEET_HEADERS['Dropdown Defaults']);
+  if (sheet.getLastRow() <= 1) {
+    const rows = [];
+    Object.keys(DEFAULT_DROPDOWN_VALUES).forEach(category => {
+      DEFAULT_DROPDOWN_VALUES[category].forEach(value => rows.push([category, value, true]));
+    });
+    if (rows.length > 0) {
+      sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+    }
+  }
+  const rows = getSheetData(SHEET_NAMES.DROPDOWN_DEFAULTS);
+  const gstinRows = {
+    businessGstin: rows.find(row => String(row.Category || '').trim() === 'Business GSTIN'),
+    tgspdclGstin: rows.find(row => String(row.Category || '').trim() === 'TGSPDCL GSTIN')
+  };
+  const defaultValues = {
+    businessGstin: '36AAUFM2590B1Z4',
+    tgspdclGstin: '27ABCDE1234F1Z5'
+  };
+  Object.entries(gstinRows).forEach(([key, gstinRow]) => {
+    if (!gstinRow) {
+      sheet.appendRow([key === 'businessGstin' ? 'Business GSTIN' : 'TGSPDCL GSTIN', defaultValues[key], true]);
+    } else if (
+      String(gstinRow.Value || '').trim() !== defaultValues[key] ||
+      (gstinRow.Active !== true && String(gstinRow.Active).toLowerCase() !== 'true')
+    ) {
+      const found = findRowByValue(SHEET_NAMES.DROPDOWN_DEFAULTS, 'Category', key === 'businessGstin' ? 'Business GSTIN' : 'TGSPDCL GSTIN');
+      if (found) {
+        sheet.getRange(found.rowIndex, found.headers.indexOf('Value') + 1).setValue(defaultValues[key]);
+        sheet.getRange(found.rowIndex, found.headers.indexOf('Active') + 1).setValue(true);
+      }
+    }
+  });
+  return sheet;
+}
+
+function getDropdownDefaults_() {
+  initializeDropdownDefaults_();
+  const values = {
+    capacities: [],
+    makes: [],
+    spmCenters: [],
+    services: [],
+    businessGstin: '36AAUFM2590B1Z4',
+    tgspdclGstin: '27ABCDE1234F1Z5'
+  };
+  const categoryKeys = {
+    Capacity: 'capacities',
+    Make: 'makes',
+    'SPM Center': 'spmCenters',
+    Service: 'services',
+    'Business GSTIN': 'businessGstin',
+    'TGSPDCL GSTIN': 'tgspdclGstin'
+  };
+
+  getSheetData(SHEET_NAMES.DROPDOWN_DEFAULTS).forEach(row => {
+    const key = categoryKeys[String(row.Category || '').trim()];
+    const value = String(row.Value || '').trim();
+    const active = row.Active;
+    if (!key || !value || active === false || String(active).toLowerCase() === 'false') return;
+    if (key === 'businessGstin' || key === 'tgspdclGstin') {
+      values[key] = value;
+      return;
+    }
+    if (!values[key].some(existing => existing.toLowerCase() === value.toLowerCase())) {
+      values[key].push(value);
+    }
+  });
+  return values;
+}
+
 function findRowByValue(sheetName, columnName, value) {
   const headers = SHEET_HEADERS[sheetName] || [];
   const sheet = initializeSheet(sheetName, headers);
@@ -207,6 +376,14 @@ function findRowByValue(sheetName, columnName, value) {
     }
   }
   return null;
+}
+
+function rowObject_(found) {
+  if (!found) return null;
+  return found.headers.reduce((row, header, index) => {
+    row[header] = found.data[index];
+    return row;
+  }, {});
 }
 
 function getNextNumericId(sheetName, idColumnName) {
@@ -231,9 +408,654 @@ function dateOnly_(value) {
   const isoDate = text.match(/^(\d{4}-\d{2}-\d{2})/);
   if (isoDate) return isoDate[1];
 
+  const expandedSerialDate = text.match(/^(\d{5,})-01-01$/);
+  if (expandedSerialDate) {
+    const serial = Number(expandedSerialDate[1]);
+    if (Number.isFinite(serial) && serial <= 2958465) {
+      const serialDate = new Date(1899, 11, 30);
+      serialDate.setDate(serialDate.getDate() + serial);
+      return Utilities.formatDate(serialDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+  }
+
+  const serialMatch = text.match(/^\d+(?:\.\d+)?$/);
+  if (serialMatch) {
+    const serial = Number(text);
+    if (Number.isFinite(serial) && serial >= 0 && serial <= 2958465) {
+      const serialDate = new Date(1899, 11, 30);
+      serialDate.setDate(serialDate.getDate() + Math.floor(serial));
+      return Utilities.formatDate(serialDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+  }
+
   const parsed = new Date(text);
   if (isNaN(parsed.getTime())) throw new Error(`Invalid date value in spreadsheet: ${text}`);
   return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function employeeRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeCode: String(row.EmployeeCode || ''),
+    name: String(row.Name || ''),
+    department: String(row.Department || ''),
+    salary: Number(row.MonthlySalary || 0),
+    photoUrl: String(row.PhotoUrl || ''),
+    photoName: String(row.PhotoName || ''),
+    supportingDocuments: parseRecordAttachments_(row.SupportingDocuments),
+    active: String(row.Active || 'true').toLowerCase() !== 'false',
+    createdAt: dateOnly_(row.CreatedAt),
+    updatedAt: dateOnly_(row.UpdatedAt)
+  };
+}
+
+function attendanceRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeId: Number(row.EmployeeID),
+    employeeCode: String(row.EmployeeCode || ''),
+    employeeName: String(row.Name || ''),
+    date: dateOnly_(row.Date),
+    inTime: normalizeAttendanceTime_(row.InTime),
+    outTime: normalizeAttendanceTime_(row.OutTime),
+    hours: Number(row.Hours || 0),
+    overtimeHours: Number(row.OvertimeHours || 0),
+    status: String(row.Status || 'PRESENT'),
+    photoUrl: String(row.PhotoUrl || ''),
+    monthlySalary: Number(row.MonthlySalary || 0),
+    dailyRate: Number(row.DailyRate || 0),
+    overtimeRate: Number(row.OvertimeHourlyRate || 0),
+    createdAt: dateOnly_(row.CreatedAt)
+  };
+}
+
+function holidayRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeId: Number(row.EmployeeID),
+    employeeCode: String(row.EmployeeCode || ''),
+    employeeName: String(row.Name || ''),
+    date: dateOnly_(row.Date),
+    createdAt: dateOnly_(row.CreatedAt)
+  };
+}
+
+function salaryRecord_(row) {
+  return {
+    id: Number(row.ID),
+    employeeId: Number(row.EmployeeID),
+    employeeCode: String(row.EmployeeCode || ''),
+    employeeName: String(row.Name || ''),
+    month: dateOnly_(row.Month),
+    monthlySalary: Number(row.MonthlySalary || 0),
+    dailyRate: Number(row.DailyRate || 0),
+    overtimeRate: Number(row.OvertimeHourlyRate || 0),
+    paidDays: Number(row.PaidDays || 0),
+    holidayCount: Number(row.HolidayCount || 0),
+    regularHours: Number(row.RegularHours || 0),
+    overtimeHours: Number(row.OvertimeHours || 0),
+    regularPay: Number(row.RegularPay || 0),
+    overtimePay: Number(row.OvertimePay || 0),
+    totalAmount: Number(row.TotalAmount || 0),
+    status: String(row.Status || 'GENERATED'),
+    generatedAt: dateOnly_(row.GeneratedAt),
+    receivedAt: dateOnly_(row.ReceivedAt)
+  };
+}
+
+function getAllEmployees() {
+  return { status: 'SUCCESS', data: getSheetData(SHEET_NAMES.EMPLOYEES).map(employeeRecord_) };
+}
+
+function getEmployeeById(id) {
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(id));
+  if (!employee) return { status: 'NOT_FOUND', message: 'Employee not found.' };
+  return { status: 'SUCCESS', data: employeeRecord_(rowObject_(employee)) };
+}
+
+function saveEmployee(data) {
+  const isNewEmployee = !data.id;
+  const lock = isNewEmployee ? LockService.getScriptLock() : null;
+  if (lock) lock.waitLock(30000);
+  try {
+    const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
+    let employeeCode = String(data.employeeCode || '').trim();
+    const name = String(data.name || '').trim();
+    const department = String(data.department || '').trim();
+    const monthlySalary = Number(data.salary);
+    if ((!isNewEmployee && !employeeCode) || !name || !department ||
+        !Number.isFinite(monthlySalary) || monthlySalary < 0) {
+      throw new Error('Employee code, name, department, and monthly salary are required.');
+    }
+    const employeeRows = getSheetData(SHEET_NAMES.EMPLOYEES);
+    if (isNewEmployee) employeeCode = nextEmployeeCode_(employeeRows, new Date());
+    const existingById = data.id ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.id)) : null;
+    if (data.id && !existingById) throw new Error('Employee not found.');
+    const existingEmployee = rowObject_(existingById);
+    const normalizedEmployeeCode = employeeCode.toLowerCase();
+    const existingByCode = employeeRows.find(row =>
+      String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode);
+    const employeeCodeUnchanged = existingEmployee &&
+      String(existingEmployee.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode;
+    const conflictingEmployeeCode = employeeRows.find(row =>
+      String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode &&
+      (!existingEmployee || Number(row.ID) !== Number(existingEmployee.ID)));
+    if (conflictingEmployeeCode && !employeeCodeUnchanged) {
+      throw new Error('An employee with this employee code already exists.');
+    }
+    const existing = existingEmployee || existingByCode;
+    const existingRow = existingById || (existingByCode
+      ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(existingByCode.ID))
+      : null);
+    const id = existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
+    const now = getTimestamp();
+    const photoUrl = saveEmployeePhoto_(data.photoUrl, data.photoName);
+    const supportingDocuments = Array.isArray(data.supportingDocuments) ? data.supportingDocuments : [];
+    const existingDocuments = supportingDocuments.filter(document => document && !document.dataUrl);
+    const newDocumentFiles = supportingDocuments.filter(document => document && document.dataUrl);
+    if (existingDocuments.length + newDocumentFiles.length > 5) {
+      throw new Error('Please upload no more than 5 supporting documents.');
+    }
+    const savedDocuments = [
+      ...existingDocuments,
+      ...saveRecordAttachments_(newDocumentFiles, 'D.S. Transformer Employee Documents')
+    ];
+    const values = {
+      ID: id,
+      EmployeeCode: employeeCode,
+      Name: name,
+      Department: department,
+      MonthlySalary: monthlySalary,
+      PhotoUrl: photoUrl,
+      PhotoName: String(data.photoName || ''),
+      SupportingDocuments: JSON.stringify(savedDocuments),
+      Active: data.active === false ? false : true,
+      CreatedAt: existing ? existing.CreatedAt : now,
+      UpdatedAt: now
+    };
+    if (existing) {
+      existingRow.headers.forEach((header, index) => {
+        if (Object.prototype.hasOwnProperty.call(values, header)) {
+          sheet.getRange(existingRow.rowIndex, index + 1).setValue(values[header]);
+        }
+      });
+    } else {
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+      sheet.appendRow(headers.map(header =>
+        Object.prototype.hasOwnProperty.call(values, header) ? values[header] : ''));
+    }
+    return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+function nextEmployeeCode_(employees, currentDate) {
+  const month = Number(Utilities.formatDate(currentDate, 'Asia/Kolkata', 'M'));
+  const calendarYear = Number(Utilities.formatDate(currentDate, 'Asia/Kolkata', 'yyyy'));
+  const fiscalYearStart = month >= 4 ? calendarYear : calendarYear - 1;
+  const fiscalYear = `${String(fiscalYearStart).slice(-2)}-${String((fiscalYearStart + 1) % 100).padStart(2, '0')}`;
+  const pattern = new RegExp(`^DS/${fiscalYear}/(\\d+)$`, 'i');
+  const highestSequence = employees.reduce((highest, employee) => {
+    const match = String(employee.EmployeeCode || '').trim().match(pattern);
+    return match ? Math.max(highest, Number(match[1]) || 0) : highest;
+  }, 0);
+  return `DS/${fiscalYear}/${String(highestSequence + 1).padStart(3, '0')}`;
+}
+
+function saveEmployeePhoto_(photoUrl, photoName) {
+  const value = String(photoUrl || '');
+  if (!value.startsWith('data:')) return value;
+
+  const match = value.match(/^data:(image\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+  const maxPhotoSize = 2 * 1024 * 1024;
+  const allowedImageType = /^image\/(jpeg|png|gif|webp|bmp|heic|heif|avif)$/i;
+  if (!match || !allowedImageType.test(match[1]) ||
+      match[2].length > Math.ceil(maxPhotoSize * 4 / 3) + 4) {
+    throw new Error('Employee photo must be a supported image no larger than 2 MB.');
+  }
+
+  const bytes = Utilities.base64Decode(match[2]);
+  if (bytes.length > maxPhotoSize) {
+    throw new Error('Employee photo must be a supported image no larger than 2 MB.');
+  }
+  const folders = DriveApp.getFoldersByName('D.S. Transformer Employee Photos');
+  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('D.S. Transformer Employee Photos');
+  const safeName = String(photoName || 'employee-photo').replace(/[^\w.-]/g, '_').slice(0, 120);
+  const file = folder.createFile(Utilities.newBlob(bytes, match[1], safeName));
+  return file.getDownloadUrl();
+}
+
+function parseTime_(value) {
+  const text = normalizeAttendanceTime_(value);
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) throw new Error('Enter a valid clock time.');
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) throw new Error('Enter a valid clock time.');
+  return hours * 60 + minutes;
+}
+
+function roundHours_(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function normalizeAttendanceTime_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'HH:mm');
+  }
+  return String(value).trim();
+}
+
+function attendanceRatesForMonth_(employee, monthValue) {
+  const monthMatch = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
+  if (!monthMatch) return { monthlySalary: 0, dailyRate: 0, overtimeRate: 0 };
+  const monthlySalary = Number(employee.MonthlySalary || 0);
+  const daysInMonth = new Date(Number(monthMatch[1]), Number(monthMatch[2]), 0).getDate();
+  const dailyRate = monthlySalary / daysInMonth;
+  return {
+    monthlySalary,
+    dailyRate,
+    overtimeRate: dailyRate / 9
+  };
+}
+
+function ensureAttendanceForMonth_(monthValue) {
+  const monthMatch = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
+  if (!monthMatch) return;
+  const year = Number(monthMatch[1]);
+  const month = Number(monthMatch[2]);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const employees = getSheetData(SHEET_NAMES.EMPLOYEES);
+  const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE);
+  const holidayRows = getSheetData(SHEET_NAMES.HOLIDAYS);
+  const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
+
+  employees.forEach(employee => {
+    const employeeId = Number(employee.ID);
+    const employeeHolidays = new Set(holidayRows.map(row => dateOnly_(row.Date)));
+    const rates = attendanceRatesForMonth_(employee, monthValue);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${monthMatch[1]}-${monthMatch[2]}-${String(day).padStart(2, '0')}`;
+      if (employeeHolidays.has(date)) continue;
+      const existing = attendanceRows.find(row => Number(row.EmployeeID) === employeeId && dateOnly_(row.Date) === date);
+      if (existing) continue;
+      const row = {
+        ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
+        EmployeeID: employeeId,
+        EmployeeCode: String(employee.EmployeeCode || ''),
+        Name: String(employee.Name || ''),
+        Date: date,
+        InTime: '',
+        OutTime: '',
+        Hours: 0,
+        OvertimeHours: 0,
+        Status: 'ABSENT',
+        PhotoUrl: String(employee.PhotoUrl || ''),
+        MonthlySalary: rates.monthlySalary,
+        DailyRate: rates.dailyRate,
+        OvertimeHourlyRate: rates.overtimeRate,
+        CreatedAt: getTimestamp()
+      };
+      sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
+    }
+  });
+}
+
+function getAttendance(month) {
+  ensureAttendanceForMonth_(month);
+  const rows = getSheetData(SHEET_NAMES.ATTENDANCE);
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Date).startsWith(monthValue));
+  return { status: 'SUCCESS', data: filtered.map(attendanceRecord_) };
+}
+
+function getEmployeeAttendance(employeeId, month) {
+  ensureAttendanceForMonth_(month);
+  const rows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row => Number(row.EmployeeID) === Number(employeeId));
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Date).startsWith(monthValue));
+  return { status: 'SUCCESS', data: filtered.map(attendanceRecord_) };
+}
+
+function getHolidays(month) {
+  const rows = getSheetData(SHEET_NAMES.HOLIDAYS);
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Date).startsWith(monthValue));
+  return { status: 'SUCCESS', data: filtered.map(holidayRecord_) };
+}
+
+function addHoliday(data) {
+  const holidayDate = dateOnly_(data.date);
+  if (!holidayDate) throw new Error('Holiday date is required.');
+  const sheet = initializeSheet(SHEET_NAMES.HOLIDAYS, SHEET_HEADERS.Holidays);
+  const matches = getSheetData(SHEET_NAMES.HOLIDAYS)
+    .filter(row => dateOnly_(row.Date) === holidayDate);
+  let row;
+  if (matches.length) {
+    row = { ...matches[0], EmployeeID: 0, EmployeeCode: '', Name: 'All Employees' };
+    const found = findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(row.ID));
+    found.headers.forEach((header, index) => {
+      if (Object.prototype.hasOwnProperty.call(row, header)) {
+        sheet.getRange(found.rowIndex, index + 1).setValue(row[header]);
+      }
+    });
+    matches.slice(1)
+      .map(match => findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(match.ID)))
+      .filter(Boolean)
+      .sort((a, b) => b.rowIndex - a.rowIndex)
+      .forEach(match => sheet.deleteRow(match.rowIndex));
+  } else {
+    row = {
+      ID: getNextNumericId(SHEET_NAMES.HOLIDAYS, 'ID'),
+      EmployeeID: 0,
+      EmployeeCode: '',
+      Name: 'All Employees',
+      Date: holidayDate,
+      CreatedAt: getTimestamp()
+    };
+    sheet.appendRow(SHEET_HEADERS.Holidays.map(header => row[header]));
+  }
+  invalidateGeneratedSalariesForDate_(holidayDate);
+  return { status: 'SUCCESS', data: holidayRecord_(row) };
+}
+
+function deleteHoliday(id) {
+  const found = findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(id));
+  if (!found) throw new Error('Holiday not found.');
+  const holidayDate = dateOnly_(found.data[found.headers.indexOf('Date')]);
+  const sheet = getOrCreateSheet(SHEET_NAMES.HOLIDAYS);
+  getSheetData(SHEET_NAMES.HOLIDAYS)
+    .filter(row => dateOnly_(row.Date) === holidayDate)
+    .map(row => findRowByValue(SHEET_NAMES.HOLIDAYS, 'ID', Number(row.ID)))
+    .filter(Boolean)
+    .sort((a, b) => b.rowIndex - a.rowIndex)
+    .forEach(match => sheet.deleteRow(match.rowIndex));
+  invalidateGeneratedSalariesForDate_(holidayDate);
+  return { status: 'SUCCESS', data: { id: Number(id) } };
+}
+
+function invalidateGeneratedSalariesForDate_(date) {
+  const month = date.slice(0, 7);
+  const sheet = getOrCreateSheet(SHEET_NAMES.SALARIES);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return;
+  const headers = values[0].map(String);
+  const monthIndex = headers.indexOf('Month');
+  const statusIndex = headers.indexOf('Status');
+  if (monthIndex < 0 || statusIndex < 0) return;
+  const rowsToDelete = values.slice(1)
+    .map((row, index) => ({ row, rowIndex: index + 2 }))
+    .filter(({ row }) =>
+      dateOnly_(row[monthIndex]).startsWith(month) &&
+      String(row[statusIndex] || '').toUpperCase() === 'GENERATED')
+    .map(item => item.rowIndex)
+    .sort((a, b) => b - a);
+  rowsToDelete.forEach(rowIndex => sheet.deleteRow(rowIndex));
+}
+
+function markEmployeeLeave(data) {
+  const employeeId = Number(data.employeeId);
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', employeeId);
+  if (!employee) throw new Error('Employee not found.');
+  const employeeData = rowObject_(employee);
+  const date = dateOnly_(data.date);
+  if (!date) throw new Error('Leave date is required.');
+  const holiday = getSheetData(SHEET_NAMES.HOLIDAYS).find(row =>
+    dateOnly_(row.Date) === date);
+  if (holiday) throw new Error('This date is already marked as a holiday.');
+
+  const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE);
+  const existing = attendanceRows.find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Date) === date);
+  if (existing && (String(existing.InTime || '').trim() || String(existing.OutTime || '').trim() ||
+      String(existing.Status || '').toUpperCase() === 'PRESENT')) {
+    throw new Error('Leave cannot be marked on a day with recorded attendance.');
+  }
+  ensureSalaryCanRecalculateForDate_(employeeId, date, 'Leave');
+
+  const rates = attendanceRatesForMonth_(employeeData, date.slice(0, 7));
+  const row = existing ? { ...existing, Status: 'LEAVE' } : {
+    ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
+    EmployeeID: employeeId,
+    EmployeeCode: String(employeeData.EmployeeCode || ''),
+    Name: String(employeeData.Name || ''),
+    Date: date,
+    InTime: '',
+    OutTime: '',
+    Hours: 0,
+    OvertimeHours: 0,
+    Status: 'LEAVE',
+    PhotoUrl: String(employeeData.PhotoUrl || ''),
+    MonthlySalary: rates.monthlySalary,
+    DailyRate: rates.dailyRate,
+    OvertimeHourlyRate: rates.overtimeRate,
+    CreatedAt: getTimestamp()
+  };
+  const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
+  if (existing) {
+    const found = findRowByValue(SHEET_NAMES.ATTENDANCE, 'ID', Number(existing.ID));
+    found.headers.forEach((header, index) => {
+      if (Object.prototype.hasOwnProperty.call(row, header)) {
+        sheet.getRange(found.rowIndex, index + 1).setValue(row[header]);
+      }
+    });
+  } else {
+    sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
+  }
+  invalidateGeneratedSalaryForDate_(employeeId, date);
+  return { status: 'SUCCESS', data: attendanceRecord_(row) };
+}
+
+function clearEmployeeLeave(data) {
+  const employeeId = Number(data.employeeId);
+  const date = dateOnly_(data.date);
+  if (!employeeId || !date) throw new Error('Employee and leave date are required.');
+  const found = getSheetData(SHEET_NAMES.ATTENDANCE).find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Date) === date &&
+    String(row.Status || '').toUpperCase() === 'LEAVE');
+  if (!found) throw new Error('Leave record not found.');
+  ensureSalaryCanRecalculateForDate_(employeeId, date);
+
+  const attendanceRow = findRowByValue(SHEET_NAMES.ATTENDANCE, 'ID', Number(found.ID));
+  const sheet = getOrCreateSheet(SHEET_NAMES.ATTENDANCE);
+  sheet.getRange(attendanceRow.rowIndex, attendanceRow.headers.indexOf('Status') + 1).setValue('ABSENT');
+  invalidateGeneratedSalaryForDate_(employeeId, date);
+  return { status: 'SUCCESS', data: attendanceRecord_({ ...found, Status: 'ABSENT' }) };
+}
+
+function ensureSalaryCanRecalculateForDate_(employeeId, date, recordType = 'Attendance') {
+  const month = date.slice(0, 7);
+  const existing = getSheetData(SHEET_NAMES.SALARIES).find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Month).startsWith(month));
+  if (existing && String(existing.Status || '').toUpperCase() === 'RECEIVED') {
+    throw new Error(`${recordType} cannot be changed after this month's salary is marked received.`);
+  }
+}
+
+function invalidateGeneratedSalaryForDate_(employeeId, date) {
+  const month = date.slice(0, 7);
+  const existing = getSheetData(SHEET_NAMES.SALARIES).find(row =>
+    Number(row.EmployeeID) === employeeId && dateOnly_(row.Month).startsWith(month));
+  if (!existing || String(existing.Status || '').toUpperCase() !== 'GENERATED') return;
+  const found = findRowByValue(SHEET_NAMES.SALARIES, 'ID', Number(existing.ID));
+  if (found) getOrCreateSheet(SHEET_NAMES.SALARIES).deleteRow(found.rowIndex);
+}
+
+function clockAttendance(data) {
+  const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.employeeId));
+  if (!employee) throw new Error('Employee not found.');
+  const employeeData = rowObject_(employee);
+  const date = dateOnly_(data.date);
+  if (!date) throw new Error('Attendance date is required.');
+  const monthValue = date.slice(0, 7);
+  const inTime = String(data.inTime || '').trim();
+  const outTime = String(data.outTime || '').trim();
+  if (!inTime && !outTime) throw new Error('Clock-in or clock-out time is required.');
+  const existing = getSheetData(SHEET_NAMES.ATTENDANCE).find(row => Number(row.EmployeeID) === Number(data.employeeId) && dateOnly_(row.Date) === date);
+  if (existing && String(existing.Status || '').toUpperCase() === 'LEAVE') {
+    throw new Error('Remove the leave record before recording attendance.');
+  }
+  const effectiveInTime = data.replaceTimes
+    ? inTime
+    : existing && existing.InTime ? normalizeAttendanceTime_(existing.InTime) : inTime;
+  const effectiveOutTime = data.replaceTimes
+    ? outTime
+    : existing && existing.OutTime ? normalizeAttendanceTime_(existing.OutTime) : outTime;
+  if (data.replaceTimes && !effectiveInTime && !effectiveOutTime) {
+    throw new Error('Enter an in time or out time before saving attendance.');
+  }
+  if (outTime && !effectiveInTime) throw new Error('Clock-in must be recorded before clock-out.');
+  if (!data.replaceTimes && existing && inTime && existing.InTime) throw new Error('Clock-in is already recorded for this employee and date.');
+  if (!data.replaceTimes && existing && !outTime && existing.OutTime) throw new Error('Clock-in is already recorded; clock-out is required.');
+  ensureSalaryCanRecalculateForDate_(Number(data.employeeId), date);
+
+  const sheet = initializeSheet(SHEET_NAMES.ATTENDANCE, SHEET_HEADERS.Attendance);
+  const hours = effectiveInTime && effectiveOutTime
+    ? Math.max(0, (parseTime_(effectiveOutTime) - parseTime_(effectiveInTime)) / 60)
+    : 0;
+  const roundedHours = roundHours_(hours);
+  const overtimeHours = roundHours_(Math.max(0, roundedHours - 9));
+  const rates = attendanceRatesForMonth_(employeeData, monthValue);
+  const isPresent = Boolean(effectiveInTime);
+  const row = existing
+    ? {
+        ID: Number(existing.ID),
+        EmployeeID: Number(data.employeeId),
+        EmployeeCode: String(employeeData.EmployeeCode || ''),
+        Name: String(employeeData.Name || ''),
+        Date: date,
+        InTime: effectiveInTime,
+        OutTime: effectiveOutTime,
+        Hours: roundedHours,
+        OvertimeHours: overtimeHours,
+        Status: isPresent ? 'PRESENT' : 'ABSENT',
+        PhotoUrl: String(data.photoUrl || employeeData.PhotoUrl || existing.PhotoUrl || ''),
+        MonthlySalary: rates.monthlySalary,
+        DailyRate: rates.dailyRate,
+        OvertimeHourlyRate: rates.overtimeRate,
+        CreatedAt: existing.CreatedAt
+      }
+    : {
+        ID: getNextNumericId(SHEET_NAMES.ATTENDANCE, 'ID'),
+        EmployeeID: Number(data.employeeId),
+        EmployeeCode: String(employeeData.EmployeeCode || ''),
+        Name: String(employeeData.Name || ''),
+        Date: date,
+        InTime: inTime,
+        OutTime: outTime,
+        Hours: roundedHours,
+        OvertimeHours: overtimeHours,
+        Status: isPresent ? 'PRESENT' : 'ABSENT',
+        PhotoUrl: String(data.photoUrl || employeeData.PhotoUrl || ''),
+        MonthlySalary: rates.monthlySalary,
+        DailyRate: rates.dailyRate,
+        OvertimeHourlyRate: rates.overtimeRate,
+        CreatedAt: getTimestamp()
+      };
+  if (existing) {
+    const found = findRowByValue(SHEET_NAMES.ATTENDANCE, 'ID', Number(row.ID));
+    found.headers.forEach((header, index) => sheet.getRange(found.rowIndex, index + 1).setValue(row[header]));
+  } else {
+    sheet.appendRow(SHEET_HEADERS.Attendance.map(header => row[header]));
+  }
+  invalidateGeneratedSalaryForDate_(Number(data.employeeId), date);
+  return { status: 'SUCCESS', data: attendanceRecord_(row) };
+}
+
+function getSalaries(month) {
+  const rows = getSheetData(SHEET_NAMES.SALARIES);
+  const monthValue = month ? String(month).slice(0, 7) : '';
+  const filtered = !month ? rows : rows.filter(row => dateOnly_(row.Month).startsWith(monthValue));
+  return { status: 'SUCCESS', data: filtered.map(salaryRecord_) };
+}
+
+function generateSalary(employeeId, month) {
+  const monthMatch = String(month || '').trim().match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+  if (!monthMatch || Number(monthMatch[2]) < 1 || Number(monthMatch[2]) > 12) {
+    throw new Error('A valid salary month is required.');
+  }
+  const monthValue = `${monthMatch[1]}-${monthMatch[2]}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(employeeId));
+    if (!employee) throw new Error('Employee not found.');
+    const employeeData = rowObject_(employee);
+    const existing = getSheetData(SHEET_NAMES.SALARIES).find(row =>
+      Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Month).startsWith(monthValue));
+    if (existing && String(existing.Status || '').toUpperCase() === 'RECEIVED') {
+      return { status: 'SUCCESS', data: salaryRecord_(existing) };
+    }
+
+    ensureAttendanceForMonth_(monthValue);
+    const attendanceRows = getSheetData(SHEET_NAMES.ATTENDANCE).filter(row =>
+      Number(row.EmployeeID) === Number(employeeId) && dateOnly_(row.Date).startsWith(monthValue));
+    const holidayRows = getSheetData(SHEET_NAMES.HOLIDAYS).filter(row =>
+      dateOnly_(row.Date).startsWith(monthValue));
+    const holidayDates = new Set(holidayRows.map(row => dateOnly_(row.Date)));
+    const regularHours = roundHours_(attendanceRows.reduce((total, row) => total + Math.min(Number(row.Hours || 0), 9), 0));
+    const overtimeHours = roundHours_(attendanceRows.reduce((total, row) => total + Number(row.OvertimeHours || 0), 0));
+    const absentDays = attendanceRows.filter(row =>
+      ['ABSENT', 'LEAVE'].includes(String(row.Status || '').toUpperCase()) &&
+      !holidayDates.has(dateOnly_(row.Date))).length;
+    const paidDaysInMonth = new Date(Number(monthMatch[1]), Number(monthMatch[2]), 0).getDate();
+    const unpaidAbsences = Math.max(0, absentDays - 2);
+    const monthlySalary = Number(employeeData.MonthlySalary || 0);
+    const dailyRate = monthlySalary / paidDaysInMonth;
+    const overtimeRate = dailyRate / 9;
+    const paidDays = paidDaysInMonth - unpaidAbsences;
+    const regularPay = Math.max(0, monthlySalary - unpaidAbsences * dailyRate);
+    const overtimePay = Math.round(overtimeHours * overtimeRate * 100) / 100;
+    const row = {
+      ID: existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.SALARIES, 'ID'),
+      EmployeeID: Number(employeeId),
+      EmployeeCode: String(employeeData.EmployeeCode || ''),
+      Name: String(employeeData.Name || ''),
+      Month: `${monthValue}-01`,
+      MonthlySalary: monthlySalary,
+      DailyRate: dailyRate,
+      OvertimeHourlyRate: overtimeRate,
+      PaidDays: paidDays,
+      HolidayCount: new Set(holidayRows.map(row => dateOnly_(row.Date))).size,
+      RegularHours: regularHours,
+      OvertimeHours: overtimeHours,
+      RegularPay: Math.round(regularPay * 100) / 100,
+      OvertimePay: overtimePay,
+      TotalAmount: Math.round((regularPay + overtimePay) * 100) / 100,
+      Status: 'GENERATED',
+      GeneratedAt: getTimestamp(),
+      ReceivedAt: ''
+    };
+    const sheet = initializeSheet(SHEET_NAMES.SALARIES, SHEET_HEADERS.Salaries);
+    if (existing) {
+      const found = findRowByValue(SHEET_NAMES.SALARIES, 'ID', Number(existing.ID));
+      if (!found) throw new Error('Generated salary record could not be found for recalculation.');
+      found.headers.forEach((header, index) => {
+        if (Object.prototype.hasOwnProperty.call(row, header)) {
+          sheet.getRange(found.rowIndex, index + 1).setValue(row[header]);
+        }
+      });
+    } else {
+      sheet.appendRow(SHEET_HEADERS.Salaries.map(header => row[header]));
+    }
+    return { status: 'SUCCESS', data: salaryRecord_(row) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateSalaryStatus(id, status, receivedAt) {
+  const found = findRowByValue(SHEET_NAMES.SALARIES, 'ID', Number(id));
+  if (!found) throw new Error('Salary record not found.');
+  if (!['GENERATED', 'RECEIVED'].includes(String(status).toUpperCase())) throw new Error('Salary status must be GENERATED or RECEIVED.');
+  const sheet = getOrCreateSheet(SHEET_NAMES.SALARIES);
+  const statusIndex = found.headers.indexOf('Status') + 1;
+  const receivedIndex = found.headers.indexOf('ReceivedAt') + 1;
+  sheet.getRange(found.rowIndex, statusIndex).setValue(String(status).toUpperCase());
+  sheet.getRange(found.rowIndex, receivedIndex).setValue(String(status).toUpperCase() === 'RECEIVED' ? dateOnly_(receivedAt) : '');
+  return { status: 'SUCCESS', data: salaryRecord_(getSheetData(SHEET_NAMES.SALARIES).find(row => Number(row.ID) === Number(id))) };
 }
 
 // ============ ENQUIRY FUNCTIONS ============
@@ -270,6 +1092,74 @@ function saveEnquiryPhotos(attachments) {
     const blob = Utilities.newBlob(bytes, match[1], filename);
     return folder.createFile(blob).getUrl();
   });
+}
+
+function saveRecordAttachments_(attachments, folderName) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return [];
+  if (attachments.length > 5) throw new Error('Please upload no more than 5 attachments.');
+
+  const folderIterator = DriveApp.getFoldersByName(folderName);
+  const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(folderName);
+  const maxFileSize = 2 * 1024 * 1024;
+  const allowedImageType = /^image\/(jpeg|png|gif|webp|bmp|heic|heif|avif)$/i;
+
+  return attachments.map(attachment => {
+    if (!attachment || typeof attachment.dataUrl !== 'string') {
+      throw new Error('An attachment is missing its file data.');
+    }
+    if (Number(attachment.size) > maxFileSize) {
+      throw new Error('Each attachment must be 2 MB or smaller.');
+    }
+
+    const match = attachment.dataUrl.match(/^data:([A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+    if (!match || (match[1] !== 'application/pdf' && !allowedImageType.test(match[1])) ||
+        (attachment.type && attachment.type !== match[1])) {
+      throw new Error('Attachments must be PDF documents or supported image files.');
+    }
+    if (match[2].length > Math.ceil(maxFileSize * 4 / 3) + 4) {
+      throw new Error('Each attachment must be 2 MB or smaller.');
+    }
+
+    const safeName = String(attachment.name || 'document-attachment')
+      .replace(/[^\w.-]/g, '_')
+      .slice(0, 120);
+    const filename = `${Utilities.getUuid()}_${safeName}`;
+    const bytes = Utilities.base64Decode(match[2]);
+    if (bytes.length > maxFileSize) throw new Error('Each attachment must be 2 MB or smaller.');
+    const blob = Utilities.newBlob(bytes, match[1], filename);
+    return {
+      name: String(attachment.name || safeName),
+      type: match[1],
+      size: bytes.length,
+      url: folder.createFile(blob).getUrl()
+    };
+  });
+}
+
+function parseRecordAttachments_(value) {
+  if (!value) return [];
+  let attachments;
+  try {
+    attachments = Array.isArray(value) ? value : JSON.parse(String(value));
+  } catch (error) {
+    throw new Error('A record has invalid saved attachment data.');
+  }
+  if (!Array.isArray(attachments)) throw new Error('A record has invalid saved attachment data.');
+  return attachments
+    .filter(attachment => attachment && attachment.url)
+    .map(attachment => ({
+      name: String(attachment.name || 'Attachment'),
+      type: String(attachment.type || ''),
+      size: Number(attachment.size || 0),
+      url: String(attachment.url)
+    }));
+}
+
+function getDriveFileIdFromUrl_(url) {
+  const value = String(url || '');
+  const match = value.match(/\/d\/([A-Za-z0-9_-]+)/) || value.match(/[?&]id=([A-Za-z0-9_-]+)/);
+  if (!match) throw new Error('Unable to identify the uploaded Drive file.');
+  return match[1];
 }
 
 function addEnquiry(data) {
@@ -415,6 +1305,14 @@ function getJobsByStatus(status) {
 // ============ TRANSFORMER FUNCTIONS ============
 
 function transformerRowToObj(row) {
+  const status = String(row.Status || 'Recieved');
+  const savedAssessmentRound = row.AssessmentRound === '' || row.AssessmentRound == null
+    ? NaN
+    : Number(row.AssessmentRound);
+  const assessmentRound = Number.isInteger(savedAssessmentRound) && savedAssessmentRound >= 0
+    ? savedAssessmentRound
+    : ['Assesment', 'Repair In Progress'].includes(status) ? 1
+      : ['Repaired', 'Delivered', 'Billed'].includes(status) ? 2 : 0;
   return {
     id: Number(row.ID),
     spmCenter: String(row.SpmCenter || ''),
@@ -423,11 +1321,189 @@ function transformerRowToObj(row) {
     capacity: Number(row.Capacity || 0),
     type: String(row.Type || ''),
     oilCapacity: Number(row.OilCapacity || 0),
-    status: String(row.Status || 'Recieved'),
+    status,
     tNoteId: row.TNoteID ? Number(row.TNoteID) : null,
     dcNo: row.DcNo ? String(row.DcNo) : null,
-    sapNo: row.SapNo ? String(row.SapNo) : null
+    sapNo: row.SapNo ? String(row.SapNo) : null,
+    createdAt: String(row.CreatedAt || ''),
+    intakeType: row.IntakeType ? String(row.IntakeType) : null,
+    visitStatus: row.VisitStatus ? String(row.VisitStatus) : null,
+    billable: row.Billable === true || String(row.Billable).toLowerCase() === 'true',
+    assessmentDetails: row.AssessmentDetails ? JSON.parse(String(row.AssessmentDetails)) : null,
+    assessmentRound
   };
+}
+
+function ensureTNoteTransformerLinks_() {
+  const sheet = initializeSheet(SHEET_NAMES.TNOTE_TRANSFORMERS, SHEET_HEADERS[SHEET_NAMES.TNOTE_TRANSFORMERS]);
+  const existing = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+  const linkKeys = new Set(existing.map(link => `${Number(link.TNoteID)}:${Number(link.TransformerID)}`));
+  const tnoteIds = new Set(getSheetData(SHEET_NAMES.TNOTES).map(tnote => Number(tnote.ID)));
+  const transformers = getSheetData(SHEET_NAMES.TRANSFORMERS);
+
+  transformers.forEach(transformer => {
+    const tNoteId = Number(transformer.TNoteID);
+    const transformerId = Number(transformer.ID);
+    const key = `${tNoteId}:${transformerId}`;
+    if (!tNoteId || !transformerId || !tnoteIds.has(tNoteId) || linkKeys.has(key)) return;
+
+    appendTNoteTransformerLink_(sheet, {
+      tNoteId,
+      transformerId,
+      intakeType: 'NEW',
+      visitStatus: String(transformer.Status || 'Recieved'),
+      billable: true
+    });
+    linkKeys.add(key);
+  });
+
+  return sheet;
+}
+
+function appendTNoteTransformerLink_(sheet, link) {
+  const now = getTimestamp();
+  sheet.appendRow([
+    getNextNumericId(SHEET_NAMES.TNOTE_TRANSFORMERS, 'LinkID'),
+    Number(link.tNoteId),
+    Number(link.transformerId),
+    link.intakeType || 'NEW',
+    link.visitStatus || 'Recieved',
+    link.billable === true,
+    now,
+    now
+  ]);
+}
+
+function getTNoteTransformerMap_() {
+  ensureTNoteTransformerLinks_();
+  const transformerById = new Map(
+    getSheetData(SHEET_NAMES.TRANSFORMERS).map(row => [Number(row.ID), transformerRowToObj(row)])
+  );
+
+  const byTNote = new Map();
+  getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS).forEach(link => {
+    const tNoteId = Number(link.TNoteID);
+    const transformer = transformerById.get(Number(link.TransformerID));
+    if (!transformer) return;
+    if (!byTNote.has(tNoteId)) byTNote.set(tNoteId, []);
+    const attachedTransformers = byTNote.get(tNoteId);
+    if (attachedTransformers.some(attached => attached.id === transformer.id)) return;
+    attachedTransformers.push({
+      ...transformer,
+      intakeType: String(link.IntakeType || 'NEW'),
+      visitStatus: String(link.VisitStatus || transformer.status || 'Recieved'),
+      billable: link.Billable === true || String(link.Billable).toLowerCase() === 'true'
+    });
+  });
+  return byTNote;
+}
+
+function getTNoteTransformers_(tNoteId) {
+  return getTNoteTransformerMap_().get(Number(tNoteId)) || [];
+}
+
+function normalizeTransformerIdentity_(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function findTransformersByIdentity_(field, value) {
+  const normalized = normalizeTransformerIdentity_(value);
+  if (!normalized) throw new Error('Enter a DTR number or serial number to search.');
+  if (!['DtrNo', 'SNo'].includes(field)) throw new Error('Search by DTR number or serial number.');
+
+  return getSheetData(SHEET_NAMES.TRANSFORMERS)
+    .filter(row => normalizeTransformerIdentity_(row[field]) === normalized)
+    .map(transformerRowToObj);
+}
+
+function linkTNoteTransformer(tNoteId, transformerId, intakeType) {
+  const normalizedIntakeType = String(intakeType || '').trim().toUpperCase();
+  if (normalizedIntakeType !== 'RGP') throw new Error('Only RGP links to existing transformers are supported.');
+  if (!findRowByValue(SHEET_NAMES.TNOTES, 'ID', tNoteId)) return { status: 'NOT_FOUND', message: 'TNote not found.' };
+  const transformerResult = getTransformerById(transformerId);
+  if (transformerResult.status !== 'SUCCESS') return { status: 'NOT_FOUND', message: 'Transformer not found.' };
+  if (String(transformerResult.data.status || '').toLowerCase() === 'scrap') {
+    throw new Error('Scrapped transformers cannot be linked to an RGP visit.');
+  }
+
+  const sheet = ensureTNoteTransformerLinks_();
+  const existing = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS).some(link =>
+    Number(link.TNoteID) === Number(tNoteId) && Number(link.TransformerID) === Number(transformerId)
+  );
+  if (existing) throw new Error('This transformer is already linked to the selected TNote.');
+
+  appendTNoteTransformerLink_(sheet, {
+    tNoteId,
+    transformerId,
+    intakeType: 'RGP',
+    visitStatus: 'Recieved',
+    billable: false
+  });
+  return { status: 'SUCCESS', data: getTNoteTransformers_(tNoteId).find(item => item.id === Number(transformerId)) };
+}
+
+function updateTNoteTransformerVisitStatus(tNoteId, transformerId, visitStatus) {
+  const allowedStatuses = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired'];
+  const nextStatus = allowedStatuses.find(status => status.toLowerCase() === String(visitStatus || '').trim().toLowerCase());
+  if (!nextStatus) throw new Error('Invalid RGP visit status.');
+
+  const linksSheet = ensureTNoteTransformerLinks_();
+  const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+  const rowIndex = links.findIndex(link =>
+    Number(link.TNoteID) === Number(tNoteId) &&
+    Number(link.TransformerID) === Number(transformerId) &&
+    String(link.IntakeType || '').toUpperCase() === 'RGP'
+  );
+  if (rowIndex < 0) return { status: 'NOT_FOUND', message: 'RGP visit not found.' };
+  const currentStatus = String(links[rowIndex].VisitStatus || 'Recieved');
+  const currentIndex = allowedStatuses.findIndex(status => status.toLowerCase() === currentStatus.toLowerCase());
+  const nextIndex = allowedStatuses.findIndex(status => status === nextStatus);
+  if (currentIndex < 0 || nextIndex !== currentIndex + 1) {
+    throw new Error(`Invalid RGP visit stage transition from ${currentStatus} to ${nextStatus}.`);
+  }
+
+  const rowNumber = rowIndex + 2;
+  const headers = linksSheet.getRange(1, 1, 1, linksSheet.getLastColumn()).getValues()[0].map(String);
+  linksSheet.getRange(rowNumber, headers.indexOf('VisitStatus') + 1).setValue(nextStatus);
+  linksSheet.getRange(rowNumber, headers.indexOf('UpdatedAt') + 1).setValue(getTimestamp());
+  return { status: 'SUCCESS', data: getTNoteTransformers_(tNoteId).find(item => item.id === Number(transformerId)) };
+}
+
+function unlinkTNoteTransformer(tNoteId, transformerId) {
+  const sheet = ensureTNoteTransformerLinks_();
+  const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+  const matchingLink = links.find(link =>
+    Number(link.TNoteID) === Number(tNoteId) && Number(link.TransformerID) === Number(transformerId)
+  );
+  if (matchingLink && String(matchingLink.IntakeType || '').toUpperCase() === 'RGP') {
+    throw new Error('RGP visit history cannot be removed.');
+  }
+  const transformer = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', transformerId);
+  if (transformer) {
+    const status = String(transformer.data[transformer.headers.indexOf('Status')] || '');
+    if (status.toLowerCase() === 'delivered' || status.toLowerCase() === 'billed') {
+      throw new Error('A delivered transformer cannot be removed from its TNote.');
+    }
+  }
+  const rowsToDelete = [];
+  links.forEach((link, index) => {
+    if (Number(link.TNoteID) === Number(tNoteId) && Number(link.TransformerID) === Number(transformerId)) {
+      rowsToDelete.push(index + 2);
+    }
+  });
+  if (rowsToDelete.length === 0) return { status: 'NOT_FOUND', message: 'TNote transformer link not found.' };
+  rowsToDelete.reverse().forEach(rowNumber => sheet.deleteRow(rowNumber));
+
+  if (transformer) {
+    const remaining = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS)
+      .find(link => Number(link.TransformerID) === Number(transformerId));
+    const transformersSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const tNoteColumn = transformer.headers.indexOf('TNoteID') + 1;
+    const updatedColumn = transformer.headers.indexOf('UpdatedAt') + 1;
+    if (tNoteColumn > 0) transformersSheet.getRange(transformer.rowIndex, tNoteColumn).setValue(remaining ? remaining.TNoteID : '');
+    if (updatedColumn > 0) transformersSheet.getRange(transformer.rowIndex, updatedColumn).setValue(getTimestamp());
+  }
+  return { status: 'SUCCESS', message: 'Transformer removed from this TNote.' };
 }
 
 function getAllTransformers() {
@@ -445,31 +1521,118 @@ function getTransformerById(id) {
 }
 
 function addTransformer(data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return addTransformerLocked_(data);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function addTransformers(dataList) {
+  if (!Array.isArray(dataList) || dataList.length === 0) {
+    throw new Error('Select at least one transformer.');
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return {
+      status: 'SUCCESS',
+      data: dataList.map(data => {
+        const result = addTransformerLocked_(data);
+        if (result.status !== 'SUCCESS' || !result.data) {
+          throw new Error(result.message || 'Failed to create a transformer.');
+        }
+        return result.data;
+      })
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function addTransformerLocked_(data) {
+  const tNoteId = data.tNoteId || data.tNoteID;
+  if (tNoteId && !findRowByValue(SHEET_NAMES.TNOTES, 'ID', tNoteId)) {
+    throw new Error('The selected TNote does not exist.');
+  }
+  const intakeType = String(data.intakeType || 'NEW').toUpperCase();
+  const linkSheet = tNoteId ? ensureTNoteTransformerLinks_() : null;
   const sheet = initializeSheet(SHEET_NAMES.TRANSFORMERS, SHEET_HEADERS.Transformers);
+  const requestId = String(data.requestId || '').trim();
+  if (requestId) {
+    const existing = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'RequestID', requestId);
+    if (existing) {
+      const existingRow = Object.fromEntries(existing.headers.map((header, index) => [header, existing.data[index]]));
+      const matchesRequest = String(existingRow.SpmCenter || '') === String(data.spmCenter || '') &&
+        String(existingRow.DtrNo || '') === String(data.dtrNo || '') &&
+        String(existingRow.SNo || '') === String(data.sNo || '') &&
+        Number(existingRow.Capacity || 0) === Number(data.capacity || 0) &&
+        String(existingRow.Type || '') === String(data.type || 'Distribution') &&
+        Number(existingRow.OilCapacity || 0) === Number(data.oilCapacity || 0) &&
+        Number(existingRow.TNoteID || 0) === Number(tNoteId || 0);
+      if (!matchesRequest) throw new Error('Request ID was already used for a different transformer.');
+      const created = transformerRowToObj(existingRow);
+      if (tNoteId) {
+        created.intakeType = intakeType;
+        created.visitStatus = data.status || 'Recieved';
+        created.billable = intakeType !== 'RGP';
+      }
+      return { status: 'SUCCESS', data: created };
+    }
+  }
+  const normalizedDtrNo = normalizeTransformerIdentity_(data.dtrNo);
+  const normalizedSNo = normalizeTransformerIdentity_(data.sNo);
+  const existingIdentity = getSheetData(SHEET_NAMES.TRANSFORMERS).find(transformer =>
+    Number(transformer.ID) > 0 &&
+    ((normalizedDtrNo && normalizeTransformerIdentity_(transformer.DtrNo) === normalizedDtrNo) ||
+      (normalizedSNo && normalizeTransformerIdentity_(transformer.SNo) === normalizedSNo))
+  );
+  if (existingIdentity) {
+    if (intakeType === 'RGP') {
+      throw new Error('A transformer with this DTR number or serial number already exists. Search and link the existing transformer as RGP.');
+    }
+    throw new Error('A transformer with this DTR number or serial number is already registered.');
+  }
   const id = getNextNumericId(SHEET_NAMES.TRANSFORMERS, 'ID');
   const now = getTimestamp();
 
-  const row = [
-    id,
-    data.spmCenter || '',
-    data.dtrNo || '',
-    data.sNo || '',
-    data.capacity || 0,
-    data.type || 'Distribution',
-    data.oilCapacity || 0,
-    data.status || 'Recieved',
-    data.tNoteId || data.tNoteID || '',
-    data.dcNo || '',
-    data.sapNo || '',
-    now,
-    now
-  ];
+  const rowValues = {
+    ID: id,
+    SpmCenter: data.spmCenter || '',
+    DtrNo: data.dtrNo || '',
+    SNo: data.sNo || '',
+    Capacity: data.capacity || 0,
+    Type: data.type || 'Distribution',
+    OilCapacity: data.oilCapacity || 0,
+    Status: data.status || 'Recieved',
+    TNoteID: data.tNoteId || data.tNoteID || '',
+    DcNo: data.dcNo || '',
+    SapNo: data.sapNo || '',
+    CreatedAt: now,
+    UpdatedAt: now,
+    RequestID: requestId,
+    AssessmentRound: 0
+  };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const row = headers.map(header => rowValues[header] === undefined ? '' : rowValues[header]);
   sheet.appendRow(row);
-  const created = transformerRowToObj({
-    ID: id, SpmCenter: data.spmCenter, DtrNo: data.dtrNo, SNo: data.sNo,
-    Capacity: data.capacity, Type: data.type, OilCapacity: data.oilCapacity,
-    Status: data.status || 'Recieved', TNoteID: data.tNoteId, DcNo: data.dcNo, SapNo: data.sapNo
-  });
+  const persisted = getTransformerById(id);
+  if (persisted.status !== 'SUCCESS') throw new Error('Transformer write could not be verified.');
+  const created = persisted.data;
+  if (tNoteId) {
+    appendTNoteTransformerLink_(linkSheet, {
+      tNoteId,
+      transformerId: id,
+      intakeType,
+      visitStatus: data.status || 'Recieved',
+      billable: intakeType !== 'RGP'
+    });
+    created.intakeType = intakeType;
+    created.visitStatus = data.status || 'Recieved';
+    created.billable = intakeType !== 'RGP';
+  }
   return { status: 'SUCCESS', data: created };
 }
 
@@ -496,23 +1659,255 @@ function updateTransformer(id, data) {
   return getTransformerById(id);
 }
 
-function updateTransformerStatus(id, newStatus) {
+function deleteTransformer(id) {
+  const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
+  if (!found && Number(id) === 0) {
+    const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(String);
+    const column = name => headers.indexOf(name);
+    const invalidRows = [];
+    for (let index = 1; index < data.length; index++) {
+      const value = name => column(name) >= 0 ? data[index][column(name)] : '';
+      const dtrNo = String(value('DtrNo') || '');
+      if (
+        !value('ID') &&
+        !value('SpmCenter') &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(dtrNo) &&
+        String(value('SNo') || '') === dtrNo &&
+        !value('Capacity') &&
+        !value('Type') &&
+        !value('OilCapacity') &&
+        String(value('Status') || '') === '1' &&
+        !value('TNoteID') &&
+        !value('DcNo') &&
+        !value('SapNo') &&
+        String(value('CreatedAt') || '') === 'Recieved' &&
+        !value('UpdatedAt')
+      ) {
+        invalidRows.push(index + 1);
+      }
+    }
+    if (invalidRows.length > 1) {
+      throw new Error('Multiple malformed transformer rows matched cleanup safeguards; no rows were deleted.');
+    }
+    if (invalidRows.length === 1) {
+      sheet.deleteRow(invalidRows[0]);
+      return { status: 'SUCCESS', message: 'Malformed legacy transformer row removed.' };
+    }
+  }
+  if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+
+  const transformer = transformerRowToObj(Object.fromEntries(
+    found.headers.map((header, index) => [header, found.data[index]])
+  ));
+  if (['DELIVERED', 'BILLED'].includes(String(transformer.status || '').toUpperCase())) {
+    throw new Error('Delivered or billed transformers cannot be deleted.');
+  }
+
+  const linksSheet = ensureTNoteTransformerLinks_();
+  const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+  if (links.some(link => Number(link.TransformerID) === Number(id) && String(link.IntakeType || '').toUpperCase() === 'RGP')) {
+    throw new Error('Transformers with RGP visit history cannot be deleted.');
+  }
+  links.map((link, index) => Number(link.TransformerID) === Number(id) ? index + 2 : -1)
+    .filter(rowNumber => rowNumber > 0)
+    .reverse()
+    .forEach(rowNumber => linksSheet.deleteRow(rowNumber));
+
+  getOrCreateSheet(SHEET_NAMES.TRANSFORMERS).deleteRow(found.rowIndex);
+  return { status: 'SUCCESS', message: 'Transformer deleted successfully' };
+}
+
+function updateTransformerStatus(id, newStatus, assessmentDetails, backward) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backward);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backward) {
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+  const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+  const assessmentRoundIdx = found.headers.indexOf('AssessmentRound');
+  if (assessmentRoundIdx < 0) throw new Error('The transformer sheet is missing its AssessmentRound column.');
+  const storedAssessmentRound = found.data[assessmentRoundIdx] === '' || found.data[assessmentRoundIdx] == null
+    ? NaN
+    : Number(found.data[assessmentRoundIdx]);
+  const assessmentRound = Number.isInteger(storedAssessmentRound) && storedAssessmentRound >= 0
+    ? storedAssessmentRound
+    : ['Assesment', 'Repair In Progress'].includes(currentStatus) ? 1
+      : ['Repaired', 'Delivered', 'Billed'].includes(currentStatus) ? 2 : 0;
+  let nextAssessmentRound = assessmentRound;
+  const isBackward = backward === true || String(backward).toLowerCase() === 'true';
+  if (String(newStatus).toLowerCase() === 'scrap') {
+    if (isBackward) throw new Error('Scrap status cannot be moved backward.');
+    if (!['Recieved', 'Assesment', 'Repair In Progress', 'Repaired'].some(status => status.toLowerCase() === currentStatus.toLowerCase())) {
+      throw new Error('Only transformers not yet delivered can be marked as Scrap.');
+    }
+    newStatus = 'Scrap';
+  } else {
+    const current = currentStatus.toLowerCase();
+    const next = String(newStatus).toLowerCase();
+    const validTransition = isBackward
+      ? (current === 'assesment' && next === 'recieved' && assessmentRound === 1) ||
+        (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
+        (current === 'assesment' && next === 'repair in progress' && assessmentRound === 2) ||
+        (current === 'repaired' && next === 'assesment' && assessmentRound === 2)
+      : (current === 'recieved' && next === 'assesment' && assessmentRound === 0) ||
+        (current === 'assesment' && next === 'repair in progress' && assessmentRound === 1) ||
+        (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
+        (current === 'assesment' && next === 'repaired' && assessmentRound === 2);
+    if (!validTransition) {
+      throw new Error(`Invalid status transition from ${currentStatus} to ${newStatus}.`);
+    }
+    if (isBackward) {
+      if (current === 'assesment' && next === 'recieved') nextAssessmentRound = 0;
+      else if (next === 'repair in progress') nextAssessmentRound = 1;
+    } else if (next === 'assesment') {
+      nextAssessmentRound = assessmentRound + 1;
+    }
+  }
+
+  if (String(newStatus).toLowerCase() === 'assesment' && !isBackward) {
+    validateTransformerAssessment_(assessmentDetails);
+  }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
   const statusIdx = found.headers.indexOf('Status') + 1;
   const updatedIdx = found.headers.indexOf('UpdatedAt') + 1;
+  const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails') + 1;
+  if (statusIdx <= 0) throw new Error('The transformer sheet is missing its Status column.');
+  if (assessmentDetails && assessmentDetailsIdx <= 0) {
+    throw new Error('The transformer sheet is missing its AssessmentDetails column.');
+  }
 
-  sheet.getRange(found.rowIndex, statusIdx).setValue(newStatus);
-  if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+  const assessmentRoundColumn = assessmentRoundIdx + 1;
+  const columnsToUpdate = [statusIdx, assessmentRoundColumn, ...(updatedIdx > 0 ? [updatedIdx] : []),
+    ...(assessmentDetails ? [assessmentDetailsIdx] : [])];
+  const firstColumn = Math.min(...columnsToUpdate);
+  const lastColumn = Math.max(...columnsToUpdate);
+  const updatedValues = found.data.slice(firstColumn - 1, lastColumn);
+  updatedValues[statusIdx - firstColumn] = newStatus;
+  updatedValues[assessmentRoundColumn - firstColumn] = nextAssessmentRound;
+  if (updatedIdx > 0) updatedValues[updatedIdx - firstColumn] = getTimestamp();
+  if (assessmentDetails) {
+    updatedValues[assessmentDetailsIdx - firstColumn] = JSON.stringify(assessmentDetails);
+  }
+  sheet.getRange(found.rowIndex, firstColumn, 1, updatedValues.length).setValues([updatedValues]);
 
   return getTransformerById(id);
 }
 
+function validateTransformerAssessment_(assessmentDetails) {
+  if (!assessmentDetails || !['Al', 'CU'].includes(assessmentDetails.windingMaterial)) {
+    throw new Error('Select a winding material before saving transformer assessment details.');
+  }
+  const inspectionDateParts = String(assessmentDetails.firstInspectionDate || '')
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const inspectionDate = inspectionDateParts
+    ? new Date(Date.UTC(Number(inspectionDateParts[1]), Number(inspectionDateParts[2]) - 1, Number(inspectionDateParts[3])))
+    : null;
+  if (!inspectionDateParts ||
+      inspectionDate.getUTCFullYear() !== Number(inspectionDateParts[1]) ||
+      inspectionDate.getUTCMonth() !== Number(inspectionDateParts[2]) - 1 ||
+      inspectionDate.getUTCDate() !== Number(inspectionDateParts[3])) {
+    throw new Error('Enter a valid first inspection date before saving transformer assessment details.');
+  }
+  const integerFields = [
+    'hvDamagedCoils', 'lvReinsulatedCoils', 'bushingsLv', 'bushingsHv',
+    'bushRodsLv', 'bushRodsHv', 'metalPartsHv', 'metalPartsLv', 'breakers'
+  ];
+  Object.keys(assessmentDetails).forEach(key => {
+    const value = assessmentDetails[key];
+    if (value !== null && value !== '' && key !== 'windingMaterial' && key !== 'firstInspectionDate' && key !== 'remarks' &&
+        (!Number.isFinite(Number(value)) || Number(value) < 0)) {
+      throw new Error(`Assessment field "${key}" must be a non-negative number.`);
+    }
+    if (value !== null && value !== '' && integerFields.includes(key) && !Number.isInteger(Number(value))) {
+      throw new Error(`Assessment field "${key}" must be a whole number.`);
+    }
+  });
+}
+
+function updateTransformerAssessment(id, assessmentDetails) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+    const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+    if (currentStatus.toUpperCase() === 'BILLED') {
+      throw new Error('Assessment details cannot be edited after billing.');
+    }
+    const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails');
+    if (assessmentDetailsIdx < 0) {
+      throw new Error('The transformer sheet is missing its AssessmentDetails column.');
+    }
+    validateTransformerAssessment_(assessmentDetails);
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const updatedIdx = found.headers.indexOf('UpdatedAt');
+    const firstColumn = Math.min(assessmentDetailsIdx, ...(updatedIdx >= 0 ? [updatedIdx] : [])) + 1;
+    const lastColumn = Math.max(assessmentDetailsIdx, ...(updatedIdx >= 0 ? [updatedIdx] : [])) + 1;
+    const updatedValues = found.data.slice(firstColumn - 1, lastColumn);
+    updatedValues[assessmentDetailsIdx + 1 - firstColumn] = JSON.stringify(assessmentDetails);
+    if (updatedIdx >= 0) updatedValues[updatedIdx + 1 - firstColumn] = getTimestamp();
+    sheet.getRange(found.rowIndex, firstColumn, 1, updatedValues.length).setValues([updatedValues]);
+    return getTransformerById(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteTransformerAssessment(id) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+    const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+    if (['DELIVERED', 'BILLED'].includes(currentStatus.toUpperCase())) {
+      throw new Error('Assessment details cannot be deleted after delivery.');
+    }
+    const assessmentDetailsIdx = found.headers.indexOf('AssessmentDetails');
+    if (assessmentDetailsIdx < 0) {
+      throw new Error('The transformer sheet is missing its AssessmentDetails column.');
+    }
+    if (!found.data[assessmentDetailsIdx]) {
+      return { status: 'NOT_FOUND', message: 'Assessment details have not been entered for this transformer.' };
+    }
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const updatedIdx = found.headers.indexOf('UpdatedAt');
+    sheet.getRange(found.rowIndex, assessmentDetailsIdx + 1).clearContent();
+    if (updatedIdx >= 0) sheet.getRange(found.rowIndex, updatedIdx + 1).setValue(getTimestamp());
+    return getTransformerById(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function deliverTransformer(id, dcNo) {
+  const dc = dcNo ? findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo) : null;
+  if (!dc) {
+    throw new Error('Select an existing delivery challan before delivering a transformer.');
+  }
+  const dcDelivered = dc.headers.indexOf('Delivered');
+  if (dcDelivered < 0 || String(dc.data[dcDelivered]).toLowerCase() !== 'true') {
+    throw new Error('Mark the delivery challan as delivered before delivering its transformers.');
+  }
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+  const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+  const currentDcNo = String(found.data[found.headers.indexOf('DcNo')] || '');
+  if (currentStatus.toLowerCase() !== 'repaired' || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
+    throw new Error('Only repaired, non-scrapped transformers can be delivered.');
+  }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
   const statusIdx = found.headers.indexOf('Status') + 1;
@@ -526,9 +1921,143 @@ function deliverTransformer(id, dcNo) {
   return getTransformerById(id);
 }
 
+function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
+    const dc = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
+    if (!dc) throw new Error('Delivery challan not found.');
+    const transformer = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', transformerId);
+    if (!transformer) throw new Error('Transformer not found.');
+
+    const transformerHeaders = transformer.headers;
+    const statusColumn = transformerHeaders.indexOf('Status');
+    const dcColumn = transformerHeaders.indexOf('DcNo');
+    const currentStatus = String(transformer.data[statusColumn] || '');
+    const currentDcNo = String(transformer.data[dcColumn] || '');
+    const dcSheet = getOrCreateSheet(SHEET_NAMES.DCS);
+    const dcHeaders = dc.headers;
+    const dcValues = {};
+    dcHeaders.forEach((header, index) => { dcValues[header] = dc.data[index]; });
+    if (String(dcValues.Delivered).toLowerCase() === 'true') {
+      throw new Error('A delivered challan cannot be edited.');
+    }
+
+    if (shouldAssign) {
+      if (currentStatus.toLowerCase() !== 'repaired' || currentDcNo) {
+        throw new Error('Only an unassigned repaired transformer can be added to a challan.');
+      }
+      const tNote = getAllTNotes().data
+        .find(note => (note.transformers || []).some(link => Number(link.id) === Number(transformerId)));
+      if (!tNote || !tNote.tNoteNo || !tNote.date) {
+        throw new Error('The transformer must have a linked TNote number and date before delivery.');
+      }
+      if (String(dcValues.SentToTGSPDCL).toLowerCase() === 'true'
+          && String(dcValues.SpmCenter || '').trim() !== String(transformer.data[transformerHeaders.indexOf('SpmCenter')] || '').trim()) {
+        throw new Error('A TGSPDCL challan can only include transformers from its SPM Center.');
+      }
+      const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+      transformerSheet.getRange(transformer.rowIndex, dcColumn + 1).setValue(dcNo);
+      const updatedColumn = transformerHeaders.indexOf('UpdatedAt');
+      if (updatedColumn >= 0) transformerSheet.getRange(transformer.rowIndex, updatedColumn + 1).setValue(getTimestamp());
+    } else {
+      if (!['repaired', 'delivered'].includes(currentStatus.toLowerCase())
+          || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
+        throw new Error('Only a transformer assigned to this challan can be removed.');
+      }
+      const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+      transformerSheet.getRange(transformer.rowIndex, statusColumn + 1).setValue('Repaired');
+      transformerSheet.getRange(transformer.rowIndex, dcColumn + 1).clearContent();
+      const updatedColumn = transformerHeaders.indexOf('UpdatedAt');
+      if (updatedColumn >= 0) transformerSheet.getRange(transformer.rowIndex, updatedColumn + 1).setValue(getTimestamp());
+    }
+
+    const assignedTransformers = getSheetData(SHEET_NAMES.TRANSFORMERS)
+      .filter(row => String(row.DcNo || '').toLowerCase() === String(dcNo).toLowerCase())
+      .map(transformerRowToObj);
+    const tnotes = getAllTNotes().data;
+    const transformerDetails = assignedTransformers.map(item => {
+      const tNotes = tnotes.flatMap(note =>
+        (note.transformers || [])
+          .filter(link => Number(link.id) === Number(item.id))
+          .map(link => ({
+            tNoteNo: note.tNoteNo || String(note.id),
+            date: note.date || '',
+            intakeType: String(link.intakeType || 'NEW').toUpperCase()
+          }))
+      );
+      const isRgp = tNotes.some(note => note.intakeType === 'RGP');
+      const name = [
+        item.dtrNo && `DTR ${item.dtrNo}`,
+        item.sNo && `SNo ${item.sNo}`,
+        item.capacity && `${item.capacity} kVA`,
+        item.type
+      ].filter(Boolean).join(' · ');
+      return {
+        transformerId: item.id,
+        transformerName: `${name || `Transformer ${item.id}`}${isRgp ? ' (RGP)' : ''}`,
+        spmCenter: item.spmCenter || '',
+        dtrNo: item.dtrNo || '',
+        sNo: item.sNo || '',
+        capacity: item.capacity || '',
+        type: item.type || '',
+        intakeType: isRgp ? 'RGP' : 'NEW',
+        tNotes
+      };
+    });
+    const tNoteNumbers = [...new Set(transformerDetails.flatMap(detail => detail.tNotes.map(note => note.tNoteNo)))];
+    const dcSheetRow = getOrCreateSheet(SHEET_NAMES.DCS);
+    const setValue = (header, value) => {
+      const column = dcHeaders.indexOf(header);
+      if (column >= 0) dcSheetRow.getRange(dc.rowIndex, column + 1).setValue(value);
+    };
+    setValue('TotalTransformers', assignedTransformers.length);
+    setValue('TNoteNo', tNoteNumbers.join(', '));
+    setValue('TransformerDetails', JSON.stringify(transformerDetails));
+    setValue('GeneratedChallanUrl', '');
+    setValue('GeneratedChallanFileId', '');
+    setValue('UpdatedAt', getTimestamp());
+    return getDCByNo(dcNo);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function addTransformersToDCBatch_(dcNo, transformerIds) {
+  if (!Array.isArray(transformerIds) || transformerIds.length === 0) {
+    throw new Error('Select at least one transformer for the challan.');
+  }
+  const uniqueIds = [...new Set(transformerIds.map(id => Number(id)))];
+  if (uniqueIds.some(id => !Number.isInteger(id) || id <= 0) || uniqueIds.length !== transformerIds.length) {
+    throw new Error('Select distinct valid transformers for the challan.');
+  }
+
+  let result = null;
+  uniqueIds.forEach(transformerId => {
+    result = updateDCTransformerAssignment_(dcNo, transformerId, true);
+    if (!result || result.status !== 'SUCCESS' || !result.data) {
+      throw new Error(result?.message || 'Failed to assign a transformer to the challan.');
+    }
+  });
+  return result;
+}
+
 function billTransformer(id, sapNo) {
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
+  ensureTNoteTransformerLinks_();
+  const linkedRgpVisit = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS).some(link =>
+    Number(link.TransformerID) === Number(id) && String(link.IntakeType || '').toUpperCase() === 'RGP'
+  );
+  if (linkedRgpVisit) throw new Error('Transformers linked to an RGP visit cannot be billed through normal SAP billing.');
+  const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
+  if (currentStatus.toLowerCase() === 'scrap') {
+    throw new Error('Scrapped transformers cannot be billed.');
+  }
+  if (currentStatus.toLowerCase() !== 'delivered') {
+    throw new Error('Only delivered transformers can be billed.');
+  }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
   const statusIdx = found.headers.indexOf('Status') + 1;
@@ -542,6 +2071,77 @@ function billTransformer(id, sapNo) {
   return getTransformerById(id);
 }
 
+function billTransformers(transformerIds, sapNo) {
+  if (!Array.isArray(transformerIds) || transformerIds.length === 0 || !String(sapNo || '').trim()) {
+    throw new Error('Provide a bill number and at least one transformer.');
+  }
+  const ids = transformerIds.map(id => Number(id));
+  if (ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+    throw new Error('Select distinct valid transformer IDs.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    ensureTNoteTransformerLinks_();
+    const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+    const rgpTransformerIds = new Set(links
+      .filter(link => String(link.IntakeType || '').toUpperCase() === 'RGP')
+      .map(link => Number(link.TransformerID)));
+    const sheet = initializeSheet(SHEET_NAMES.TRANSFORMERS, SHEET_HEADERS.Transformers);
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(String);
+    const idColumn = headers.indexOf('ID');
+    const statusColumn = headers.indexOf('Status');
+    const sapColumn = headers.indexOf('SapNo');
+    const updatedColumn = headers.indexOf('UpdatedAt');
+    const rowsById = new Map();
+    for (let index = 1; index < values.length; index += 1) {
+      rowsById.set(Number(values[index][idColumn]), { index, values: values[index] });
+    }
+
+    const selected = ids.map(id => {
+      const entry = rowsById.get(id);
+      if (!entry) throw new Error(`Transformer ${id} not found.`);
+      if (rgpTransformerIds.has(id)) {
+        throw new Error('Transformers linked to an RGP visit cannot be billed through normal SAP billing.');
+      }
+      const status = String(entry.values[statusColumn] || '').toLowerCase();
+      if (status === 'scrap') throw new Error('Scrapped transformers cannot be billed.');
+      if (status !== 'delivered') throw new Error(`Only delivered transformers can be billed (transformer ${id}).`);
+      return { id, index: entry.index, values: entry.values.slice() };
+    })
+
+    const now = getTimestamp();
+    selected.forEach(entry => {
+      entry.values[statusColumn] = 'Billed';
+      entry.values[sapColumn] = String(sapNo).trim();
+      if (updatedColumn >= 0) entry.values[updatedColumn] = now;
+    });
+
+    let group = [];
+    const flushGroup = () => {
+      if (!group.length) return;
+      sheet.getRange(group[0].index + 1, 1, group.length, headers.length)
+        .setValues(group.map(entry => entry.values));
+      group = [];
+    };
+    [...selected].sort((left, right) => left.index - right.index).forEach(entry => {
+      if (group.length && entry.index !== group[group.length - 1].index + 1) flushGroup();
+      group.push(entry);
+    });
+    flushGroup();
+
+    const updatedById = new Map(selected.map(entry => [
+      entry.id,
+      transformerRowToObj(Object.fromEntries(headers.map((header, index) => [header, entry.values[index]]))),
+    ]));
+    return { status: 'SUCCESS', data: ids.map(id => updatedById.get(id)) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function getTransformersSummary() {
   const data = getSheetData(SHEET_NAMES.TRANSFORMERS);
   const counts = {
@@ -550,7 +2150,8 @@ function getTransformersSummary() {
     repairInProgress: 0,
     repaired: 0,
     delivered: 0,
-    billed: 0
+    billed: 0,
+    scrap: 0
   };
 
   data.forEach(t => {
@@ -561,6 +2162,7 @@ function getTransformersSummary() {
     else if (s === 'repaired') counts.repaired++;
     else if (s === 'delivered') counts.delivered++;
     else if (s === 'billed') counts.billed++;
+    else if (s === 'scrap') counts.scrap++;
   });
 
   return { status: 'SUCCESS', data: counts };
@@ -570,15 +2172,17 @@ function getTransformersSummary() {
 
 function getAllTNotes() {
   const tnotes = getSheetData(SHEET_NAMES.TNOTES);
-  const transformers = getSheetData(SHEET_NAMES.TRANSFORMERS).map(transformerRowToObj);
+  const transformersByTNote = getTNoteTransformerMap_();
 
   const result = tnotes.map(tnote => {
     const id = Number(tnote.ID);
-    const attachedTransformers = transformers.filter(t => t.tNoteId === id);
+    const attachedTransformers = transformersByTNote.get(id) || [];
     return {
       id: id,
+      tNoteNo: String(tnote.TNoteNo || id),
       date: dateOnly_(tnote.Date),
-      numberOfTransformers: Number(tnote.NumberOfTransformers || attachedTransformers.length),
+      numberOfTransformers: attachedTransformers.length,
+      attachments: parseRecordAttachments_(tnote.Attachments),
       transformers: attachedTransformers
     };
   });
@@ -590,9 +2194,7 @@ function getTNoteById(id) {
   const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
 
-  const transformers = getSheetData(SHEET_NAMES.TRANSFORMERS)
-    .map(transformerRowToObj)
-    .filter(t => t.tNoteId === Number(id));
+  const transformers = getTNoteTransformers_(id);
 
   const obj = {};
   found.headers.forEach((h, idx) => { obj[h] = found.data[idx]; });
@@ -601,8 +2203,10 @@ function getTNoteById(id) {
     status: 'SUCCESS',
     data: {
       id: Number(obj.ID),
+      tNoteNo: String(obj.TNoteNo || obj.ID),
       date: dateOnly_(obj.Date),
-      numberOfTransformers: Number(obj.NumberOfTransformers || transformers.length),
+      numberOfTransformers: transformers.length,
+      attachments: parseRecordAttachments_(obj.Attachments),
       transformers: transformers
     }
   };
@@ -610,18 +2214,31 @@ function getTNoteById(id) {
 
 function addTNote(data) {
   const sheet = initializeSheet(SHEET_NAMES.TNOTES, SHEET_HEADERS.TNotes);
+  const tNoteNo = String(data.tNoteNo || '').trim();
+  if (!tNoteNo) throw new Error('TNote number is required.');
+  const duplicate = getSheetData(SHEET_NAMES.TNOTES).some(row =>
+    String(row.TNoteNo || row.ID || '').trim().toLowerCase() === tNoteNo.toLowerCase()
+  );
+  if (duplicate) throw new Error(`TNote number "${tNoteNo}" already exists.`);
   const id = getNextNumericId(SHEET_NAMES.TNOTES, 'ID');
   const now = getTimestamp();
+  const attachments = saveRecordAttachments_(data.attachments, 'D.S. Transformer TNote Attachments');
 
-  const row = [
-    id,
-    data.date || new Date().toISOString().split('T')[0],
-    data.numberOfTransformers || 0,
-    now,
-    now
-  ];
+  const rowValues = {
+    ID: id,
+    TNoteNo: tNoteNo,
+    Date: data.date || new Date().toISOString().split('T')[0],
+    NumberOfTransformers: data.numberOfTransformers || 0,
+    CreatedAt: now,
+    UpdatedAt: now,
+    Attachments: JSON.stringify(attachments)
+  };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const row = headers.map(header => rowValues[header] === undefined ? '' : rowValues[header]);
   sheet.appendRow(row);
-  return { status: 'SUCCESS', data: { id: id, date: data.date, numberOfTransformers: data.numberOfTransformers, transformers: [] } };
+  const persisted = getTNoteById(id);
+  if (persisted.status !== 'SUCCESS') throw new Error('TNote write could not be verified.');
+  return persisted;
 }
 
 function updateTNote(id, data) {
@@ -632,9 +2249,20 @@ function updateTNote(id, data) {
   const headers = found.headers;
 
   const dateIdx = headers.indexOf('Date') + 1;
+  const tNoteNoIdx = headers.indexOf('TNoteNo') + 1;
   const countIdx = headers.indexOf('NumberOfTransformers') + 1;
   const updatedIdx = headers.indexOf('UpdatedAt') + 1;
 
+  if (data.tNoteNo !== undefined) {
+    const tNoteNo = String(data.tNoteNo || '').trim();
+    if (!tNoteNo) throw new Error('TNote number is required.');
+    const duplicate = getSheetData(SHEET_NAMES.TNOTES).some(row =>
+      Number(row.ID) !== Number(id) &&
+      String(row.TNoteNo || row.ID || '').trim().toLowerCase() === tNoteNo.toLowerCase()
+    );
+    if (duplicate) throw new Error(`TNote number "${tNoteNo}" already exists.`);
+    if (tNoteNoIdx > 0) sheet.getRange(found.rowIndex, tNoteNoIdx).setValue(tNoteNo);
+  }
   if (dateIdx > 0 && data.date) sheet.getRange(found.rowIndex, dateIdx).setValue(data.date);
   if (countIdx > 0 && data.numberOfTransformers !== undefined) sheet.getRange(found.rowIndex, countIdx).setValue(data.numberOfTransformers);
   if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
@@ -642,9 +2270,95 @@ function updateTNote(id, data) {
   return getTNoteById(id);
 }
 
+function addTNoteAttachments(id, attachments) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+      throw new Error('Select at least one attachment.');
+    }
+
+    const attachmentsIdx = found.headers.indexOf('Attachments') + 1;
+    if (attachmentsIdx <= 0) throw new Error('The TNote sheet is missing its Attachments column.');
+    const existingAttachments = parseRecordAttachments_(found.data[attachmentsIdx - 1]);
+    if (existingAttachments.length + attachments.length > 5) {
+      throw new Error('A TNote can have no more than 5 attachments.');
+    }
+    const updatedAttachments = existingAttachments.concat(
+      saveRecordAttachments_(attachments, 'D.S. Transformer TNote Attachments')
+    );
+    const sheet = getOrCreateSheet(SHEET_NAMES.TNOTES);
+    sheet.getRange(found.rowIndex, attachmentsIdx).setValue(JSON.stringify(updatedAttachments));
+    const updatedIdx = found.headers.indexOf('UpdatedAt') + 1;
+    if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+    return getTNoteById(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteTNoteAttachment(id, attachmentUrl) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
+    if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
+    const attachmentsIdx = found.headers.indexOf('Attachments') + 1;
+    if (attachmentsIdx <= 0) throw new Error('The TNote sheet is missing its Attachments column.');
+
+    const existingAttachments = parseRecordAttachments_(found.data[attachmentsIdx - 1]);
+    const attachmentIndex = existingAttachments.findIndex(attachment => attachment.url === String(attachmentUrl || ''));
+    if (attachmentIndex < 0) return { status: 'NOT_FOUND', message: 'TNote attachment not found' };
+
+    const fileId = getDriveFileIdFromUrl_(existingAttachments[attachmentIndex].url);
+    const updatedAttachments = existingAttachments.slice();
+    updatedAttachments.splice(attachmentIndex, 1);
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.TNOTES);
+    const attachmentsCell = sheet.getRange(found.rowIndex, attachmentsIdx);
+    const originalAttachments = found.data[attachmentsIdx - 1];
+    attachmentsCell.setValue(JSON.stringify(updatedAttachments));
+    try {
+      DriveApp.getFileById(fileId).setTrashed(true);
+    } catch (error) {
+      attachmentsCell.setValue(originalAttachments);
+      throw error;
+    }
+
+    const updatedIdx = found.headers.indexOf('UpdatedAt') + 1;
+    if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+    return getTNoteById(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function deleteTNote(id) {
   const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
+
+  const linksSheet = ensureTNoteTransformerLinks_();
+  const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
+  if (links.some(link => Number(link.TNoteID) === Number(id) && String(link.IntakeType || '').toUpperCase() === 'RGP')) {
+    throw new Error('A TNote containing an RGP visit cannot be deleted because it is service history.');
+  }
+  const deliveredTransformers = links
+    .filter(link => Number(link.TNoteID) === Number(id))
+    .map(link => findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', link.TransformerID))
+    .filter(transformer => transformer)
+    .filter(transformer => {
+      const status = String(transformer.data[transformer.headers.indexOf('Status')] || '').toLowerCase();
+      return status === 'delivered' || status === 'billed';
+    });
+  if (deliveredTransformers.length > 0) {
+    throw new Error('A TNote linked to a delivered transformer cannot be deleted.');
+  }
+  links.map((link, index) => Number(link.TNoteID) === Number(id) ? index + 2 : -1)
+    .filter(rowNumber => rowNumber > 0)
+    .reverse()
+    .forEach(rowNumber => linksSheet.deleteRow(rowNumber));
 
   const sheet = getOrCreateSheet(SHEET_NAMES.TNOTES);
   sheet.deleteRow(found.rowIndex);
@@ -654,17 +2368,37 @@ function deleteTNote(id) {
 // ============ DC FUNCTIONS ============
 
 function getAllDCs() {
+  initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const data = getSheetData(SHEET_NAMES.DCS);
   const dcs = data.map(row => ({
     dcNo: String(row.DcNo || ''),
     date: dateOnly_(row.Date),
     spmCenter: String(row.SpmCenter || ''),
-    totalTransformers: Number(row.TotalTransformers || 0)
+    totalTransformers: Number(row.TotalTransformers || 0),
+    customerName: String(row.CustomerName || ''),
+    customerAddress: String(row.CustomerAddress || ''),
+    customerGstin: String(row.CustomerGSTIN || ''),
+    companyGstin: String(row.CompanyGSTIN || ''),
+    tNoteNo: String(row.TNoteNo || ''),
+    emptyDrumsAvailable: row.EmptyDrumsAvailable === '' || row.EmptyDrumsAvailable === null || row.EmptyDrumsAvailable === undefined
+      ? null
+      : row.EmptyDrumsAvailable === true || String(row.EmptyDrumsAvailable).toLowerCase() === 'true',
+    emptyDrumCount: Number(row.EmptyDrumCount || 0),
+    sentToTgspdcl: row.SentToTGSPDCL === '' || row.SentToTGSPDCL === null || row.SentToTGSPDCL === undefined
+      ? null
+      : row.SentToTGSPDCL === true || String(row.SentToTGSPDCL).toLowerCase() === 'true',
+    transformerDetails: parseDCTransformerDetails_(row.TransformerDetails),
+    delivered: row.Delivered === true || String(row.Delivered).toLowerCase() === 'true',
+    attachments: parseRecordAttachments_(row.DeliveryAttachments),
+    deliveredAt: String(row.DeliveredAt || ''),
+    generatedChallanUrl: String(row.GeneratedChallanUrl || ''),
+    generatedChallanFileId: String(row.GeneratedChallanFileId || '')
   }));
   return { status: 'SUCCESS', data: dcs };
 }
 
 function getDCByNo(dcNo) {
+  initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
   if (!found) return { status: 'NOT_FOUND', message: 'DC not found' };
   const obj = {};
@@ -675,7 +2409,25 @@ function getDCByNo(dcNo) {
       dcNo: String(obj.DcNo),
       date: dateOnly_(obj.Date),
       spmCenter: String(obj.SpmCenter || ''),
-      totalTransformers: Number(obj.TotalTransformers || 0)
+      totalTransformers: Number(obj.TotalTransformers || 0),
+      customerName: String(obj.CustomerName || ''),
+      customerAddress: String(obj.CustomerAddress || ''),
+      customerGstin: String(obj.CustomerGSTIN || ''),
+      companyGstin: String(obj.CompanyGSTIN || ''),
+      tNoteNo: String(obj.TNoteNo || ''),
+      emptyDrumsAvailable: obj.EmptyDrumsAvailable === '' || obj.EmptyDrumsAvailable === null || obj.EmptyDrumsAvailable === undefined
+        ? null
+        : obj.EmptyDrumsAvailable === true || String(obj.EmptyDrumsAvailable).toLowerCase() === 'true',
+      emptyDrumCount: Number(obj.EmptyDrumCount || 0),
+      sentToTgspdcl: obj.SentToTGSPDCL === '' || obj.SentToTGSPDCL === null || obj.SentToTGSPDCL === undefined
+        ? null
+        : obj.SentToTGSPDCL === true || String(obj.SentToTGSPDCL).toLowerCase() === 'true',
+      transformerDetails: parseDCTransformerDetails_(obj.TransformerDetails),
+      delivered: obj.Delivered === true || String(obj.Delivered).toLowerCase() === 'true',
+      attachments: parseRecordAttachments_(obj.DeliveryAttachments),
+      deliveredAt: String(obj.DeliveredAt || ''),
+      generatedChallanUrl: String(obj.GeneratedChallanUrl || ''),
+      generatedChallanFileId: String(obj.GeneratedChallanFileId || '')
     }
   };
 }
@@ -683,28 +2435,315 @@ function getDCByNo(dcNo) {
 function addDC(data) {
   const sheet = initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const now = getTimestamp();
-  const dcNo = String(data.dcNo || `DC-${Date.now().toString().slice(-4)}`);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const dcRequest = data.dc || data;
+    const transformerIds = Array.isArray(data.transformerIds)
+      ? [...new Set(data.transformerIds.map(id => Number(id)))]
+      : [];
+    const requestId = String(data.requestId || '').trim();
+    if (transformerIds.length === 0) {
+      throw new Error('Select at least one transformer for the challan.');
+    }
+    if (transformerIds.some(id => !Number.isInteger(id) || id <= 0)) {
+      throw new Error('Select distinct valid transformer IDs for the challan.');
+    }
 
-  const existing = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
-  if (existing) {
-    return updateDC(dcNo, data);
+    if (requestId) {
+      const existingRequest = getSheetData(SHEET_NAMES.DCS).find(row =>
+        String(row.RequestId || '').trim() === requestId
+      );
+      if (existingRequest) {
+        return getDCByNo(String(existingRequest.DcNo || ''));
+      }
+    }
+
+    const transformers = transformerIds.map(id => findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id));
+    if (transformers.some(transformer => !transformer)) {
+      throw new Error('One or more selected transformers were not found.');
+    }
+    if (transformers.some(transformer => {
+      const status = String(transformer.data[transformer.headers.indexOf('Status')] || '');
+      const dcNoValue = String(transformer.data[transformer.headers.indexOf('DcNo')] || '');
+      return status.toLowerCase() !== 'repaired' || dcNoValue !== '';
+    })) {
+      throw new Error('Only unassigned repaired transformers can be added to a challan.');
+    }
+
+    const dcNo = nextDeliveryChallanNumber_(sheet);
+    if (getSheetData(SHEET_NAMES.DCS).some(row => String(row.DcNo || '').trim().toLowerCase() === dcNo.toLowerCase())) {
+      throw new Error(`Delivery challan number "${dcNo}" already exists.`);
+    }
+
+    const values = {
+      DcNo: dcNo,
+      Date: dcRequest.date || new Date().toISOString().split('T')[0],
+      SpmCenter: dcRequest.spmCenter || '',
+      TotalTransformers: dcRequest.totalTransformers || 0,
+      CustomerName: dcRequest.customerName || '',
+      CustomerAddress: dcRequest.customerAddress || '',
+      CustomerGSTIN: dcRequest.customerGstin || '',
+      CompanyGSTIN: dcRequest.companyGstin || '',
+      TNoteNo: dcRequest.tNoteNo || '',
+      EmptyDrumsAvailable: dcRequest.emptyDrumsAvailable === undefined || dcRequest.emptyDrumsAvailable === null
+        ? ''
+        : dcRequest.emptyDrumsAvailable === true || String(dcRequest.emptyDrumsAvailable).toLowerCase() === 'true',
+      EmptyDrumCount: Number(dcRequest.emptyDrumCount || 0),
+      SentToTGSPDCL: dcRequest.sentToTgspdcl === true || String(dcRequest.sentToTgspdcl).toLowerCase() === 'true',
+      TransformerDetails: JSON.stringify(Array.isArray(dcRequest.transformerDetails) ? dcRequest.transformerDetails : []),
+      Delivered: false,
+      DeliveryAttachments: '[]',
+      DeliveredAt: '',
+      CreatedAt: now,
+      UpdatedAt: now,
+      RequestId: requestId
+    };
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    sheet.appendRow(headers.map(header => values[header] === undefined ? '' : values[header]));
+    const dcNoRowIndex = sheet.getLastRow();
+
+    transformers.forEach(transformer => {
+      const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+      const dcColumn = transformer.headers.indexOf('DcNo') + 1;
+      transformerSheet.getRange(transformer.rowIndex, dcColumn).setValue(dcNo);
+      const updatedColumn = transformer.headers.indexOf('UpdatedAt') + 1;
+      if (updatedColumn > 0) {
+        transformerSheet.getRange(transformer.rowIndex, updatedColumn).setValue(now);
+      }
+    });
+
+    const assignedTransformers = getSheetData(SHEET_NAMES.TRANSFORMERS)
+      .filter(row => String(row.DcNo || '').toLowerCase() === dcNo.toLowerCase())
+      .map(transformerRowToObj);
+    const tnotes = getAllTNotes().data;
+    const transformerDetails = assignedTransformers.map(item => {
+      const tNotes = tnotes.flatMap(note =>
+        (note.transformers || [])
+          .filter(link => Number(link.id) === Number(item.id))
+          .map(link => ({
+            tNoteNo: note.tNoteNo || String(note.id),
+            date: note.date || '',
+            intakeType: String(link.intakeType || 'NEW').toUpperCase()
+          }))
+      );
+      const isRgp = tNotes.some(note => note.intakeType === 'RGP');
+      const name = [
+        item.dtrNo && `DTR ${item.dtrNo}`,
+        item.sNo && `SNo ${item.sNo}`,
+        item.capacity && `${item.capacity} kVA`,
+        item.type
+      ].filter(Boolean).join(' · ');
+      return {
+        transformerId: item.id,
+        transformerName: `${name || `Transformer ${item.id}`}${isRgp ? ' (RGP)' : ''}`,
+        spmCenter: item.spmCenter || '',
+        dtrNo: item.dtrNo || '',
+        sNo: item.sNo || '',
+        capacity: item.capacity || '',
+        type: item.type || '',
+        intakeType: isRgp ? 'RGP' : 'NEW',
+        tNotes
+      };
+    });
+    const tNoteNumbers = [...new Set(transformerDetails.flatMap(detail => detail.tNotes.map(note => note.tNoteNo)))];
+    const dcSheetRow = getOrCreateSheet(SHEET_NAMES.DCS);
+    const setValue = (header, value) => {
+      const column = headers.indexOf(header);
+      if (column >= 0) dcSheetRow.getRange(dcNoRowIndex, column + 1).setValue(value);
+    };
+    setValue('TotalTransformers', assignedTransformers.length);
+    setValue('TNoteNo', tNoteNumbers.join(', '));
+    setValue('TransformerDetails', JSON.stringify(transformerDetails));
+    setValue('GeneratedChallanUrl', '');
+    setValue('GeneratedChallanFileId', '');
+    setValue('UpdatedAt', now);
+    return { status: 'SUCCESS', data: {
+      dcNo, date: values.Date, spmCenter: values.SpmCenter, totalTransformers: values.TotalTransformers,
+      customerName: values.CustomerName, customerAddress: values.CustomerAddress,
+      customerGstin: values.CustomerGSTIN, companyGstin: values.CompanyGSTIN, tNoteNo: values.TNoteNo,
+      emptyDrumsAvailable: values.EmptyDrumsAvailable, emptyDrumCount: values.EmptyDrumCount,
+      sentToTgspdcl: values.SentToTGSPDCL, transformerDetails, delivered: false, attachments: []
+    } };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function parseDCTransformerDetails_(value) {
+  if (!value) return [];
+  const details = JSON.parse(String(value));
+  if (!Array.isArray(details)) throw new Error('Saved delivery challan transformer details are invalid.');
+  return details;
+}
+
+function markDCDelivered_(dcNo, attachments) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
+    const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
+    if (!found) throw new Error('Delivery challan not found.');
+    const headers = found.headers;
+    const deliveredIndex = headers.indexOf('Delivered');
+    if (deliveredIndex >= 0 && (found.data[deliveredIndex] === true ||
+        String(found.data[deliveredIndex]).toLowerCase() === 'true')) {
+      throw new Error('This delivery challan has already been marked delivered.');
+    }
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+      throw new Error('Upload the signed delivery challan before marking it delivered.');
+    }
+    const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+    const transformerData = getSheetData(SHEET_NAMES.TRANSFORMERS);
+    const assignedTransformers = transformerData
+      .filter(transformer => String(transformer.DcNo || '').toLowerCase() === String(dcNo).toLowerCase());
+    if (assignedTransformers.length === 0) {
+      throw new Error('Assign at least one repaired transformer to this challan before marking it delivered.');
+    }
+    const transformerRows = assignedTransformers.map(item => {
+      const transformer = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', item.ID);
+      if (!transformer) throw new Error(`Transformer ${item.ID} assigned to this challan was not found.`);
+      const statusIndex = transformer.headers.indexOf('Status');
+      const dcIndex = transformer.headers.indexOf('DcNo');
+      if (statusIndex < 0 || dcIndex < 0
+          || String(transformer.data[dcIndex] || '').toLowerCase() !== String(dcNo).toLowerCase()
+          || String(transformer.data[statusIndex] || '').toLowerCase() !== 'repaired') {
+        throw new Error(`Transformer ${item.ID} must be repaired and assigned to this challan before delivery.`);
+      }
+      return {
+        row: transformer,
+        statusIndex,
+        updatedAtIndex: transformer.headers.indexOf('UpdatedAt')
+      };
+    });
+    const savedAttachments = saveRecordAttachments_(attachments, 'D.S. Transformer Delivered Challans');
+    const dcSheet = getOrCreateSheet(SHEET_NAMES.DCS);
+    const setValue = (header, value) => {
+      const index = headers.indexOf(header);
+      if (index >= 0) dcSheet.getRange(found.rowIndex, index + 1).setValue(value);
+    };
+    const transformerChanges = [];
+    const originalDcValues = {};
+    ['Delivered', 'DeliveryAttachments', 'DeliveredAt', 'UpdatedAt'].forEach(header => {
+      const index = headers.indexOf(header);
+      if (index >= 0) originalDcValues[header] = found.data[index];
+    });
+    const deliveredAt = getTimestamp();
+    try {
+      setValue('Delivered', true);
+      setValue('DeliveryAttachments', JSON.stringify(savedAttachments));
+      setValue('DeliveredAt', deliveredAt);
+      setValue('UpdatedAt', deliveredAt);
+      transformerRows.forEach(({ row, statusIndex, updatedAtIndex }) => {
+        transformerChanges.push({
+          rowIndex: row.rowIndex,
+          statusIndex,
+          oldStatus: row.data[statusIndex],
+          updatedAtIndex,
+          oldUpdatedAt: updatedAtIndex >= 0 ? row.data[updatedAtIndex] : undefined
+        });
+        transformerSheet.getRange(row.rowIndex, statusIndex + 1).setValue('Delivered');
+        if (updatedAtIndex >= 0) transformerSheet.getRange(row.rowIndex, updatedAtIndex + 1).setValue(deliveredAt);
+      });
+      return getDCByNo(dcNo);
+    } catch (error) {
+      transformerChanges.forEach(change => {
+        transformerSheet.getRange(change.rowIndex, change.statusIndex + 1).setValue(change.oldStatus);
+        if (change.updatedAtIndex >= 0) {
+          transformerSheet.getRange(change.rowIndex, change.updatedAtIndex + 1).setValue(change.oldUpdatedAt);
+        }
+      });
+      Object.keys(originalDcValues).forEach(header => {
+        const index = headers.indexOf(header);
+        dcSheet.getRange(found.rowIndex, index + 1).setValue(originalDcValues[header]);
+      });
+      throw error;
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function nextDeliveryChallanNumber_(sheet) {
+  initializeQuotationSheets();
+  const settings = {};
+  getSheetData(SHEET_NAMES.QUOTATION_SETTINGS).forEach(row => {
+    if (row.Setting) settings[String(row.Setting)] = String(row.Value || '');
+  });
+
+  let financialYear = String(settings['Financial Year'] || '').trim();
+  if (!/^\d{2}-\d{2}$/.test(financialYear)) {
+    const today = new Date();
+    const startYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+    financialYear = `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
   }
 
-  const row = [
-    dcNo,
-    data.date || new Date().toISOString().split('T')[0],
-    data.spmCenter || '',
-    data.totalTransformers || 0,
-    now,
-    now
-  ];
-  sheet.appendRow(row);
-  return { status: 'SUCCESS', data: { dcNo: dcNo, date: data.date, spmCenter: data.spmCenter, totalTransformers: data.totalTransformers } };
+  const prefix = `DS/${financialYear}/`;
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const dcNoIndex = header.indexOf('DcNo');
+  const currentNumbers = sheet.getLastRow() > 1
+    ? sheet.getRange(2, dcNoIndex + 1, sheet.getLastRow() - 1, 1).getValues().flat()
+    : [];
+  const nextNumber = currentNumbers.reduce((maximum, value) => {
+    const match = String(value || '').trim().match(new RegExp(`^DS/${financialYear.replace('-', '\\-')}/(\\d+)$`, 'i'));
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, 499) + 1;
+  return `${prefix}${nextNumber}`;
+}
+
+function saveGeneratedDCChallanPdf_(dcNo, fileName, dataUrl) {
+  initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
+  const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
+  if (!found) throw new Error('Delivery challan not found.');
+  if (typeof dataUrl !== 'string' || dataUrl.length > 12 * 1024 * 1024) {
+    throw new Error('The generated delivery challan PDF is missing or exceeds the upload limit.');
+  }
+  const match = dataUrl.match(/^data:application\/pdf;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('The generated delivery challan must be a valid PDF.');
+
+  const bytes = Utilities.base64Decode(match[1]);
+  if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024) {
+    throw new Error('The generated delivery challan PDF must be smaller than 8 MB.');
+  }
+  const signature = Utilities.newBlob(bytes).getDataAsString().slice(0, 5);
+  if (signature !== '%PDF-') throw new Error('The generated delivery challan PDF is invalid.');
+
+  const safeName = String(fileName || `${dcNo}.pdf`)
+    .replace(/[^\w.-]/g, '_')
+    .slice(0, 120);
+  const rootName = 'DS Transformers';
+  const rootFolders = DriveApp.getRootFolder().getFoldersByName(rootName);
+  const rootFolder = rootFolders.hasNext()
+    ? rootFolders.next()
+    : DriveApp.getRootFolder().createFolder(rootName);
+  const challanFolders = rootFolder.getFoldersByName('Delivery Challans');
+  const challanFolder = challanFolders.hasNext()
+    ? challanFolders.next()
+    : rootFolder.createFolder('Delivery Challans');
+  const file = challanFolder.createFile(Utilities.newBlob(bytes, 'application/pdf', safeName));
+  const headers = found.headers;
+  const sheet = getOrCreateSheet(SHEET_NAMES.DCS);
+  const urlColumn = headers.indexOf('GeneratedChallanUrl') + 1;
+  const fileIdColumn = headers.indexOf('GeneratedChallanFileId') + 1;
+  const updatedColumn = headers.indexOf('UpdatedAt') + 1;
+  if (urlColumn <= 0 || fileIdColumn <= 0) throw new Error('Generated challan columns are not initialized.');
+  sheet.getRange(found.rowIndex, urlColumn).setValue(file.getUrl());
+  sheet.getRange(found.rowIndex, fileIdColumn).setValue(file.getId());
+  if (updatedColumn > 0) sheet.getRange(found.rowIndex, updatedColumn).setValue(getTimestamp());
+  const savedDC = getDCByNo(dcNo);
+  if (savedDC.status !== 'SUCCESS' || !savedDC.data) {
+    throw new Error('Delivery challan PDF was saved, but the challan record could not be reloaded.');
+  }
+  return savedDC;
 }
 
 function updateDC(dcNo, data) {
+  initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
   if (!found) return { status: 'NOT_FOUND', message: 'DC not found' };
+  if (String(found.data[found.headers.indexOf('Delivered')]).toLowerCase() === 'true') {
+    throw new Error('A delivered challan cannot be edited.');
+  }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.DCS);
   const headers = found.headers;
@@ -712,20 +2751,67 @@ function updateDC(dcNo, data) {
   const dateIdx = headers.indexOf('Date') + 1;
   const spmIdx = headers.indexOf('SpmCenter') + 1;
   const countIdx = headers.indexOf('TotalTransformers') + 1;
+  const customerNameIdx = headers.indexOf('CustomerName') + 1;
+  const customerAddressIdx = headers.indexOf('CustomerAddress') + 1;
+  const customerGstinIdx = headers.indexOf('CustomerGSTIN') + 1;
+  const companyGstinIdx = headers.indexOf('CompanyGSTIN') + 1;
+  const tNoteNoIdx = headers.indexOf('TNoteNo') + 1;
+  const emptyDrumsAvailableIdx = headers.indexOf('EmptyDrumsAvailable') + 1;
+  const emptyDrumCountIdx = headers.indexOf('EmptyDrumCount') + 1;
+  const sentToTgspdclIdx = headers.indexOf('SentToTGSPDCL') + 1;
+  const transformerDetailsIdx = headers.indexOf('TransformerDetails') + 1;
+  const generatedChallanUrlIdx = headers.indexOf('GeneratedChallanUrl') + 1;
+  const generatedChallanFileIdIdx = headers.indexOf('GeneratedChallanFileId') + 1;
   const updatedIdx = headers.indexOf('UpdatedAt') + 1;
 
   if (dateIdx > 0 && data.date) sheet.getRange(found.rowIndex, dateIdx).setValue(data.date);
   if (spmIdx > 0 && data.spmCenter !== undefined) sheet.getRange(found.rowIndex, spmIdx).setValue(data.spmCenter);
   if (countIdx > 0 && data.totalTransformers !== undefined) sheet.getRange(found.rowIndex, countIdx).setValue(data.totalTransformers);
+  if (customerNameIdx > 0 && data.customerName !== undefined) sheet.getRange(found.rowIndex, customerNameIdx).setValue(data.customerName);
+  if (customerAddressIdx > 0 && data.customerAddress !== undefined) sheet.getRange(found.rowIndex, customerAddressIdx).setValue(data.customerAddress);
+  if (customerGstinIdx > 0 && data.customerGstin !== undefined) sheet.getRange(found.rowIndex, customerGstinIdx).setValue(data.customerGstin);
+  if (companyGstinIdx > 0 && data.companyGstin !== undefined) sheet.getRange(found.rowIndex, companyGstinIdx).setValue(data.companyGstin);
+  if (tNoteNoIdx > 0 && data.tNoteNo !== undefined) sheet.getRange(found.rowIndex, tNoteNoIdx).setValue(data.tNoteNo);
+  if (emptyDrumsAvailableIdx > 0 && data.emptyDrumsAvailable !== undefined && data.emptyDrumsAvailable !== null) {
+    sheet.getRange(found.rowIndex, emptyDrumsAvailableIdx).setValue(data.emptyDrumsAvailable === true || String(data.emptyDrumsAvailable).toLowerCase() === 'true');
+  }
+  if (emptyDrumCountIdx > 0 && data.emptyDrumCount !== undefined && data.emptyDrumCount !== null) {
+    sheet.getRange(found.rowIndex, emptyDrumCountIdx).setValue(Number(data.emptyDrumCount) || 0);
+  }
+  if (sentToTgspdclIdx > 0 && data.sentToTgspdcl !== undefined && data.sentToTgspdcl !== null) {
+    sheet.getRange(found.rowIndex, sentToTgspdclIdx).setValue(data.sentToTgspdcl === true || String(data.sentToTgspdcl).toLowerCase() === 'true');
+  }
+  if (transformerDetailsIdx > 0 && data.transformerDetails !== undefined && data.transformerDetails !== null) {
+    sheet.getRange(found.rowIndex, transformerDetailsIdx).setValue(JSON.stringify(data.transformerDetails));
+  }
+  if (generatedChallanUrlIdx > 0) sheet.getRange(found.rowIndex, generatedChallanUrlIdx).clearContent();
+  if (generatedChallanFileIdIdx > 0) sheet.getRange(found.rowIndex, generatedChallanFileIdIdx).clearContent();
   if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
 
   return getDCByNo(dcNo);
 }
 
 function deleteDC(dcNo) {
+  initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
   if (!found) return { status: 'NOT_FOUND', message: 'DC not found' };
+  if (String(found.data[found.headers.indexOf('Delivered')]).toLowerCase() === 'true') {
+    throw new Error('A delivered challan cannot be deleted.');
+  }
 
+  const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
+  getSheetData(SHEET_NAMES.TRANSFORMERS)
+    .filter(transformer => String(transformer.DcNo || '').toLowerCase() === String(dcNo).toLowerCase())
+    .forEach(transformer => {
+      const linked = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', transformer.ID);
+      if (!linked) return;
+      const dcIndex = linked.headers.indexOf('DcNo');
+      if (dcIndex >= 0) transformerSheet.getRange(linked.rowIndex, dcIndex + 1).clearContent();
+      const statusIndex = linked.headers.indexOf('Status');
+      if (statusIndex >= 0 && String(linked.data[statusIndex]).toLowerCase() === 'delivered') {
+        transformerSheet.getRange(linked.rowIndex, statusIndex + 1).setValue('Repaired');
+      }
+    });
   const sheet = getOrCreateSheet(SHEET_NAMES.DCS);
   sheet.deleteRow(found.rowIndex);
   return { status: 'SUCCESS', message: 'DC deleted successfully' };
@@ -740,7 +2826,15 @@ function getAllBills() {
     date: dateOnly_(row.Date),
     spmCenter: String(row.SpmCenter || ''),
     totalTransformers: Number(row.TotalTransformers || 0),
-    billAmount: Number(row.BillAmount || 0)
+    billAmount: Number(row.BillAmount || 0),
+    attachments: parseRecordAttachments_(row.Attachments),
+    agreementNo: String(row.AgreementNo || ''),
+    gstAmount: Number(row.GSTAmount || 0),
+    status: String(row.Status || 'PENDING'),
+    amountCredited: row.AmountCredited === '' || row.AmountCredited == null ? null : Number(row.AmountCredited),
+    creditedDate: dateOnly_(row.CreditedDate),
+    gstFilingMonth: String(row.GSTFilingMonth || ''),
+    invoiceNo: String(row.InvoiceNo || '')
   }));
   return { status: 'SUCCESS', data: bills };
 }
@@ -757,7 +2851,15 @@ function getBillBySapNo(sapNo) {
       date: dateOnly_(obj.Date),
       spmCenter: String(obj.SpmCenter || ''),
       totalTransformers: Number(obj.TotalTransformers || 0),
-      billAmount: Number(obj.BillAmount || 0)
+      billAmount: Number(obj.BillAmount || 0),
+      attachments: parseRecordAttachments_(obj.Attachments),
+      agreementNo: String(obj.AgreementNo || ''),
+      gstAmount: Number(obj.GSTAmount || 0),
+      status: String(obj.Status || 'PENDING'),
+      amountCredited: obj.AmountCredited === '' || obj.AmountCredited == null ? null : Number(obj.AmountCredited),
+      creditedDate: dateOnly_(obj.CreditedDate),
+      gstFilingMonth: String(obj.GSTFilingMonth || ''),
+      invoiceNo: String(obj.InvoiceNo || '')
     }
   };
 }
@@ -765,24 +2867,46 @@ function getBillBySapNo(sapNo) {
 function addBill(data) {
   const sheet = initializeSheet(SHEET_NAMES.BILLS, SHEET_HEADERS.Bills);
   const now = getTimestamp();
-  const sapNo = String(data.sapNo || `SAP-${Date.now().toString().slice(-4)}`);
+  const sapNo = String(data.sapNo || '').trim();
+  if (!sapNo) throw new Error('SAP number is required.');
 
-  const existing = findRowByValue(SHEET_NAMES.BILLS, 'SapNo', sapNo);
-  if (existing) {
-    return updateBill(sapNo, data);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (findRowByValue(SHEET_NAMES.BILLS, 'SapNo', sapNo)) {
+      throw new Error(`A bill with SAP number "${sapNo}" already exists.`);
+    }
+
+    const attachments = saveRecordAttachments_(data.attachments, 'D.S. Transformer Bill Attachments');
+    const values = {
+      SapNo: sapNo,
+      Date: data.date || new Date().toISOString().split('T')[0],
+      SpmCenter: data.spmCenter || '',
+      TotalTransformers: Number(data.totalTransformers || 0),
+      BillAmount: Number(data.billAmount || 0),
+      CreatedAt: now,
+      UpdatedAt: now,
+      Attachments: JSON.stringify(attachments),
+      AgreementNo: data.agreementNo || '',
+      GSTAmount: Number(data.gstAmount || 0),
+      Status: data.status || 'PENDING',
+      AmountCredited: data.amountCredited || '',
+      CreditedDate: data.creditedDate || '',
+      GSTFilingMonth: data.gstFilingMonth || '',
+      InvoiceNo: data.invoiceNo || ''
+    };
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    sheet.appendRow(headers.map(header => values[header] === undefined ? '' : values[header]));
+    return { status: 'SUCCESS', data: {
+      sapNo: values.SapNo, agreementNo: values.AgreementNo, date: values.Date,
+      spmCenter: values.SpmCenter, totalTransformers: values.TotalTransformers,
+      billAmount: values.BillAmount, gstAmount: values.GSTAmount, status: values.Status,
+      amountCredited: values.AmountCredited || null, creditedDate: values.CreditedDate || null,
+      gstFilingMonth: values.GSTFilingMonth, invoiceNo: values.InvoiceNo, attachments: attachments
+    } };
+  } finally {
+    lock.releaseLock();
   }
-
-  const row = [
-    sapNo,
-    data.date || new Date().toISOString().split('T')[0],
-    data.spmCenter || '',
-    data.totalTransformers || 0,
-    data.billAmount || 0,
-    now,
-    now
-  ];
-  sheet.appendRow(row);
-  return { status: 'SUCCESS', data: { sapNo: sapNo, date: data.date, spmCenter: data.spmCenter, totalTransformers: data.totalTransformers, billAmount: data.billAmount } };
 }
 
 function updateBill(sapNo, data) {
@@ -796,13 +2920,32 @@ function updateBill(sapNo, data) {
   const spmIdx = headers.indexOf('SpmCenter') + 1;
   const countIdx = headers.indexOf('TotalTransformers') + 1;
   const amtIdx = headers.indexOf('BillAmount') + 1;
+  const agreementIdx = headers.indexOf('AgreementNo') + 1;
+  const gstIdx = headers.indexOf('GSTAmount') + 1;
+  const statusIdx = headers.indexOf('Status') + 1;
+  const creditedAmountIdx = headers.indexOf('AmountCredited') + 1;
+  const creditedDateIdx = headers.indexOf('CreditedDate') + 1;
+  const gstMonthIdx = headers.indexOf('GSTFilingMonth') + 1;
+  const invoiceIdx = headers.indexOf('InvoiceNo') + 1;
   const updatedIdx = headers.indexOf('UpdatedAt') + 1;
+  const attachmentsIdx = headers.indexOf('Attachments') + 1;
 
   if (dateIdx > 0 && data.date) sheet.getRange(found.rowIndex, dateIdx).setValue(data.date);
   if (spmIdx > 0 && data.spmCenter !== undefined) sheet.getRange(found.rowIndex, spmIdx).setValue(data.spmCenter);
   if (countIdx > 0 && data.totalTransformers !== undefined) sheet.getRange(found.rowIndex, countIdx).setValue(data.totalTransformers);
   if (amtIdx > 0 && data.billAmount !== undefined) sheet.getRange(found.rowIndex, amtIdx).setValue(data.billAmount);
+  if (agreementIdx > 0 && data.agreementNo !== undefined) sheet.getRange(found.rowIndex, agreementIdx).setValue(data.agreementNo);
+  if (gstIdx > 0 && data.gstAmount !== undefined) sheet.getRange(found.rowIndex, gstIdx).setValue(data.gstAmount);
+  if (statusIdx > 0 && data.status !== undefined) sheet.getRange(found.rowIndex, statusIdx).setValue(data.status);
+  if (creditedAmountIdx > 0 && data.amountCredited !== undefined) sheet.getRange(found.rowIndex, creditedAmountIdx).setValue(data.amountCredited);
+  if (creditedDateIdx > 0 && data.creditedDate !== undefined) sheet.getRange(found.rowIndex, creditedDateIdx).setValue(data.creditedDate);
+  if (gstMonthIdx > 0 && data.gstFilingMonth !== undefined) sheet.getRange(found.rowIndex, gstMonthIdx).setValue(data.gstFilingMonth);
+  if (invoiceIdx > 0 && data.invoiceNo !== undefined) sheet.getRange(found.rowIndex, invoiceIdx).setValue(data.invoiceNo);
   if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
+  if (attachmentsIdx > 0 && Array.isArray(data.attachments) && data.attachments.some(attachment => attachment && attachment.dataUrl)) {
+    const attachments = saveRecordAttachments_(data.attachments, 'D.S. Transformer Bill Attachments');
+    sheet.getRange(found.rowIndex, attachmentsIdx).setValue(JSON.stringify(attachments));
+  }
 
   return getBillBySapNo(sapNo);
 }
@@ -819,6 +2962,8 @@ function deleteBill(sapNo) {
 // ============ QUOTATION FUNCTIONS ============
 
 function initializeQuotationSheets() {
+  initializeDropdownDefaults_();
+  const dropdownDefaults = getDropdownDefaults_();
   const settingsSheet = initializeSheet(SHEET_NAMES.QUOTATION_SETTINGS, SHEET_HEADERS['Quotation Settings']);
   const configuredSettings = {};
   getSheetData(SHEET_NAMES.QUOTATION_SETTINGS).forEach(row => {
@@ -842,8 +2987,8 @@ function initializeQuotationSheets() {
       defaultRateMap[row[0]][row[1]] = row[2];
     });
     const initialRates = [];
-    QUOTATION_CAPACITIES.forEach(capacity => {
-      QUOTATION_SERVICES.forEach(service => {
+    dropdownDefaults.capacities.forEach(capacity => {
+      dropdownDefaults.services.forEach(service => {
         const rate = defaultRateMap[capacity] && defaultRateMap[capacity][service] !== undefined
           ? defaultRateMap[capacity][service]
           : '';
@@ -859,6 +3004,7 @@ function initializeQuotationSheets() {
 
 function getQuotationConfig() {
   initializeQuotationSheets();
+  const dropdownDefaults = getDropdownDefaults_();
   const settings = {};
   getSheetData(SHEET_NAMES.QUOTATION_SETTINGS).forEach(row => {
     if (row.Setting) settings[String(row.Setting)] = String(row.Value || '');
@@ -878,11 +3024,17 @@ function getQuotationConfig() {
     status: 'SUCCESS',
     data: {
       settings,
-      capacities: QUOTATION_CAPACITIES,
-      services: QUOTATION_SERVICES,
+      capacities: dropdownDefaults.capacities,
+      makes: dropdownDefaults.makes,
+      spmCenters: dropdownDefaults.spmCenters,
+      services: dropdownDefaults.services,
       rates
     }
   };
+}
+
+function getDropdownDefaults() {
+  return { status: 'SUCCESS', data: getDropdownDefaults_() };
 }
 
 function getAllQuotations() {
@@ -921,6 +3073,9 @@ function getAllQuotations() {
       fileUrl: String(row.FileUrl || row.PdfUrl || ''),
       fileId: String(row.FileId || ''),
       pdfUrl: String(row.PdfUrl || ''),
+      documentGroupId: String(row.DocumentGroupId || ''),
+      groupPosition: Number(row.GroupPosition || 1),
+      groupCount: Number(row.GroupCount || 1),
       createdAt: String(row.CreatedAt || ''),
       updatedAt: String(row.UpdatedAt || '')
     };
@@ -947,14 +3102,47 @@ function deleteQuotation(quotationNo) {
     const fileIdIndex = found.headers.indexOf('FileId');
     const fileUrlIndex = found.headers.indexOf('FileUrl');
     const pdfUrlIndex = found.headers.indexOf('PdfUrl');
+    const groupIdIndex = found.headers.indexOf('DocumentGroupId');
     const storedFileId = fileIdIndex >= 0 ? String(found.data[fileIdIndex] || '') : '';
     const fileUrl = fileUrlIndex >= 0 ? found.data[fileUrlIndex] : '';
     const pdfUrl = pdfUrlIndex >= 0 ? found.data[pdfUrlIndex] : '';
     const fileId = storedFileId || quotationDriveFileId_(fileUrl || pdfUrl);
-    if (fileId) DriveApp.getFileById(fileId).setTrashed(true);
-
-    getOrCreateSheet(SHEET_NAMES.QUOTATIONS).deleteRow(found.rowIndex);
-    return { status: 'SUCCESS', message: 'Quotation deleted successfully.' };
+    const groupId = groupIdIndex >= 0 ? String(found.data[groupIdIndex] || '') : '';
+    const rows = groupId
+      ? getSheetData(SHEET_NAMES.QUOTATIONS)
+        .map((row, index) => ({ row, rowIndex: index + 2 }))
+        .filter(item => String(item.row.DocumentGroupId || '') === groupId)
+      : [{ row: null, rowIndex: found.rowIndex }];
+    const sheet = getOrCreateSheet(SHEET_NAMES.QUOTATIONS);
+    const lastRow = sheet.getLastRow();
+    const lastColumn = sheet.getLastColumn();
+    const previousValues = lastRow > 0 && lastColumn > 0
+      ? sheet.getRange(1, 1, lastRow, lastColumn).getValues()
+      : [];
+    try {
+      rows.map(item => item.rowIndex).sort((left, right) => right - left).forEach(rowIndex => sheet.deleteRow(rowIndex));
+    } catch (error) {
+      if (previousValues.length > 0) {
+        sheet.clearContents();
+        sheet.getRange(1, 1, previousValues.length, previousValues[0].length).setValues(previousValues);
+      }
+      throw error;
+    }
+    let fileCleanupWarning = '';
+    if (fileId) {
+      try {
+        DriveApp.getFileById(fileId).setTrashed(true);
+      } catch (error) {
+        fileCleanupWarning = ' The document was removed, but its old Drive file could not be moved to trash.';
+        console.warn(`Quotation file cleanup failed for ${fileId}: ${error.message}`);
+      }
+    }
+    return {
+      status: 'SUCCESS',
+      message: rows.length > 1
+        ? `Deleted the linked ${rows.length}-document group.${fileCleanupWarning}`
+        : `Quotation deleted successfully.${fileCleanupWarning}`
+    };
   } finally {
     lock.releaseLock();
   }
@@ -1013,7 +3201,7 @@ function requireA4QuotationPresentation_(presentation) {
   return { width, height };
 }
 
-function addQuotationSignatory_(slide, left, top, width, height) {
+function addQuotationSignatory_(slide, left, top, width, height, fontSize) {
   const signatory = slide.insertTextBox(
     'Digitally Authorized Signatory\nM/s D.S. Transformers &\nElectrical Contractor',
     left,
@@ -1024,21 +3212,21 @@ function addQuotationSignatory_(slide, left, top, width, height) {
   const text = signatory.getText();
   text.getTextStyle()
     .setFontFamily('Arial')
-    .setFontSize(8)
+    .setFontSize(fontSize || 8)
     .setForegroundColor('#172033')
     .setBold(true);
   text.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.END);
   return signatory;
 }
 
-function addQuotationInfoBox_(slide, heading, details, left, top, width, height) {
+function addQuotationInfoBox_(slide, heading, details, left, top, width, height, isBill) {
   const box = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, left, top, width, height);
   box.getFill().setSolidFill('#F8FAFC');
   box.getBorder().getLineFill().setSolidFill('#CBD5E1');
   box.getBorder().setWeight(1);
 
-  setQuotationText_(slide, heading, left + 9, top + 7, width - 18, 15, 8, true);
-  setQuotationText_(slide, details, left + 9, top + 25, width - 18, height - 32, 8, false);
+  setQuotationText_(slide, heading, left + 7, top + 5, width - 14, 13, 8, true);
+  setQuotationText_(slide, details, left + 7, top + 18, width - 14, height - 21, 7, false);
 }
 
 function setQuotationTableColumnWidths_(presentationId, layout) {
@@ -1099,7 +3287,9 @@ function setQuotationTableColumnWidths_(presentationId, layout) {
     const nextTranslateY = Number(transform.translateY || 0) + tableHeightDelta;
     const nextBottom = nextTranslateY + Number(element.size.height.magnitude) * scaleY;
     if (objectId === layout.signatoryObjectId && nextBottom > layout.maximumContentBottom) {
-      throw new Error('The bill content exceeds the available A4 page space after the service table expands. Shorten long service descriptions or bill terms and try again.');
+      throw new Error(layout.isBill
+        ? 'The service table expanded beyond the available A4 bill layout. Shorten service descriptions or reduce service rows.'
+        : 'The service table expanded beyond the available A4 quotation layout. Shorten service descriptions or reduce service rows.');
     }
     moveRequests.push({
       updatePageElementTransform: {
@@ -1193,16 +3383,16 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const margin = Math.min(42, pageWidth * 0.07);
   const contentWidth = pageWidth - margin * 2;
   const top = Math.min(140, pageHeight * 0.166);
-  const signatoryHeight = Math.min(38, Math.max(32, pageHeight * 0.045));
-  const termsHeight = Math.min(90, Math.max(65, pageHeight * 0.107));
-  const closingGap = isBill ? 4 : Math.min(6, pageHeight * 0.008);
-  const bottomMargin = isBill ? 42 : Math.min(90, Math.max(42, pageHeight * 0.107));
+  const signatoryHeight = isBill ? 30 : 28;
+  const termsHeight = isBill ? 62 : 58;
+  const closingGap = 4;
+  const bottomMargin = isBill ? 42 : 150;
   const signatoryTop = pageHeight - bottomMargin - signatoryHeight;
   const termsTop = signatoryTop - closingGap - termsHeight;
   const date = quotationDateLabel_(quotation.quotationDate);
   const subject = `${isBill ? 'Bill' : 'Quotation'} for ${quotation.transformerCapacity} Transformer${quotation.transformerMake ? ` - ${quotation.transformerMake}` : ''}`;
 
-  setQuotationText_(slide, isBill ? 'SERVICE BILL' : 'QUOTATION', margin, top, contentWidth, 26, 18, true, SlidesApp.ParagraphAlignment.CENTER);
+  setQuotationText_(slide, isBill ? 'SERVICE BILL' : 'QUOTATION', margin, top, contentWidth, 26, 20, true, SlidesApp.ParagraphAlignment.CENTER);
   setQuotationText_(
     slide,
     `${isBill ? 'Bill' : 'Quotation'} No.: ${quotation.quotationNo}  |  Date: ${date}`,
@@ -1210,17 +3400,17 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     top + 28,
     contentWidth,
     18,
-    9,
+    10,
     true,
     SlidesApp.ParagraphAlignment.CENTER
   );
 
   const subjectTop = top + 53;
-  setQuotationText_(slide, subject, margin, subjectTop, contentWidth, 19, 10, true);
+  setQuotationText_(slide, subject, margin, subjectTop, contentWidth, 19, 11, true);
   const boxTop = subjectTop + 24;
   const boxGap = 12;
   const boxWidth = (contentWidth - boxGap) / 2;
-  const boxHeight = Math.min(90, Math.max(74, pageHeight * 0.107));
+  const boxHeight = 74;
   addQuotationInfoBox_(
     slide,
     'CUSTOMER DETAILS',
@@ -1234,7 +3424,8 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     margin,
     boxTop,
     boxWidth,
-    boxHeight
+    boxHeight,
+    isBill
   );
   addQuotationInfoBox_(
     slide,
@@ -1248,16 +3439,18 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     margin + boxWidth + boxGap,
     boxTop,
     boxWidth,
-    boxHeight
+    boxHeight,
+    isBill
   );
 
-  const serviceTop = boxTop + boxHeight + 11;
-  setQuotationText_(slide, isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', margin, serviceTop, contentWidth, 18, 10, true);
-  const tableTop = serviceTop + 21;
-  const billTotalsHeight = 58;
-  const billTableTotalsGap = 4;
-  const billTermsGap = 4;
-  const billHeadingAndWarrantyHeight = 43;
+  const serviceTop = boxTop + boxHeight + 7;
+  setQuotationText_(slide, isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', margin, serviceTop, contentWidth, 18, 11, true);
+  const tableTop = serviceTop + 18;
+  const billTotalsHeight = 52;
+  const billTableTotalsGap = 0;
+  const tableReflowAllowance = 120;
+  const billTermsGap = 5;
+  const billHeadingAndWarrantyHeight = 38;
   const billTerms = isBill
     ? String(quotation.terms || '').trim() || [
       '1. This bill covers only the services and materials expressly listed above.',
@@ -1268,30 +3461,30 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       '6. This document is subject to applicable laws and the jurisdiction agreed between the parties.'
     ].join('\n')
     : '';
-  const termsLineCapacity = Math.max(40, Math.floor(contentWidth / 4));
+  const termsLineCapacity = Math.max(40, Math.floor(contentWidth / 3.2));
   const termsLineCount = isBill
     ? billTerms.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / termsLineCapacity)), 0)
     : 0;
-  const billTermsTextHeight = Math.max(18, termsLineCount * 9);
+  const billTermsTextHeight = Math.max(18, termsLineCount * 6.5);
   const tableBottom = isBill
     ? signatoryTop - closingGap - billTermsTextHeight - billHeadingAndWarrantyHeight - billTermsGap - billTotalsHeight - billTableTotalsGap
     : termsTop - 10;
-  const rowHeight = isBill ? 14.25 : 16.5;
+  const rowHeight = 14;
   const tableHeight = (quotation.lineItems.length + 1) * rowHeight;
   if (tableTop + tableHeight > tableBottom) {
     throw new Error('There are too many service rows to fit above the warranty and signatory. Remove some services and try again.');
   }
   const table = slide.insertTable(quotation.lineItems.length + 1, isBill ? 6 : 3, margin, tableTop, contentWidth, tableHeight);
   const columnWidths = isBill
-    ? [32, contentWidth - 273, 36, 40, 78, 87]
-    : [32, contentWidth - 155, 123];
+    ? [32, contentWidth - 257, 32, 36, 70, 87]
+    : [32, contentWidth - 132, 100];
 
   const headers = isBill ? ['#', 'Description of Work / Service', 'Qty', 'Unit', 'Rate (₹)', 'Amount (₹)'] : ['#', 'Description of Work / Service', 'Rate'];
   headers.forEach((header, column) => {
     const cell = table.getCell(0, column);
     cell.getText().setText(header);
     cell.getFill().setSolidFill('#1e3a5f');
-    cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(isBill ? 7.5 : 8).setForegroundColor('#ffffff').setBold(true);
+    cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(8).setForegroundColor('#ffffff').setBold(true);
     cell.getText().getParagraphStyle().setParagraphAlignment(isBill && column >= 4 ? SlidesApp.ParagraphAlignment.END : SlidesApp.ParagraphAlignment.START);
   });
 
@@ -1314,7 +3507,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     values.forEach((value, column) => {
       const cell = table.getCell(row, column);
       cell.getText().setText(value);
-      cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(isBill ? 6.5 : 7.5).setForegroundColor('#172033');
+      cell.getText().getTextStyle().setFontFamily('Arial').setFontSize(7).setForegroundColor('#172033');
       cell.getText().getParagraphStyle().setParagraphAlignment(isBill && column >= 4 ? SlidesApp.ParagraphAlignment.END : SlidesApp.ParagraphAlignment.START);
     });
   });
@@ -1323,7 +3516,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   const belowTableObjectIds = [];
   if (isBill) {
     const renderedTableHeight = table.getHeight();
-    const totalsTop = tableTop + renderedTableHeight + billTableTotalsGap;
+    const totalsTop = tableTop + renderedTableHeight + billTableTotalsGap - 8;
     const totalsPanel = slide.insertShape(
       SlidesApp.ShapeType.RECTANGLE,
       margin,
@@ -1346,7 +3539,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       margin + contentWidth * 0.55,
       totalsTop,
       contentWidth * 0.45,
-      40,
+      36,
       8,
       true,
       SlidesApp.ParagraphAlignment.END
@@ -1357,18 +3550,19 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       `Amount in words: ${indianCurrencyWords_(grandTotal)}`,
       margin,
       totalsTop,
-      contentWidth * 0.52,
+      contentWidth * 0.54,
       billTotalsHeight,
-      7.5,
+      9,
       true,
       SlidesApp.ParagraphAlignment.START
     );
     belowTableObjectIds.push(amountWordsShape.getObjectId());
     const warrantyHeadingTop = totalsTop + billTotalsHeight + billTermsGap;
-    const panelPadding = 8;
-    const warrantyTextTop = warrantyHeadingTop + 12;
-    const termsHeadingTop = warrantyTextTop + 15;
-    const termsTextTop = termsHeadingTop + 10;
+    const panelPadding = 6;
+    const warrantyHeadingTextTop = warrantyHeadingTop + 4;
+    const warrantyTextTop = warrantyHeadingTop + 13;
+    const termsHeadingTop = warrantyTextTop + 16;
+    const termsTextTop = termsHeadingTop + 9;
     const termsTextHeight = billTermsTextHeight;
     const termsPanelTop = warrantyHeadingTop - 4;
     const termsPanelHeight = termsTextTop + termsTextHeight + panelPadding - termsPanelTop;
@@ -1384,12 +3578,12 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     termsPanel.getBorder().setWeight(0.75);
     belowTableObjectIds.push(termsPanel.getObjectId());
     billSignatoryTop = termsPanelTop + termsPanelHeight + closingGap;
-    if (tableTop + renderedTableHeight > tableBottom ||
-        billSignatoryTop + signatoryHeight > pageHeight - bottomMargin) {
+    if (tableTop + renderedTableHeight > tableBottom + tableReflowAllowance ||
+        billSignatoryTop + signatoryHeight > pageHeight - 2) {
       throw new Error('There are too many service rows or terms to fit above the digital signatory. Reduce the service rows or shorten the terms.');
     }
 
-    belowTableObjectIds.push(setQuotationText_(slide, 'WARRANTY', margin + panelPadding, warrantyHeadingTop, contentWidth - panelPadding * 2, 10, 7.5, true).getObjectId());
+    belowTableObjectIds.push(setQuotationText_(slide, 'WARRANTY', margin + panelPadding, warrantyHeadingTextTop, contentWidth - panelPadding * 2, 9, 7, true).getObjectId());
     belowTableObjectIds.push(setQuotationText_(
       slide,
       quotation.warrantyMonths
@@ -1398,12 +3592,12 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       margin + panelPadding,
       warrantyTextTop,
       contentWidth - panelPadding * 2,
-      13,
-      7.5,
+      15,
+      7,
       false
     ).getObjectId());
-    belowTableObjectIds.push(setQuotationText_(slide, 'TERMS & CONDITIONS', margin + panelPadding, termsHeadingTop, contentWidth - panelPadding * 2, 10, 7.5, true).getObjectId());
-    belowTableObjectIds.push(setQuotationText_(slide, billTerms, margin + panelPadding, termsTextTop, contentWidth - panelPadding * 2, termsTextHeight, 7.5, false).getObjectId());
+    belowTableObjectIds.push(setQuotationText_(slide, 'TERMS & CONDITIONS', margin + panelPadding, termsHeadingTop, contentWidth - panelPadding * 2, 10, 7, true).getObjectId());
+    belowTableObjectIds.push(setQuotationText_(slide, billTerms, margin + panelPadding, termsTextTop, contentWidth - panelPadding * 2, termsTextHeight, 6.5, false).getObjectId());
   } else {
     const termsShape = setQuotationText_(
       slide,
@@ -1421,7 +3615,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
       termsTop,
       contentWidth,
       termsHeight,
-      7.5,
+      6.5,
       false
     );
     belowTableObjectIds.push(termsShape.getObjectId());
@@ -1431,7 +3625,8 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     margin + contentWidth * 0.48,
     billSignatoryTop,
     contentWidth * 0.52,
-    signatoryHeight
+    signatoryHeight,
+    9
   );
   belowTableObjectIds.push(signatory.getObjectId());
   return {
@@ -1440,7 +3635,8 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     initialTableHeight: table.getHeight(),
     belowTableObjectIds,
     signatoryObjectId: signatory.getObjectId(),
-    maximumContentBottom: (pageHeight - bottomMargin) * 12700
+    isBill,
+    maximumContentBottom: (pageHeight - 2) * 12700
   };
 }
 
@@ -1506,6 +3702,7 @@ function writeQuotationForm_(quotation) {
     CustomerAddress: quotation.customerAddress,
     ContactPerson: quotation.contactPerson,
     Mobile: quotation.mobile,
+    Email: quotation.email,
     TransformerMake: quotation.transformerMake,
     TransformerCapacity: quotation.transformerCapacity,
     TransformerSerialNo: quotation.transformerSerialNo,
@@ -1522,15 +3719,385 @@ function writeQuotationForm_(quotation) {
     GrandTotal: quotation.grandTotal,
     WarrantyMonths: quotation.warrantyMonths,
     Terms: quotation.terms,
+    DocumentGroupId: quotation.documentGroupId,
+    GroupPosition: quotation.groupPosition,
+    GroupCount: quotation.groupCount,
     UpdatedAt: quotation.updatedAt
   };
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
-  sheet.getRange(2, 1, 1, headers.length).setValues([headers.map(header => row[header] || '')]);
+  sheet.getRange(2, 1, 1, headers.length).setValues([headers.map(header => row[header] ?? '')]);
 }
 
 function quotationDriveFileId_(url) {
   const match = String(url || '').match(/(?:\/d\/|[?&]id=)([A-Za-z0-9_-]+)/);
   return match ? match[1] : '';
+}
+
+function quotationNumberSequence_(quotationNo, documentType) {
+  const value = String(quotationNo || '');
+  const match = documentType === 'BILL'
+    ? value.match(/^BILL\/\d{2}-\d{2}\/\d{4}-(\d+)$/)
+    : value.match(/^VST\/\d{2}-\d{2}\/\d{4}-(\d+)$/) || value.match(/^(\d+)-\d{2}-\d{2}$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function allocateQuotationNumbersLocked_(documentType, financialYear, quotationDate, count) {
+  const settings = getQuotationConfig().data.settings;
+  const startingNumber = Number(settings['Starting Quotation Number'] || 1);
+  const matchingRows = getSheetData(SHEET_NAMES.QUOTATIONS)
+    .filter(row => String(row.FinancialYear || '') === financialYear
+      && String(row.DocumentType || 'QUOTATION').toUpperCase() === documentType);
+  const largestSavedNumber = matchingRows.reduce(
+    (largest, row) => Math.max(largest, quotationNumberSequence_(row.QuotationNo, documentType)),
+    0,
+  );
+  const counterKey = `QuotationSequence:${documentType}:${financialYear}`;
+  const properties = PropertiesService.getScriptProperties();
+  let nextNumber = Math.max(
+    startingNumber,
+    largestSavedNumber + 1,
+    Number(properties.getProperty(counterKey) || startingNumber),
+  );
+  const date = Utilities.parseDate(quotationDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const dateCode = Utilities.formatDate(date, Session.getScriptTimeZone(), 'ddMM');
+  const prefix = documentType === 'BILL' ? 'BILL' : 'VST';
+  const usedNumbers = new Set(matchingRows.map(row => String(row.QuotationNo || '')));
+  const numbers = [];
+  while (numbers.length < count) {
+    const candidate = `${prefix}/${financialYear}/${dateCode}-${nextNumber}`;
+    nextNumber += 1;
+    if (!usedNumbers.has(candidate)) numbers.push(candidate);
+  }
+  properties.setProperty(counterKey, String(nextNumber));
+  return numbers;
+}
+
+function reserveQuotationNumbers(data) {
+  const documentType = String(data.documentType || 'QUOTATION').toUpperCase();
+  const financialYear = String(data.financialYear || '');
+  const quotationDate = String(data.quotationDate || '');
+  const count = Number(data.count);
+  if (documentType !== 'QUOTATION' && documentType !== 'BILL') {
+    throw new Error('Choose either a quotation or bill document.');
+  }
+  if (!/^\d{2}-\d{2}$/.test(financialYear)) {
+    throw new Error('Financial Year must use the format YY-YY.');
+  }
+  if (!Number.isInteger(count) || count < 1 || count > 2) {
+    throw new Error('A quotation or bill can reserve one or two document numbers.');
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    initializeQuotationSheets();
+    return {
+      status: 'SUCCESS',
+      data: {
+        numbers: allocateQuotationNumbersLocked_(documentType, financialYear, quotationDate, count),
+      },
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function generatedQuotationRecord_(input, outputFormat, now, groupId, groupPosition, groupCount) {
+  const documentType = String(input.documentType || 'QUOTATION').toUpperCase();
+  if (documentType !== 'QUOTATION' && documentType !== 'BILL') {
+    throw new Error('Choose either a quotation or bill document.');
+  }
+  if (!String(input.quotationNo || '').trim()) throw new Error('A reserved document number is required.');
+  if (!String(input.customerName || '').trim()) throw new Error('Customer Name is required.');
+  if (!String(input.mobile || '').trim()) throw new Error('Mobile is required.');
+  if (!QUOTATION_CAPACITIES.includes(String(input.transformerCapacity || ''))) {
+    throw new Error('Select a valid transformer capacity.');
+  }
+  if (!Array.isArray(input.lineItems) || input.lineItems.length === 0) {
+    throw new Error('Every generated document must contain at least one service.');
+  }
+
+  const seenServices = new Set();
+  const lineItems = input.lineItems.map(item => {
+    const service = String(item.service || '');
+    if (!QUOTATION_SERVICES.includes(service)) throw new Error(`Unknown quotation service: ${service}`);
+    if (seenServices.has(service)) throw new Error(`${service} can only be added once per document.`);
+    seenServices.add(service);
+    const rate = Number(item.rate);
+    if (!Number.isFinite(rate) || rate < 0) throw new Error(`Enter a valid rate for ${service}.`);
+    const lineItem = { service, description: String(item.description || service), rate };
+    if (documentType === 'BILL') {
+      const quantity = Number(item.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`Enter a quantity greater than zero for ${service}.`);
+      lineItem.quantity = quantity;
+      lineItem.unit = String(item.unit || 'unit').trim();
+      if (!lineItem.unit) throw new Error(`Enter a unit for ${service}.`);
+    }
+    return lineItem;
+  });
+  const financialYear = String(input.financialYear || '');
+  if (!/^\d{2}-\d{2}$/.test(financialYear)) throw new Error('Financial Year must use the format YY-YY.');
+  const numberPrefix = documentType === 'BILL' ? 'BILL' : 'VST';
+  if (!new RegExp(`^${numberPrefix}\\/${financialYear.replace('-', '\\-')}\\/\\d{4}-\\d+$`).test(String(input.quotationNo))) {
+    throw new Error('The generated document number does not match its document type and financial year.');
+  }
+  const subtotal = Math.round(lineItems.reduce(
+    (sum, item) => sum + (documentType === 'BILL' ? item.quantity : 1) * item.rate,
+    0,
+  ) * 100) / 100;
+  const gstApplicable = documentType === 'BILL'
+    && (input.gstApplicable === true || String(input.gstApplicable).toLowerCase() === 'true');
+  const gstRate = gstApplicable ? Number(input.gstRate || 19) : 0;
+  const gstAmount = gstApplicable ? Math.round(subtotal * gstRate) / 100 : 0;
+  const grandTotal = Math.round((subtotal + gstAmount) * 100) / 100;
+  const warrantyMonths = documentType === 'BILL' && input.warrantyMonths !== '' && input.warrantyMonths != null
+    ? Number(input.warrantyMonths)
+    : 0;
+  if (documentType === 'BILL' && (!Number.isInteger(warrantyMonths) || warrantyMonths < 0)) {
+    throw new Error('Warranty period must be a whole number of months.');
+  }
+  return {
+    ...input,
+    quotationNo: String(input.quotationNo),
+    documentType,
+    customerName: String(input.customerName).trim(),
+    customerAddress: String(input.customerAddress || '').trim(),
+    contactPerson: String(input.contactPerson || '').trim(),
+    mobile: String(input.mobile).trim(),
+    email: String(input.email || '').trim(),
+    transformerMake: String(input.transformerMake || '').trim(),
+    transformerCapacity: String(input.transformerCapacity),
+    transformerSerialNo: String(input.transformerSerialNo || '').trim(),
+    transformerLocation: String(input.transformerLocation || '').trim(),
+    quotationDate: String(input.quotationDate || new Date().toISOString().split('T')[0]),
+    financialYear,
+    outputFormat,
+    lineItems,
+    subtotal: documentType === 'BILL' ? subtotal : subtotal,
+    gstApplicable,
+    gstRate,
+    gstAmount,
+    grandTotal,
+    warrantyMonths: documentType === 'BILL' ? warrantyMonths : '',
+    terms: documentType === 'BILL' ? String(input.terms || '').trim() : '',
+    documentGroupId: groupId,
+    groupPosition,
+    groupCount,
+    createdAt: String(input.createdAt || now),
+    updatedAt: now,
+  }
+}
+
+function saveGeneratedQuotationGroup(data) {
+  initializeQuotationSheets();
+  if (!data || !Array.isArray(data.records) || data.records.length < 1 || data.records.length > 2) {
+    throw new Error('A generated quotation or bill must contain one or two numbered documents.');
+  }
+  const outputFormat = String(data.outputFormat || '').toUpperCase();
+  if (outputFormat !== 'PDF' && outputFormat !== 'PNG') throw new Error('Choose PDF or PNG output.');
+  if (data.records.length > 1 && outputFormat !== 'PDF') {
+    throw new Error('Overflow documents must be saved together as a two-page PDF.');
+  }
+  const groupId = data.records.length > 1 ? String(data.documentGroupId || '') : '';
+  if (data.records.length > 1 && !/^[A-Za-z0-9_-]{8,80}$/.test(groupId)) {
+    throw new Error('A valid linked-document group ID is required for an overflow document.');
+  }
+  const fileDataUrl = String(data.dataUrl || '');
+  if (fileDataUrl.length > 16 * 1024 * 1024) throw new Error('The generated document exceeds the upload limit.');
+  const signature = outputFormat === 'PDF'
+    ? /^data:application\/pdf;base64,([A-Za-z0-9+/=]+)$/
+    : /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/;
+  const match = fileDataUrl.match(signature);
+  if (!match) throw new Error(`The generated document is not a valid ${outputFormat} file.`);
+  const bytes = Utilities.base64Decode(match[1]);
+  if (bytes.length === 0 || bytes.length > 12 * 1024 * 1024) {
+    throw new Error('The generated file must be smaller than 12 MB.');
+  }
+  if (outputFormat === 'PDF' && Utilities.newBlob(bytes).getDataAsString().slice(0, 5) !== '%PDF-') {
+    throw new Error('The generated PDF is invalid.');
+  }
+  if (outputFormat === 'PNG' && (bytes[0] !== 137 || bytes[1] !== 80 || bytes[2] !== 78 || bytes[3] !== 71)) {
+    throw new Error('The generated PNG is invalid.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  let generatedFile = null;
+  const changedRows = [];
+  const appendedRows = [];
+  const deletedRows = [];
+  try {
+    const settings = getQuotationConfig().data.settings;
+    const sheet = initializeSheet(SHEET_NAMES.QUOTATIONS, SHEET_HEADERS.Quotations);
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    const recordsInput = data.records;
+    const now = getTimestamp();
+    const records = recordsInput.map((record, index) => generatedQuotationRecord_(
+      record,
+      outputFormat,
+      now,
+      groupId,
+      index + 1,
+      recordsInput.length,
+    ));
+    if (new Set(records.map(record => record.quotationNo)).size !== records.length) {
+      throw new Error('Each document in an overflow group must have a different number.');
+    }
+    const services = records.flatMap(record => record.lineItems.map(item => item.service));
+    if (new Set(services).size !== services.length) {
+      throw new Error('A service cannot appear in more than one document in the same linked group.');
+    }
+    if (records.some(record => record.documentType !== records[0].documentType
+        || record.financialYear !== records[0].financialYear
+        || record.customerName !== records[0].customerName
+        || record.mobile !== records[0].mobile
+        || record.quotationDate !== records[0].quotationDate)) {
+      throw new Error('Linked documents must have the same customer, date, type, and financial year.');
+    }
+
+    const replaceNumbers = Array.isArray(data.replaceQuotationNumbers)
+      ? data.replaceQuotationNumbers.map(String)
+      : [];
+    const oldRows = replaceNumbers
+      .map(number => findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', number))
+      .filter(Boolean);
+    if (replaceNumbers.length !== oldRows.length) {
+      throw new Error('One or more existing documents could not be found for regeneration.');
+    }
+    const replacingNumbers = new Set(replaceNumbers);
+    records.forEach(record => {
+      const conflict = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', record.quotationNo);
+      if (conflict && !replacingNumbers.has(record.quotationNo)) {
+        throw new Error(`Document number ${record.quotationNo} is already in use.`);
+      }
+    });
+    const storedGroupIds = [...new Set(oldRows.map(row => {
+      const index = row.headers.indexOf('DocumentGroupId');
+      return index >= 0 ? String(row.data[index] || '') : '';
+    }).filter(Boolean))];
+    if (storedGroupIds.length > 1) throw new Error('The selected documents belong to different linked groups.');
+    const existingGroupId = storedGroupIds[0] || '';
+    const expectedNumbers = existingGroupId
+      ? getSheetData(SHEET_NAMES.QUOTATIONS)
+        .filter(row => String(row.DocumentGroupId || '') === existingGroupId)
+        .map(row => String(row.QuotationNo || ''))
+      : replaceNumbers;
+    if (expectedNumbers.some(number => !replacingNumbers.has(number))) {
+      throw new Error('Edit or delete the linked group as a whole so its pages remain synchronized.');
+    }
+    const rootName = settings['Quotation Root Folder'] || 'DS Transformers';
+    const rootMatches = DriveApp.getRootFolder().getFoldersByName(rootName);
+    const rootFolder = rootMatches.hasNext() ? rootMatches.next() : DriveApp.getRootFolder().createFolder(rootName);
+    const folderName = records[0].documentType === 'BILL'
+      ? settings['Bill Folder'] || 'Service Bills'
+      : settings['Quotation Folder'] || 'Quotations';
+    const folderMatches = rootFolder.getFoldersByName(folderName);
+    const folder = folderMatches.hasNext() ? folderMatches.next() : rootFolder.createFolder(folderName);
+    const fileName = String(data.fileName || `${records[0].quotationNo}.${outputFormat.toLowerCase()}`)
+      .replace(/[^\w.-]/g, '_')
+      .slice(0, 120);
+    const mimeType = outputFormat === 'PDF' ? 'application/pdf' : 'image/png';
+    generatedFile = folder.createFile(Utilities.newBlob(bytes, mimeType, fileName));
+
+    const rowFor = record => {
+      const rowValues = {
+        QuotationNo: record.quotationNo,
+        CustomerName: record.customerName,
+        CustomerAddress: record.customerAddress,
+        ContactPerson: record.contactPerson,
+        Mobile: record.mobile,
+        Email: record.email,
+        TransformerMake: record.transformerMake,
+        TransformerCapacity: record.transformerCapacity,
+        TransformerSerialNo: record.transformerSerialNo,
+        TransformerLocation: record.transformerLocation,
+        QuotationDate: record.quotationDate,
+        FinancialYear: record.financialYear,
+        LineItems: JSON.stringify(record.lineItems),
+        Subtotal: record.subtotal,
+        PdfUrl: outputFormat === 'PDF' ? generatedFile.getUrl() : '',
+        FileUrl: generatedFile.getUrl(),
+        FileId: generatedFile.getId(),
+        OutputFormat: outputFormat,
+        CreatedAt: record.createdAt,
+        UpdatedAt: now,
+        DocumentType: record.documentType,
+        GSTApplicable: record.gstApplicable,
+        GSTRate: record.gstRate,
+        GSTAmount: record.gstAmount,
+        GrandTotal: record.grandTotal,
+        WarrantyMonths: record.warrantyMonths,
+        Terms: record.terms,
+        DocumentGroupId: groupId,
+        GroupPosition: record.groupPosition,
+        GroupCount: record.groupCount,
+      };
+      return headers.map(header => rowValues[header] === undefined ? '' : rowValues[header]);
+    };
+    const recordsByNumber = new Map(records.map(record => [record.quotationNo, record]));
+    const recordNumbers = new Set(recordsByNumber.keys());
+    oldRows
+      .filter(row => !recordNumbers.has(String(row.data[row.headers.indexOf('QuotationNo')] || '')))
+      .sort((left, right) => right.rowIndex - left.rowIndex)
+      .forEach(row => {
+        const values = sheet.getRange(row.rowIndex, 1, 1, headers.length).getValues()[0];
+        sheet.deleteRow(row.rowIndex);
+        deletedRows.push({ rowIndex: row.rowIndex, values });
+      });
+    recordsByNumber.forEach((record, number) => {
+      const existing = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', number);
+      if (existing) {
+        const previousValues = sheet.getRange(existing.rowIndex, 1, 1, headers.length).getValues()[0];
+        changedRows.push({ quotationNo: number, values: previousValues });
+        sheet.getRange(existing.rowIndex, 1, 1, headers.length).setValues([rowFor(record)]);
+      } else if (oldRows.length === 0 || records.length > oldRows.length) {
+        sheet.appendRow(rowFor(record));
+        appendedRows.push(number);
+      } else {
+        throw new Error(`Could not match document ${number} to an existing linked record.`);
+      }
+    });
+
+    writeQuotationForm_(records[0]);
+    const oldFileIds = [...new Set(oldRows.map(row => {
+      const index = row.headers.indexOf('FileId');
+      return index >= 0 ? String(row.data[index] || '') : '';
+    }).filter(id => id && id !== generatedFile.getId()))];
+    oldFileIds.forEach(fileId => {
+      try {
+        DriveApp.getFileById(fileId).setTrashed(true);
+      } catch (error) {
+        console.warn(`Old quotation file cleanup failed for ${fileId}: ${error.message}`);
+      }
+    });
+    const resultRecords = records.map(record => ({
+      ...record,
+      fileUrl: generatedFile.getUrl(),
+      fileId: generatedFile.getId(),
+      pdfUrl: outputFormat === 'PDF' ? generatedFile.getUrl() : '',
+    }));
+    return { status: 'SUCCESS', data: resultRecords };
+  } catch (error) {
+    appendedRows.forEach(number => {
+      const appended = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', number);
+      if (appended) sheet.deleteRow(appended.rowIndex);
+    });
+    deletedRows
+      .sort((left, right) => left.rowIndex - right.rowIndex)
+      .forEach(entry => {
+        sheet.insertRowBefore(entry.rowIndex);
+        sheet.getRange(entry.rowIndex, 1, 1, entry.values.length).setValues([entry.values]);
+      });
+    changedRows.forEach(entry => {
+      const existing = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', entry.quotationNo);
+      if (existing) {
+        sheet.getRange(existing.rowIndex, 1, 1, entry.values.length).setValues([entry.values]);
+      }
+    });
+    if (generatedFile) generatedFile.setTrashed(true);
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function saveQuotation(data) {
@@ -1602,27 +4169,8 @@ function saveQuotation(data) {
     const now = getTimestamp();
 
     if (!existing) {
-      const startingNumber = Number(settings['Starting Quotation Number'] || 1);
-      const allRows = getSheetData(SHEET_NAMES.QUOTATIONS);
-      const usedNumbers = allRows
-        .filter(row => String(row.FinancialYear || '') === financialYear &&
-          String(row.DocumentType || 'QUOTATION').toUpperCase() === documentType)
-        .map(row => {
-          const savedNumber = String(row.QuotationNo || '');
-          const currentFormat = savedNumber.match(/^VST\/\d{2}-\d{2}\/\d{4}-(\d+)$/);
-          const billFormat = savedNumber.match(/^BILL\/\d{2}-\d{2}\/\d{4}-(\d+)$/);
-          const legacyFormat = savedNumber.match(/^(\d+)-\d{2}-\d{2}$/);
-          return Number((documentType === 'BILL' ? billFormat : currentFormat || legacyFormat || [])[1] || 0);
-        });
-      let nextNumber = Math.max(startingNumber - 1, ...usedNumbers) + 1;
       const dateValue = String(data.quotationDate || new Date().toISOString().split('T')[0]);
-      const date = Utilities.parseDate(dateValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      const dateCode = Utilities.formatDate(date, Session.getScriptTimeZone(), 'ddMM');
-      quotationNo = `${documentType === 'BILL' ? 'BILL' : 'VST'}/${financialYear}/${dateCode}-${nextNumber}`;
-      while (findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', quotationNo)) {
-        nextNumber++;
-        quotationNo = `${documentType === 'BILL' ? 'BILL' : 'VST'}/${financialYear}/${dateCode}-${nextNumber}`;
-      }
+      quotationNo = allocateQuotationNumbersLocked_(documentType, financialYear, dateValue, 1)[0];
     }
 
     const quotation = {
@@ -1712,6 +4260,7 @@ function initializeSampleData() {
   for (const [name, headers] of Object.entries(SHEET_HEADERS)) {
     initializeSheet(name, headers);
   }
+  initializeDropdownDefaults_();
   initializeServices();
 
   // Seed sample TNotes if empty
@@ -1829,6 +4378,9 @@ function doPost(e) {
         break;
 
       // Quotations
+      case 'GET_DROPDOWN_DEFAULTS':
+        result = getDropdownDefaults();
+        break;
       case 'GET_QUOTATION_CONFIG':
         result = getQuotationConfig();
         break;
@@ -1837,6 +4389,12 @@ function doPost(e) {
         break;
       case 'GET_QUOTATION_BY_NO':
         result = getQuotationByNo(payload.quotationNo || raw.quotationNo);
+        break;
+      case 'RESERVE_QUOTATION_NUMBERS':
+        result = reserveQuotationNumbers(payload);
+        break;
+      case 'SAVE_GENERATED_QUOTATION_GROUP':
+        result = saveGeneratedQuotationGroup(payload);
         break;
       case 'SAVE_QUOTATION':
         result = saveQuotation(payload);
@@ -1882,17 +4440,44 @@ function doPost(e) {
       case 'GETTRANSFORMERBYID':
         result = getTransformerById(payload.id || raw.id);
         break;
+      case 'FIND_TRANSFORMERS_BY_IDENTITY':
+        result = {
+          status: 'SUCCESS',
+          data: findTransformersByIdentity_(payload.field, payload.value)
+        };
+        break;
       case 'ADD_TRANSFORMER':
       case 'ADDTRANSFORMER':
         result = addTransformer(payload);
+        break;
+      case 'ADD_TRANSFORMERS':
+        result = addTransformers(payload.transformers);
         break;
       case 'UPDATE_TRANSFORMER':
       case 'UPDATETRANSFORMER':
         result = updateTransformer(payload.id || raw.id, payload);
         break;
+      case 'DELETE_TRANSFORMER':
+      case 'DELETETRANSFORMER':
+        result = deleteTransformer(payload.id || raw.id);
+        break;
       case 'UPDATE_TRANSFORMER_STATUS':
       case 'UPDATETRANSFORMERSTATUS':
-        result = updateTransformerStatus(payload.id || raw.id, payload.status || raw.status);
+        result = updateTransformerStatus(
+          payload.id || raw.id,
+          payload.status || raw.status,
+          payload.assessmentDetails || raw.assessmentDetails,
+          payload.backward || raw.backward
+        );
+        break;
+      case 'UPDATE_TRANSFORMER_ASSESSMENT':
+        result = updateTransformerAssessment(
+          payload.id || raw.id,
+          payload.assessmentDetails || raw.assessmentDetails
+        );
+        break;
+      case 'DELETE_TRANSFORMER_ASSESSMENT':
+        result = deleteTransformerAssessment(payload.id || raw.id);
         break;
       case 'DELIVER_TRANSFORMER':
       case 'DELIVERTRANSFORMER':
@@ -1901,6 +4486,9 @@ function doPost(e) {
       case 'BILL_TRANSFORMER':
       case 'BILLTRANSFORMER':
         result = billTransformer(payload.id || raw.id, payload.sapNo || raw.sapNo);
+        break;
+      case 'BILL_TRANSFORMERS':
+        result = billTransformers(payload.transformerIds, payload.sapNo);
         break;
       case 'GET_TRANSFORMERS_SUMMARY':
       case 'GETTRANSFORMERSSUMMARY':
@@ -1916,6 +4504,15 @@ function doPost(e) {
       case 'GETTNOTEBYID':
         result = getTNoteById(payload.id || raw.id);
         break;
+      case 'LINK_TNOTE_TRANSFORMER':
+        result = linkTNoteTransformer(payload.tNoteId, payload.transformerId, payload.intakeType);
+        break;
+      case 'UPDATE_TNOTE_TRANSFORMER_VISIT_STATUS':
+        result = updateTNoteTransformerVisitStatus(payload.tNoteId, payload.transformerId, payload.visitStatus);
+        break;
+      case 'UNLINK_TNOTE_TRANSFORMER':
+        result = unlinkTNoteTransformer(payload.tNoteId, payload.transformerId);
+        break;
       case 'ADD_TNOTE':
       case 'ADDTNOTE':
         result = addTNote(payload);
@@ -1923,6 +4520,12 @@ function doPost(e) {
       case 'UPDATE_TNOTE':
       case 'UPDATETNOTE':
         result = updateTNote(payload.id || raw.id, payload);
+        break;
+      case 'ADD_TNOTE_ATTACHMENTS':
+        result = addTNoteAttachments(payload.id || raw.id, payload.attachments);
+        break;
+      case 'DELETE_TNOTE_ATTACHMENT':
+        result = deleteTNoteAttachment(payload.id || raw.id, payload.url);
         break;
       case 'DELETE_TNOTE':
       case 'DELETETNOTE':
@@ -1945,6 +4548,21 @@ function doPost(e) {
       case 'UPDATE_DC':
       case 'UPDATEDC':
         result = updateDC(payload.dcNo || raw.dcNo, payload);
+        break;
+      case 'MARK_DC_DELIVERED':
+        result = markDCDelivered_(payload.dcNo, payload.attachments);
+        break;
+      case 'SAVE_GENERATED_DC_PDF':
+        result = saveGeneratedDCChallanPdf_(payload.dcNo, payload.fileName, payload.dataUrl);
+        break;
+      case 'ADD_TRANSFORMER_TO_DC':
+        result = updateDCTransformerAssignment_(payload.dcNo, payload.transformerId, true);
+        break;
+      case 'ADD_TRANSFORMERS_TO_DC_BATCH':
+        result = addTransformersToDCBatch_(payload.dcNo, payload.transformerIds);
+        break;
+      case 'REMOVE_TRANSFORMER_FROM_DC':
+        result = updateDCTransformerAssignment_(payload.dcNo, payload.transformerId, false);
         break;
       case 'DELETE_DC':
       case 'DELETEDC':
@@ -1971,6 +4589,50 @@ function doPost(e) {
       case 'DELETE_BILL':
       case 'DELETEBILL':
         result = deleteBill(payload.sapNo || raw.sapNo);
+        break;
+
+      // Employees, attendance, and salaries
+      case 'GET_EMPLOYEES':
+        result = getAllEmployees();
+        break;
+      case 'GET_EMPLOYEE_BY_ID':
+        result = getEmployeeById(payload.id || raw.id);
+        break;
+      case 'SAVE_EMPLOYEE':
+        result = saveEmployee(payload);
+        break;
+      case 'GET_ATTENDANCE':
+        result = getAttendance(payload.month || raw.month);
+        break;
+      case 'GET_EMPLOYEE_ATTENDANCE':
+        result = getEmployeeAttendance(payload.employeeId || raw.employeeId, payload.month || raw.month);
+        break;
+      case 'CLOCK_ATTENDANCE':
+        result = clockAttendance(payload);
+        break;
+      case 'MARK_EMPLOYEE_LEAVE':
+        result = markEmployeeLeave(payload);
+        break;
+      case 'CLEAR_EMPLOYEE_LEAVE':
+        result = clearEmployeeLeave(payload);
+        break;
+      case 'GET_HOLIDAYS':
+        result = getHolidays(payload.month || raw.month);
+        break;
+      case 'ADD_HOLIDAY':
+        result = addHoliday(payload);
+        break;
+      case 'DELETE_HOLIDAY':
+        result = deleteHoliday(payload.id || raw.id);
+        break;
+      case 'GET_SALARIES':
+        result = getSalaries(payload.month || raw.month);
+        break;
+      case 'GENERATE_SALARY':
+        result = generateSalary(payload.employeeId || raw.employeeId, payload.month || raw.month);
+        break;
+      case 'UPDATE_SALARY_STATUS':
+        result = updateSalaryStatus(payload.id || raw.id, payload.status, payload.receivedAt || raw.receivedAt);
         break;
 
       // Initializer

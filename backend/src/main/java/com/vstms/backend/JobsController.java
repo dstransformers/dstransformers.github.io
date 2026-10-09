@@ -16,7 +16,6 @@ import java.util.HashMap;
  */
 @RestController
 @RequestMapping("/api/jobs")
-@CrossOrigin(origins = "*")
 public class JobsController {
   
   @Autowired
@@ -96,4 +95,3 @@ public class JobsController {
   }
 
 }
-

@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { auth, firebaseConfigured } from './firebase';
+import { publicApiFetch } from './api';
+import { hideLoading, showLoading } from './globalLoading';
 import './LandingPage.css';
 
 export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashboard }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
-  const [loginUsername, setLoginUsername] = useState('admin');
-  const [loginPassword, setLoginPassword] = useState('admin');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -22,9 +27,55 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
   });
   const [quotationPhotos, setQuotationPhotos] = useState([]);
   const quotationPhotoInput = useRef(null);
+  const [dropdownDefaults, setDropdownDefaults] = useState({
+    capacities: [],
+    makes: [],
+    services: [],
+  });
+  const [dropdownDefaultsLoading, setDropdownDefaultsLoading] = useState(true);
+  const [dropdownDefaultsError, setDropdownDefaultsError] = useState('');
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteSuccess, setQuoteSuccess] = useState('');
   const [quoteError, setQuoteError] = useState('');
+
+  useEffect(() => {
+    if (!mobileNavOpen) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDropdownDefaults = async () => {
+      try {
+        const response = await publicApiFetch('/api/defaults');
+        if (!response.ok) throw new Error(`Unable to load form options (${response.status})`);
+        const result = await response.json();
+        if (result.status !== 'SUCCESS' || !result.data) {
+          throw new Error(result.message || 'Unable to load form options');
+        }
+        if (!cancelled) {
+          setDropdownDefaults({
+            capacities: Array.isArray(result.data.capacities) ? result.data.capacities : [],
+            makes: Array.isArray(result.data.makes) ? result.data.makes : [],
+            services: Array.isArray(result.data.services) ? result.data.services : [],
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDropdownDefaultsError(error instanceof Error ? error.message : 'Unable to load form options');
+        }
+      } finally {
+        if (!cancelled) setDropdownDefaultsLoading(false);
+      }
+    };
+    loadDropdownDefaults();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!showQuotationModal) return undefined;
@@ -42,28 +93,87 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     };
   }, [showQuotationModal]);
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoginError('');
     setLoginLoading(true);
 
-    setTimeout(() => {
-      if (loginUsername === 'admin' && loginPassword === 'admin') {
-        setShowLoginModal(false);
-        onAdminLogin();
-      } else {
-        setLoginError('Invalid credentials. Default is admin / admin');
-      }
+    if (!firebaseConfigured || !auth) {
+      setLoginError('Admin sign-in is not configured yet. Please contact the system administrator.');
       setLoginLoading(false);
-    }, 300);
+      return;
+    }
+
+    showLoading();
+    try {
+      await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      setShowLoginModal(false);
+      onAdminLogin();
+    } catch (error) {
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        ? error.code
+        : '';
+      const messages = {
+        'auth/invalid-credential': 'Firebase rejected these credentials. Check the email and password, and confirm this account exists in the configured Firebase project.',
+        'auth/user-not-found': 'No Firebase Authentication account was found for this email in the configured project.',
+        'auth/wrong-password': 'The password was not accepted. Check it or reset the account password in Firebase Authentication.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/user-disabled': 'This Firebase Authentication account is disabled. Enable it in Firebase Authentication or contact the administrator.',
+        'auth/operation-not-allowed': 'Email/password sign-in is disabled. Enable the Email/Password provider in Firebase Authentication.',
+        'auth/too-many-requests': 'Firebase temporarily blocked sign-in attempts. Wait before trying again or reset the account password.',
+        'auth/network-request-failed': 'A network error interrupted sign-in. Check your connection and try again.',
+      };
+      setLoginError(messages[errorCode] || `Sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase account and provider settings.`);
+    } finally {
+      setLoginLoading(false);
+      hideLoading();
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoginError('');
+    setLoginLoading(true);
+
+    if (!firebaseConfigured || !auth) {
+      setLoginError('Admin sign-in is not configured yet. Please contact the system administrator.');
+      setLoginLoading(false);
+      return;
+    }
+
+    showLoading();
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      setShowLoginModal(false);
+      onAdminLogin();
+    } catch (error) {
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        ? error.code
+        : '';
+      const messages = {
+        'auth/unauthorized-domain': 'This website domain is not authorized in Firebase. Add it under Authentication → Settings → Authorized domains.',
+        'auth/operation-not-allowed': 'Google sign-in is disabled. Enable the Google provider under Firebase Authentication → Sign-in method.',
+        'auth/popup-blocked': 'The browser blocked the Google sign-in popup. Allow popups for this site and try again.',
+        'auth/popup-closed-by-user': 'The Google sign-in window was closed before sign-in finished. Try again and complete sign-in.',
+        'auth/network-request-failed': 'A network error interrupted Google sign-in. Check your connection and try again.',
+      };
+      setLoginError(messages[errorCode] || `Google sign-in failed${errorCode ? ` (${errorCode})` : ''}. Check the Firebase provider and authorized domain settings.`);
+    } finally {
+      setLoginLoading(false);
+      hideLoading();
+    }
   };
 
   const handleQuoteSubmit = async (e) => {
     e.preventDefault();
+    if (dropdownDefaultsLoading || dropdownDefaultsError) {
+      setQuoteError(dropdownDefaultsError || 'Form options are still loading. Please wait and try again.');
+      return;
+    }
     setQuoteLoading(true);
     setQuoteSuccess('');
     setQuoteError('');
 
+    showLoading();
     try {
       const attachments = await Promise.all(quotationPhotos.map((photo) => new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -76,7 +186,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
         reader.onerror = () => reject(new Error(`Unable to read ${photo.name}. Please choose the photo again.`));
         reader.readAsDataURL(photo);
       })));
-      const response = await fetch('/api/enquiries', {
+      const response = await publicApiFetch('/api/enquiries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,6 +232,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       setQuoteError(err instanceof Error ? err.message : 'Failed to submit quotation request. Please try again.');
     } finally {
       setQuoteLoading(false);
+      hideLoading();
     }
   };
 
@@ -136,16 +247,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     setShowQuotationModal(true);
   };
 
-  const toggleQuotationService = (service) => {
-    setQuotation((current) => ({
-      ...current,
-      servicesRequired: current.servicesRequired.includes(service)
-        ? current.servicesRequired.filter((selected) => selected !== service)
-        : [...current.servicesRequired, service]
-    }));
-  };
-
-  const handleQuotationPhotosChange = (event) => {
+  const handleQuotationPhotosChange = (event) =>  {
     const files = Array.from(event.target.files || []);
     const maxPhotoCount = 5;
     const maxPhotoSize = 2 * 1024 * 1024;
@@ -175,23 +277,44 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
       <header className="site-header">
         <div className="landing-container nav-wrap">
           <a href="#top" className="brand" aria-label="D.S. Transformers home">
-            <span className="brand-mark">DS</span>
+            <img
+              src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`}
+              alt="DS Transformers logo"
+              className="brand-mark"
+            />
             <span className="brand-text">
               <strong>D.S. TRANSFORMERS</strong>
               <small>Electrical Contractor & Repair Specialist</small>
             </span>
           </a>
 
-          <nav className="main-nav" aria-label="Primary navigation">
-            <a href="#services">Services</a>
-            <a href="#why-us">Why Us</a>
-            <a href="#machinery">Machinery</a>
-            <a href="#about">About</a>
-            <a href="#contact">Contact</a>
+          <button
+            type="button"
+            className="mobile-nav-toggle"
+            aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileNavOpen}
+            aria-controls="landing-primary-navigation"
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+
+          <nav
+            id="landing-primary-navigation"
+            className={`main-nav${mobileNavOpen ? ' is-open' : ''}`}
+            aria-label="Primary navigation"
+          >
+            <a href="#services" onClick={() => setMobileNavOpen(false)}>Services</a>
+            <a href="#why-us" onClick={() => setMobileNavOpen(false)}>Why Us</a>
+            <a href="#machinery" onClick={() => setMobileNavOpen(false)}>Machinery</a>
+            <a href="#about" onClick={() => setMobileNavOpen(false)}>About</a>
+            <a href="#contact" onClick={() => setMobileNavOpen(false)}>Contact</a>
           </nav>
 
           <div className="header-actions">
-            <a className="landing-btn btn-whatsapp" href="https://wa.me/919949396530" target="_blank" rel="noreferrer">
+            <a className="landing-btn btn-whatsapp" href="https://wa.me/918885250302" target="_blank" rel="noreferrer">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.771-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.074-1.926-.461-1.393-.578-2.316-1.989-2.387-2.083-.07-.095-.572-.76-.572-1.448 0-.689.362-1.028.49-1.168.129-.14.282-.175.376-.175.093 0 .188.001.27.005.087.004.204-.033.319.243.12.288.409 1.002.446 1.075.037.073.061.16.012.257-.048.098-.073.159-.145.243-.072.085-.152.189-.217.254-.073.072-.149.151-.064.297.085.146.377.623.81 1.008.558.496 1.029.65 1.175.723.146.073.232.064.318-.036.087-.1.373-.434.473-.583.1-.149.2-.124.335-.075.136.049.864.407 1.012.481.149.074.248.111.285.174.037.063.037.367-.107.772z"/>
               </svg>
@@ -217,7 +340,10 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               <button
                 type="button"
                 className="landing-btn btn-admin-login"
-                onClick={() => setShowLoginModal(true)}
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  setShowLoginModal(true);
+                }}
                 title="Admin Portal Login"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -250,7 +376,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
 
             <div className="hero-cta">
               <a className="landing-btn btn-primary" href="#quotation-form" onClick={openQuotationModal}>Request Instant Quotation</a>
-              <a className="landing-btn btn-whatsapp" href="https://wa.me/919949396530" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
+              <a className="landing-btn btn-whatsapp" href="https://wa.me/918885250302" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
             </div>
           </div>
 
@@ -443,7 +569,11 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               </header>
 
               {quoteSuccess && <div className="quote-feedback quote-feedback-success" role="status">{quoteSuccess}</div>}
-              {quoteError && <div className="quote-feedback quote-feedback-error" role="alert">{quoteError}</div>}
+              {(dropdownDefaultsError || quoteError) && (
+                <div className="quote-feedback quote-feedback-error" role="alert">
+                  {dropdownDefaultsError || quoteError}
+                </div>
+              )}
 
               <form onSubmit={handleQuoteSubmit} className="quote-form">
                 <section className="quote-form-section">
@@ -470,17 +600,33 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   <div className="quote-fields-grid">
                     <div className="quote-field">
                       <label htmlFor="quoteCapacity">Transformer Capacity</label>
-                      <select id="quoteCapacity" value={quotation.transformerCapacity} onChange={(event) => updateQuotation('transformerCapacity', event.target.value)}>
+                      <select
+                        id="quoteCapacity"
+                        value={quotation.transformerCapacity}
+                        onChange={(event) => updateQuotation('transformerCapacity', event.target.value)}
+                        disabled={dropdownDefaultsLoading || Boolean(dropdownDefaultsError)}
+                      >
                         <option value="">Select capacity</option>
-                        <option>25 kVA</option><option>50 kVA</option><option>100 kVA</option>
-                        <option>160 kVA</option><option>250 kVA</option><option>315 kVA</option>
-                        <option>500 kVA</option><option>630 kVA</option><option>1000 kVA</option>
-                        <option>1250 kVA</option><option>1600 kVA</option><option>Other</option><option>Not sure</option>
+                        {quotation.transformerCapacity && !dropdownDefaults.capacities.includes(quotation.transformerCapacity) && (
+                          <option value={quotation.transformerCapacity}>{quotation.transformerCapacity}</option>
+                        )}
+                        {dropdownDefaults.capacities.map(capacity => <option key={capacity} value={capacity}>{capacity}</option>)}
                       </select>
                     </div>
                     <div className="quote-field">
                       <label htmlFor="quoteMake">Transformer Make</label>
-                      <input id="quoteMake" type="text" placeholder="e.g. ABB, Siemens" value={quotation.transformerMake} onChange={(event) => updateQuotation('transformerMake', event.target.value)} />
+                      <select
+                        id="quoteMake"
+                        value={quotation.transformerMake}
+                        onChange={(event) => updateQuotation('transformerMake', event.target.value)}
+                        disabled={dropdownDefaultsLoading || Boolean(dropdownDefaultsError)}
+                      >
+                        <option value="">Select make</option>
+                        {quotation.transformerMake && !dropdownDefaults.makes.includes(quotation.transformerMake) && (
+                          <option value={quotation.transformerMake}>{quotation.transformerMake}</option>
+                        )}
+                        {dropdownDefaults.makes.map(make => <option key={make} value={make}>{make}</option>)}
+                      </select>
                     </div>
                   </div>
                 </section>
@@ -488,26 +634,23 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 <section className="quote-form-section">
                   <h3><span>3</span>Services required</h3>
                   <p className="quote-form-hint">Select all services that apply.</p>
-                  <div className="quote-services-grid" role="group" aria-label="Select required services">
-                    {[
-                      'Transformer Breakdown Repair',
-                      'Transformer Inspection',
-                      'Sick Transformer Repair / Restoration',
-                      'Transformer Coil Rewinding',
-                      'Transformer Oil Filtration',
-                      'Oil Leakage Rectification',
-                      'Gasket Replacement',
-                      'Annual Maintenance',
-                      'Preventive Maintenance',
-                      'Transformer Servicing',
-                      'Other'
-                    ].map((service) => (
-                      <label className={`quote-service-option${quotation.servicesRequired.includes(service) ? ' is-selected' : ''}`} key={service}>
-                        <input type="checkbox" checked={quotation.servicesRequired.includes(service)} onChange={() => toggleQuotationService(service)} />
-                        <span>{service}</span>
-                      </label>
+                  <select
+                    id="quoteServices"
+                    className="quote-services-select"
+                    multiple
+                    size={Math.min(Math.max(dropdownDefaults.services.length, 4), 8)}
+                    value={quotation.servicesRequired}
+                    onChange={(event) => updateQuotation(
+                      'servicesRequired',
+                      Array.from(event.target.selectedOptions, option => option.value)
+                    )}
+                    disabled={dropdownDefaultsLoading || Boolean(dropdownDefaultsError)}
+                    aria-label="Select required services"
+                  >
+                    {Array.from(new Set([...dropdownDefaults.services, ...quotation.servicesRequired])).map(service => (
+                      <option key={service} value={service}>{service}</option>
                     ))}
-                  </div>
+                  </select>
                 </section>
 
                 <section className="quote-form-section">
@@ -549,8 +692,8 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 </section>
 
                 <div className="quote-form-actions">
-                  <button type="submit" disabled={quoteLoading} className="landing-btn btn-primary">
-                    {quoteLoading ? 'Submitting request...' : 'Submit Quotation Request'}
+                  <button type="submit" disabled={quoteLoading || dropdownDefaultsLoading || Boolean(dropdownDefaultsError)} className="landing-btn btn-primary">
+                    Submit Quotation Request
                   </button>
                 </div>
               </form>
@@ -585,7 +728,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               <a href="#why-us">Why Choose Us</a>
               <a href="#machinery">Machinery & Facility</a>
               <a href="#quotation-form" onClick={openQuotationModal}>Request Quotation</a>
-              <a href="https://wa.me/919949396530" target="_blank" rel="noreferrer">WhatsApp Chat</a>
+              <a href="https://wa.me/918885250302" target="_blank" rel="noreferrer">WhatsApp Chat</a>
             </div>
 
             <div className="footer-col">
@@ -634,31 +777,47 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                 </svg>
               </div>
               <h3 className="admin-modal-title">VSTMS Admin Portal</h3>
-              <p className="admin-modal-subtitle">Vendor Service Transformer Management System</p>
+              <p className="admin-modal-subtitle">D.S Transformer Management System</p>
             </div>
 
             <div className="admin-modal-body">
-              <div className="admin-credential-hint">
-                <span>Default Credentials:</span>
-                <strong>Username: admin | Password: admin</strong>
-              </div>
-
               {loginError && (
                 <div className="admin-error-box">
                   {loginError}
                 </div>
               )}
 
+              <button
+                type="button"
+                className="admin-google-btn"
+                onClick={handleGoogleLogin}
+                disabled={loginLoading}
+              >
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" transform="translate(0 4)"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.75 7.18l7.73 6C44.43 37.96 46.98 31.85 46.98 24.55Z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.9 23.9 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -4)"/>
+                </svg>
+                <span>Sign in with Google</span>
+              </button>
+
+              <div className="admin-login-divider" aria-hidden="true">
+                <span>or sign in with email</span>
+              </div>
+
               <form onSubmit={handleLoginSubmit}>
                 <div className="form-field" style={{ marginBottom: '1.2rem' }}>
-                  <label>Admin Username</label>
+                  <label htmlFor="adminEmail">Admin email</label>
                   <input
-                    type="text"
+                    id="adminEmail"
+                    type="email"
                     required
                     autoFocus
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    placeholder="admin"
+                    autoComplete="username"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="name@example.com"
                   />
                 </div>
 
@@ -667,6 +826,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   <input
                     type="password"
                     required
+                    autoComplete="current-password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
@@ -678,7 +838,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
                   disabled={loginLoading}
                   className="admin-submit-btn"
                 >
-                  {loginLoading ? 'Authenticating...' : 'Sign In to Dashboard →'}
+                  Sign In to Dashboard →
                 </button>
               </form>
             </div>

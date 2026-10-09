@@ -15,15 +15,29 @@
 1. Open Google Sheet used for VSTMS
 2. Click: Extensions → Apps Script
 3. Replace code with VSTMS_GoogleAppsScript.gs content
-4. Deploy as Web App:
-   - Click "Deploy" → "New Deployment"
+4. In Apps Script, open Project Settings and enable "Show appsscript.json
+   manifest file in editor". Replace the manifest with this repository's
+   `appsscript.json`, then save both files. Its OAuth scopes are required for
+   Sheets, Drive, Slides, and external requests.
+5. In the Apps Script editor, select `authorizeVstmsAccess` and click Run.
+   Sign in as the account that owns the web app deployment and approve the
+   requested Sheets and Drive scopes. This check creates a uniquely named
+   temporary text file in Drive and immediately trashes it to verify file
+   creation permission.
+6. Deploy as Web App:
+   - Click "Deploy" → "Manage deployments" → Edit → New version
    - Type: "Web app"
-   - Execute as: "Your account"
-   - Who has access: "Anyone can access"
-5. Copy deployment URL
-6. Verify URL matches application.properties:
+   - Execute as: "Me" (the account that authorized the script)
+   - Who has access: "Anyone"
+7. Copy deployment URL
+8. Verify URL matches application.properties:
    https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec
 ```
+
+If the authorization error remains, confirm the deployed web app is configured
+to execute as the same account that granted the scopes, and that the request URL
+is the deployment whose new version was just created. Running the dropdown action
+in the editor alone does not change an existing web-app deployment.
 
 ---
 
