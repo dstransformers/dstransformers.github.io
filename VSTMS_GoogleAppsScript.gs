@@ -7,11 +7,11 @@
  *
  * Deployment:
  * 1. Open Google Sheet > Extensions > Apps Script
- * 2. Replace all code with this file
- * 3. Click Deploy > Manage deployments > Edit > New version
+ * 2. Replace the code and set appsscript.json oauthScopes from this repository
+ * 3. Run authorizeVstmsAccess() in the editor and approve the requested scopes
+ * 4. Click Deploy > Manage deployments > Edit > New version
  *    - Execute as: Me
  *    - Who has access: Anyone
- * 4. Authorize Google Drive, Google Slides, and external request access when prompted
  * 5. Enable the Google Slides API in the Apps Script project's linked Cloud project for PNG exports
  * 6. Keep the Web App URL in backend application.properties (google.apps.script.url)
  */
@@ -156,22 +156,43 @@ const DEFAULT_SERVICES = [
 
 const DEFAULT_DROPDOWN_VALUES = {
   Capacity: [
-    '25 kVA', '50 kVA', '63 kVA', '100 kVA', '160 kVA', '250 kVA',
-    '315 kVA', '500 kVA', '630 kVA', '1000 kVA', '1250 kVA', '1600 kVA',
+    '25 kVA', '63 kVA', '100 kVA', '160 kVA', '250 kVA', '315 kVA',
+    '500 kVA', '630 kVA', '750 kVA', '1000 kVA', '1250 kVA', '1600 kVA',
     'Other', 'Not sure'
   ],
-  Make: ['ABB', 'Siemens'],
-  'SPM Center': ['Warangal', 'Salem', 'Rajahmundry', 'Mysuru', 'Karimnagar'],
-  Service: Array.from(new Set([
-    ...QUOTATION_SERVICES,
-    ...DEFAULT_SERVICES.map(service => service.ServiceName),
+  Make: [
+    'Vijay', 'Venu Gopal', 'Manu', 'VVE', 'SNR', 'Bhavani',
+    'Tejas Electrical', 'ECE', 'Victory', 'Kirloskar', 'Transcon'
+  ],
+  'SPM Center': ['Madannapet', 'Saroor Nagar'],
+  Service: [
+    'Transformer Oil Filtration',
+    'Gasket Changing',
+    'Repair & Servicing of Sick DTR',
+    'New Breather',
+    'Transformer Painting',
+    'Transformer Rewinding',
+    'Transformer Assembly',
+    'Oven / Drying Charges',
+    'New Transformer Oil',
+    'Earth Pit Testing',
+    'Oil Leakage Rectification',
+    'Transformer Inspection / Fault Assessment',
+    'Emergency Breakdown Support',
+    'Transformer Breakdown Repair',
+    'Coil Rewinding',
+    'Oil Filtration',
+    'Gasket Replacement',
+    'Testing & Diagnostics',
+    'Annual Maintenance',
+    'Custom Repairs',
     'Transformer Inspection',
     'Sick Transformer Repair / Restoration',
     'Transformer Coil Rewinding',
     'Preventive Maintenance',
     'Transformer Servicing',
     'Other'
-  ]))
+  ]
 };
 
 const QUOTATION_CAPACITIES = DEFAULT_DROPDOWN_VALUES.Capacity;
@@ -182,6 +203,24 @@ const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired',
 
 function getSpreadsheet() {
   return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function authorizeVstmsAccess() {
+  const spreadsheet = getSpreadsheet();
+  if (!spreadsheet) {
+    throw new Error('No active spreadsheet is available. Open this script from the VSTMS spreadsheet.');
+  }
+  spreadsheet.getId();
+  const driveRoot = DriveApp.getRootFolder();
+  const probeFile = driveRoot.createFile(
+    Utilities.newBlob('VSTMS Drive authorization check', 'text/plain', `vstms-drive-auth-check-${Utilities.getUuid()}.txt`)
+  );
+  try {
+    probeFile.setTrashed(true);
+  } catch (error) {
+    throw new Error(`Drive file creation succeeded, but the temporary authorization check file could not be trashed (${probeFile.getId()}): ${error.message}`);
+  }
+  return 'Sheets and Drive file creation authorization confirmed; temporary test file trashed.';
 }
 
 function getOrCreateSheet(sheetName) {
