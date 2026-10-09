@@ -91,15 +91,15 @@ function getIndexedTransformerTNoteDetails(transformer, tnotesByTransformer, tno
 }
 
 const ENQUIRY_COLUMNS = [
-  { key: 'id', value: enquiry => String(enquiry.ID || '—') },
-  { key: 'date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
-  { key: 'company', value: enquiry => enquiry.CustomerName || '—' },
-  { key: 'contact', value: enquiry => enquiry.ContactPerson || '—' },
-  { key: 'mobile', value: enquiry => enquiry.CustomerPhone || '—' },
-  { key: 'capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
-  { key: 'make', value: enquiry => enquiry.TransformerMake || '—' },
-  { key: 'services', value: enquiry => enquiry.ServicesRequired || '—' },
-  { key: 'status', value: enquiry => enquiry.Status || 'NEW' },
+  { key: 'id', label: 'ID', value: enquiry => String(enquiry.ID || '—') },
+  { key: 'date', label: 'Date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
+  { key: 'company', label: 'Company', value: enquiry => enquiry.CustomerName || '—' },
+  { key: 'contact', label: 'Contact', value: enquiry => enquiry.ContactPerson || '—' },
+  { key: 'mobile', label: 'Mobile', value: enquiry => enquiry.CustomerPhone || '—' },
+  { key: 'capacity', label: 'Capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
+  { key: 'make', label: 'Make', value: enquiry => enquiry.TransformerMake || '—' },
+  { key: 'services', label: 'Services', value: enquiry => enquiry.ServicesRequired || '—' },
+  { key: 'status', label: 'Status', value: enquiry => enquiry.Status || 'NEW' },
 ]
 
 const QUOTATION_COLUMNS = [
@@ -831,7 +831,7 @@ function App() {
     if (!authUser || !initialPageReady) return
     fetchTransformers()
     fetchSummary()
-  }, [authUser, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, typeFilter, capacityFilter])
+  }, [authUser, currentTab, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, tNoteFilter, typeFilter, capacityFilter])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1010,7 +1010,7 @@ function App() {
           .filter(Boolean)
         if (nonEmptyValues.length > 0) params.set(key, nonEmptyValues.join(','))
       })
-      const response = await apiFetch(`/api/transformers?${params.toString()}`)
+      const response = await apiFetch(`/api/transformers?${params.toString()}`, { cache: 'no-store' })
       if (!response.ok) {
         throw new Error(`Failed to fetch transformers (${response.status})`)
       }
@@ -3956,7 +3956,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             <table className="jobs-table enquiries-table">
               <thead>
                 <tr>
-                  {enquiryColumns.map(column => (
+                  {ENQUIRY_COLUMNS.map(column => (
                     <th key={column.key}>
                       <FilterHeader
                         column={column.label}

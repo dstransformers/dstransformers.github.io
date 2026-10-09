@@ -181,8 +181,9 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
     : String(input)
   const userId = auth?.currentUser?.uid || 'anonymous'
   const cacheKey = `${userId}:${allowAnonymous ? 'public' : 'admin'}:${url}`
+  const useGetCache = method === 'GET' && init.cache !== 'no-store'
 
-  if (method === 'GET') {
+  if (useGetCache) {
     await cacheReady
     let cached = getResponseCache.get(cacheKey)
     if (!cached && !persistentCacheDisabled) {
@@ -213,7 +214,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
         }
       }
     }
-  } else {
+  } else if (method !== 'GET') {
     await cacheReady
     getResponseCache.clear()
     cacheGeneration += 1
@@ -235,7 +236,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
   const requestGeneration = cacheGeneration
   try {
     const response = await withGlobalLoading(() => authenticatedFetch(input, init, allowAnonymous))
-    if (method === 'GET' && response.ok &&
+    if (useGetCache && response.ok &&
       response.headers.get('content-type')?.includes('application/json') &&
       requestGeneration === cacheGeneration) {
       const entry = {
