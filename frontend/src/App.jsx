@@ -6356,29 +6356,40 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         <td>{transformer.capacity || '—'}</td>
                         <td>{transformer.type || '—'}</td>
                         <td>
-                          <span className={`tag tag--${(transformer.status || '').toLowerCase().replace(/\s+/g, '-')}`}>{transformer.status || '—'}</span>
-                          {['Recieved', 'Assesment', 'Repair In Progress'].includes(transformer.status) && (
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--small tnote-next-status"
-                              onClick={() => moveToNextStage(transformer)}
-                              disabled={!hasValidTransformerId(transformer)}
-                              title={`Advance transformer status to ${getNextTransformerStage(transformer)}`}
-                            >
-                              {getNextTransformerStage(transformer)}
-                            </button>
-                          )}
-                          {getPreviousTransformerStage(transformer) && (
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--small tnote-next-status"
-                              onClick={() => moveToPreviousStage(transformer)}
-                              disabled={!hasValidTransformerId(transformer)}
-                              title={`Move transformer status back to ${getPreviousTransformerStage(transformer)}`}
-                            >
-                              Back to {getPreviousTransformerStage(transformer)}
-                            </button>
-                          )}
+                          <div className="tnote-status-control">
+                            <div className="tnote-current-status">
+                              <span>Current status</span>
+                              <span className={`tag tag--${(transformer.status || '').toLowerCase().replace(/\s+/g, '-')}`}>{transformer.status || '—'}</span>
+                            </div>
+                            <div className="tnote-status-controls">
+                              {getPreviousTransformerStage(transformer) && (
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--small tnote-status-button"
+                                  onClick={() => moveToPreviousStage(transformer)}
+                                  disabled={!hasValidTransformerId(transformer)}
+                                  title={`Move transformer status back to ${getPreviousTransformerStage(transformer)}`}
+                                  aria-label={`Previous status: ${getPreviousTransformerStage(transformer)}`}
+                                >
+                                  <span>← Previous</span>
+                                  <strong>{getPreviousTransformerStage(transformer)}</strong>
+                                </button>
+                              )}
+                              {['Recieved', 'Assesment', 'Repair In Progress'].includes(transformer.status) && (
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--small tnote-status-button"
+                                  onClick={() => moveToNextStage(transformer)}
+                                  disabled={!hasValidTransformerId(transformer)}
+                                  title={`Advance transformer status to ${getNextTransformerStage(transformer)}`}
+                                  aria-label={`Next status: ${getNextTransformerStage(transformer)}`}
+                                >
+                                  <span>Next →</span>
+                                  <strong>{getNextTransformerStage(transformer)}</strong>
+                                </button>
+                              )}
+                            </div>
+                          </div>
                           {transformer.intakeType === 'RGP' && (
                             <div className="tnote-rgp-status">
                               <span className="tag tag--rgp">RGP · Non-billable</span>

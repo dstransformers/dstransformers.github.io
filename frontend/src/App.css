@@ -1898,9 +1898,54 @@ h1 {
   gap: 6px;
 }
 
-.tnote-next-status {
-  display: block;
-  margin-top: 6px;
+.tnote-status-control {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.tnote-current-status {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.tnote-current-status > span:first-child {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tnote-status-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tnote-status-button {
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  gap: 2px;
+  min-height: 42px;
+  padding: 6px 8px;
+  text-align: left;
+  white-space: normal;
+}
+
+.tnote-status-button > span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.tnote-status-button > strong {
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 0.76rem;
+  line-height: 1.2;
 }
 
 .tnote-empty-state {
