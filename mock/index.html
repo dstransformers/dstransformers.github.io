@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172f44">
+  <title>VSTMS · Workshop UI concept</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #172f44;
+      --ink: #172e40;
+      --muted: #71808b;
+      --copper: #b8754f;
+      --paper: #f2f4f1;
+      --line: #e3e8e3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 85% 0%, rgba(184, 117, 79, .09), transparent 35rem),
+        var(--paper);
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+    }
+    header {
+      padding: 48px max(24px, calc((100vw - 1280px) / 2)) 38px;
+      color: #fff;
+      background: linear-gradient(115deg, #172f44, #102338);
+    }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #d2a184;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.03em; }
+    header p:last-child {
+      max-width: 720px;
+      margin: 14px 0 0;
+      color: #cbd7dd;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    main { max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }
+    .notice {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 24px;
+      padding: 16px 18px;
+      border: 1px solid #e7dfd2;
+      border-radius: 14px;
+      background: #fbf8f2;
+      color: #625a4b;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .notice strong { color: var(--ink); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+    .card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(19, 43, 61, .055);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .card:hover, .card:focus-within {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 30px rgba(19, 43, 61, .11);
+    }
+    .preview {
+      display: grid;
+      min-height: 240px;
+      place-items: center;
+      padding: 12px;
+      background: linear-gradient(145deg, #f5f7f4, #edf1ed);
+    }
+    .preview img { display: block; width: 100%; max-height: 300px; object-fit: contain; }
+    .copy { padding: 18px 20px 20px; }
+    .number {
+      margin: 0 0 8px;
+      color: var(--copper);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    h2 { margin: 0; font-size: 19px; letter-spacing: -.01em; }
+    .copy p:not(.number) { margin: 8px 0 16px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .open {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      padding: 0 14px;
+      border-radius: 9px;
+      color: #fff;
+      background: var(--navy);
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .open:hover { background: #25445c; }
+    .open:focus-visible { outline: 3px solid #cf9878; outline-offset: 3px; }
+    footer { padding-top: 24px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    @media (max-width: 720px) {
+      header { padding: 34px 20px 30px; }
+      main { padding: 22px 16px 44px; }
+      .grid { grid-template-columns: 1fr; gap: 14px; }
+      .preview { min-height: 210px; }
+      .preview img { max-height: 240px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">D.S. Transformers · Product concept</p>
+    <h1>Workshop operations, made clearer.</h1>
+    <p>A premium, mobile-friendly UI concept for the existing VSTMS workflows. Open a static screen or try the clickable mobile prototype.</p>
+  </header>
+  <main>
+    <div class="notice"><span aria-hidden="true">◆</span><div><strong>Design mockups only.</strong> These standalone SVG concepts and the clickable prototype do not change or connect to the application. Workflow names and constraints are based on the existing application; confirm business-specific labels and sample values before implementation.</div></div>
+    <article class="card" style="margin-bottom:20px">
+      <div class="copy">
+        <p class="number">Interactive · Mobile</p>
+        <h2>End-to-end workflow prototype</h2>
+        <p>Tap through enquiry-to-document, TNote intake and per-transformer assessment, repaired-only DC creation and signed delivery, delivered-only billing, and employee attendance and payroll.</p>
+        <a class="open" href="mobile-prototype.html">Try the clickable mobile prototype</a>
+      </div>
+    </article>
+    <section class="grid" aria-label="UI mockup screens">
+      <article class="card">
+        <a class="preview" href="00-dashboard.svg" aria-label="Open dashboard mockup">
+          <img src="00-dashboard.svg" alt="Dashboard concept with received TNotes, enquiry count, and workshop overview">
+        </a>
+        <div class="copy"><p class="number">00 · Home</p><h2>Workshop dashboard</h2><p>Received TNotes for quick assessment, private-order activity, notifications, and everyday shortcuts.</p><a class="open" href="00-dashboard.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="01-private-orders.svg" aria-label="Open private orders mockup">
+          <img src="01-private-orders.svg" alt="Private order enquiry inbox and quotation composer">
+        </a>
+        <div class="copy"><p class="number">01 · Private orders</p><h2>Enquiries to quotation</h2><p>Enquiry triage, customer details, quote composition, tax, document generation, and follow-up actions.</p><a class="open" href="01-private-orders.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="02-tgspdcl-tnotes.svg" aria-label="Open TNote mockup">
+          <img src="02-tgspdcl-tnotes.svg" alt="TGSPDCL TNote register and transformer intake">
+        </a>
+        <div class="copy"><p class="number">02 · TGSPDCL intake</p><h2>TNotes &amp; transformer intake</h2><p>One SPM Center per TNote, up to ten transformers per note, attachment handling, and a focused received queue.</p><a class="open" href="02-tgspdcl-tnotes.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="03-transformer-assessment.svg" aria-label="Open transformer assessment mockup">
+          <img src="03-transformer-assessment.svg" alt="Transformer-level assessment form and repair progression">
+        </a>
+        <div class="copy"><p class="number">03 · Workshop</p><h2>Transformer assessment</h2><p>Independent transformer status, inspection details, repair round history, and the path to Repaired.</p><a class="open" href="03-transformer-assessment.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="04-delivery-challans.svg" aria-label="Open delivery challan mockup">
+          <img src="04-delivery-challans.svg" alt="Delivery challan creation and signed delivery proof">
+        </a>
+        <div class="copy"><p class="number">04 · Dispatch</p><h2>Delivery challans</h2><p>Select Repaired units from one center, generate the DC, then record signed proof before delivery status changes.</p><a class="open" href="04-delivery-challans.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="05-government-billing.svg" aria-label="Open government billing mockup">
+          <img src="05-government-billing.svg" alt="TGSPDCL bill register and bill lifecycle">
+        </a>
+        <div class="copy"><p class="number">05 · Finance</p><h2>TGSPDCL government bills</h2><p>Bill only delivered, unbilled units; capture SAP and agreement references, attachments, receipts, and GST filing.</p><a class="open" href="05-government-billing.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="06-employees-attendance-payroll.svg" aria-label="Open employees and payroll mockup">
+          <img src="06-employees-attendance-payroll.svg" alt="Employee roster, attendance calendar, and salary management">
+        </a>
+        <div class="copy"><p class="number">06 · People</p><h2>Employees, attendance &amp; salary</h2><p>Employee records, quick clock actions, monthly attendance and leave, shared holidays, payroll, and exports.</p><a class="open" href="06-employees-attendance-payroll.svg">Open full screen</a></div>
+      </article>
+      <article class="card">
+        <a class="preview" href="07-mobile-workflows.svg" aria-label="Open mobile workflow mockup">
+          <img src="07-mobile-workflows.svg" alt="Four mobile screens for TNotes, assessment, quotations, and attendance">
+        </a>
+        <div class="copy"><p class="number">07 · Mobile</p><h2>Mobile workflow storyboard</h2><p>One-handed access to received TNotes, assessment, private quotations, and employee clock in/out.</p><a class="open" href="07-mobile-workflows.svg">Open full screen</a></div>
+      </article>
+    </section>
+    <h2 style="margin:34px 0 16px">Dedicated mobile screens</h2>
+    <section class="grid" aria-label="Dedicated mobile mockup screens">
+      <article class="card"><a class="preview" href="08-mobile-home.svg" aria-label="Open mobile home screen"><img src="08-mobile-home.svg" alt="Mobile home screen with quick actions and received TNote queue"></a><div class="copy"><p class="number">08 · Mobile home</p><h2>Workshop dashboard</h2><p>Quick quotation, service bill, delivery DC and enquiry actions, with received transformers ready for assessment.</p><a class="open" href="08-mobile-home.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="09-mobile-private-orders.svg" aria-label="Open mobile private orders"><img src="09-mobile-private-orders.svg" alt="Mobile private-order inbox with enquiry review actions"></a><div class="copy"><p class="number">09 · Mobile orders</p><h2>Enquiry inbox</h2><p>Review customer requests and files, follow up, and continue to document creation.</p><a class="open" href="09-mobile-private-orders.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="10-mobile-quotation-studio.svg" aria-label="Open mobile quotation studio"><img src="10-mobile-quotation-studio.svg" alt="Mobile quotation and service bill editor"></a><div class="copy"><p class="number">10 · Mobile documents</p><h2>Quotation studio</h2><p>Compose quotations, ad-hoc documents and service bills with line items, GST and PDF/PNG output.</p><a class="open" href="10-mobile-quotation-studio.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="11-mobile-tnotes.svg" aria-label="Open mobile TNotes"><img src="11-mobile-tnotes.svg" alt="Mobile TNote register with per-center units and status mix"></a><div class="copy"><p class="number">11 · Mobile TGSPDCL</p><h2>TNote register</h2><p>One SPM Center per note, up to ten transformers, files and assessment export.</p><a class="open" href="11-mobile-tnotes.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="12-mobile-assessment.svg" aria-label="Open mobile transformer assessment"><img src="12-mobile-assessment.svg" alt="Mobile transformer assessment form with inspection fields and repair progression"></a><div class="copy"><p class="number">12 · Mobile workshop</p><h2>Transformer assessment</h2><p>Transformer-specific inspection, parts, oil, remarks and repeat assessment after repair begins.</p><a class="open" href="12-mobile-assessment.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="13-mobile-delivery-challan.svg" aria-label="Open mobile delivery challan"><img src="13-mobile-delivery-challan.svg" alt="Mobile repaired-unit selection, DC creation and signed delivery proof"></a><div class="copy"><p class="number">13 · Mobile dispatch</p><h2>Delivery challan</h2><p>Select repaired units, generate a challan, then attach signed proof to mark delivery.</p><a class="open" href="13-mobile-delivery-challan.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="14-mobile-government-billing.svg" aria-label="Open mobile government billing"><img src="14-mobile-government-billing.svg" alt="Mobile bill register with receipt and GST filing stages"></a><div class="copy"><p class="number">14 · Mobile finance</p><h2>TGSPDCL billing</h2><p>Delivered-unit eligibility, bill status, credited amount/date and GST invoice filing.</p><a class="open" href="14-mobile-government-billing.svg">Open full screen</a></div></article>
+      <article class="card"><a class="preview" href="15-mobile-employees-payroll.svg" aria-label="Open mobile employees and payroll"><img src="15-mobile-employees-payroll.svg" alt="Mobile employee roster, attendance and payroll management"></a><div class="copy"><p class="number">15 · Mobile people</p><h2>Employees &amp; payroll</h2><p>Quick attendance, calendar records, shared holidays, salary calculation and exports.</p><a class="open" href="15-mobile-employees-payroll.svg">Open full screen</a></div></article>
+    </section>
+    <footer>Concept set · No application code was changed for these mockups. The SVG screens are self-contained; the clickable prototype is a local-only interaction demo using sample data.</footer>
+  </main>
+</body>
+</html>

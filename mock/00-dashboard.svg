@@ -1,0 +1,313 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
+  <title id="title">VSTMS premium industrial responsive dashboard concept</title>
+  <desc id="desc">A desktop and mobile workshop dashboard showing up to five TGSPDCL TNotes containing received-state transformers. Each TNote belongs to one SPM Center and can contain up to ten transformers, alongside private orders, payroll, quotations, bills, and delivery challans.</desc>
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3f4f1"/>
+      <stop offset="1" stop-color="#e8ecea"/>
+    </linearGradient>
+    <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#142b40"/>
+      <stop offset="1" stop-color="#0c1d2d"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d08a5d"/>
+      <stop offset="1" stop-color="#ad6038"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#1e3445" flood-opacity=".12"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#203546" flood-opacity=".08"/>
+    </filter>
+    <style>
+      text { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .ink { fill: #152b3d; }
+      .muted { fill: #71808b; }
+      .white { fill: #fff; }
+      .small { font-size: 11px; }
+      .tiny { font-size: 9px; }
+      .label { font-size: 10px; font-weight: 700; letter-spacing: 1.1px; }
+      .body { font-size: 12px; }
+      .bold { font-weight: 700; }
+      .semibold { font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1120" fill="url(#canvas)"/>
+  <circle cx="1490" cy="38" r="160" fill="#dce4e2" opacity=".35"/>
+  <circle cx="40" cy="1030" r="180" fill="#e5ded4" opacity=".28"/>
+
+  <g transform="translate(64 48)">
+    <rect width="42" height="42" rx="13" fill="url(#navy)"/>
+    <path d="M12 28V14h4l5 7 5-7h4v14h-4v-8l-5 7-5-7v8z" fill="#fff"/>
+    <circle cx="34" cy="9" r="4" fill="#c77b50"/>
+    <text x="56" y="18" class="label ink">VSTMS · PRODUCT CONCEPT</text>
+    <text x="56" y="39" font-size="22" font-weight="700" class="ink">A calmer way to run the workshop</text>
+  </g>
+  <g transform="translate(1280 55)">
+    <rect width="254" height="34" rx="17" fill="#fff" stroke="#dce3e2"/>
+    <circle cx="18" cy="17" r="5" fill="#548d6f"/>
+    <text x="32" y="21" class="small semibold ink">RESPONSIVE · MOBILE FIRST</text>
+  </g>
+  <text x="64" y="122" font-size="13" class="muted">A premium industrial workspace, designed around real private-order and TGSPDCL workflows.</text>
+
+  <!-- Desktop application concept -->
+  <g filter="url(#shadow)">
+    <rect x="54" y="154" width="1005" height="900" rx="22" fill="#fff"/>
+    <rect x="54" y="154" width="207" height="900" rx="22" fill="url(#navy)"/>
+    <rect x="239" y="154" width="22" height="900" fill="url(#navy)"/>
+  </g>
+  <g>
+    <rect x="78" y="179" width="42" height="42" rx="13" fill="#fff" opacity=".12"/>
+    <path d="M89 207v-15h4l6 7 5-7h4v15h-4v-8l-5 6-5-6v8z" fill="#fff"/>
+    <circle cx="111" cy="189" r="4" fill="#d18a5f"/>
+    <text x="130" y="195" font-size="14" font-weight="700" class="white">D.S. TRANSFORMERS</text>
+    <text x="130" y="211" class="tiny" fill="#a9bac5">WORKSHOP OPERATIONS</text>
+
+    <text x="80" y="254" class="label" fill="#9aabb7">WORKSPACE</text>
+    <rect x="70" y="268" width="175" height="41" rx="11" fill="#ffffff" opacity=".13"/>
+    <rect x="82" y="280" width="17" height="17" rx="5" fill="#d18a5f"/>
+    <path d="M86 288h9m-7-4 7 4-7 4" fill="none" stroke="#fff" stroke-width="1.4"/>
+    <text x="108" y="294" class="body bold white">Overview</text>
+    <text x="80" y="339" class="body" fill="#d3dde2">Private orders</text>
+    <circle cx="88" cy="362" r="3" fill="#d18a5f"/>
+    <text x="101" y="366" class="body" fill="#d3dde2">Enquiries</text>
+    <circle cx="88" cy="392" r="3" fill="#d18a5f"/>
+    <text x="101" y="396" class="body" fill="#d3dde2">Quotations &amp; bills</text>
+    <text x="80" y="438" class="body" fill="#d3dde2">TGSPDCL orders</text>
+    <circle cx="88" cy="461" r="3" fill="#d18a5f"/>
+    <text x="101" y="465" class="body" fill="#d3dde2">TNotes &amp; assessment</text>
+    <circle cx="88" cy="491" r="3" fill="#d18a5f"/>
+    <text x="101" y="495" class="body" fill="#d3dde2">Transformers</text>
+    <circle cx="88" cy="521" r="3" fill="#d18a5f"/>
+    <text x="101" y="525" class="body" fill="#d3dde2">Delivery challans</text>
+    <circle cx="88" cy="551" r="3" fill="#d18a5f"/>
+    <text x="101" y="555" class="body" fill="#d3dde2">Government bills</text>
+    <text x="80" y="597" class="body" fill="#d3dde2">People &amp; payroll</text>
+    <rect x="78" y="615" width="6" height="6" rx="3" fill="#d18a5f"/>
+    <text x="101" y="623" class="body" fill="#d3dde2">Employees &amp; attendance</text>
+    <rect x="78" y="645" width="6" height="6" rx="3" fill="#d18a5f"/>
+    <text x="101" y="653" class="body" fill="#d3dde2">Salary management</text>
+    <line x1="78" y1="682" x2="235" y2="682" stroke="#fff" opacity=".14"/>
+    <circle cx="99" cy="723" r="19" fill="#c47a50"/>
+    <text x="99" y="728" text-anchor="middle" class="small bold white">DS</text>
+    <text x="128" y="720" class="small bold white">Workshop admin</text>
+    <text x="128" y="736" class="tiny" fill="#a9bac5">Secure workspace</text>
+
+    <rect x="261" y="154" width="798" height="67" rx="0" fill="#fff"/>
+    <line x1="261" y1="221" x2="1059" y2="221" stroke="#edf0ee"/>
+    <rect x="286" y="174" width="290" height="31" rx="9" fill="#f6f7f5"/>
+    <circle cx="303" cy="189" r="5" fill="none" stroke="#82909a" stroke-width="1.5"/>
+    <path d="m307 193 5 5" stroke="#82909a" stroke-width="1.5"/>
+    <text x="320" y="193" class="small muted">Search transformer, TNote, customer…</text>
+    <rect x="966" y="174" width="34" height="31" rx="9" fill="#f6f7f5"/>
+    <path d="M978 191v-3a5 5 0 0 1 10 0v3l2 3h-14z" fill="none" stroke="#536574" stroke-width="1.3"/>
+    <circle cx="983" cy="197" r="1.4" fill="#c47a50"/>
+    <circle cx="993" cy="178" r="9" fill="#b65343"/>
+    <text x="993" y="181" text-anchor="middle" font-size="8" font-weight="700" class="white">3</text>
+    <circle cx="1018" cy="189" r="16" fill="#e9eee9"/>
+    <text x="1018" y="193" text-anchor="middle" class="tiny bold ink">RK</text>
+
+    <text x="286" y="258" font-size="22" font-weight="700" class="ink">Good morning, Ravi</text>
+    <text x="286" y="279" class="body muted">Your workshop at a glance · Thursday, 15 October</text>
+    <rect x="937" y="240" width="96" height="31" rx="9" fill="#f8f1ec"/>
+    <circle cx="953" cy="255" r="4" fill="#c47a50"/>
+    <text x="964" y="259" class="tiny bold" fill="#925738">FY 2026–27</text>
+
+    <text x="286" y="316" class="label" fill="#82909a">YOUR MOST-USED ACTIONS</text>
+    <g filter="url(#softShadow)">
+      <rect x="286" y="331" width="232" height="104" rx="15" fill="#fff" stroke="#e6e9e5"/>
+      <rect x="530" y="331" width="232" height="104" rx="15" fill="#fff" stroke="#e6e9e5"/>
+      <rect x="774" y="331" width="259" height="104" rx="15" fill="#fff" stroke="#e6e9e5"/>
+    </g>
+    <rect x="302" y="347" width="37" height="37" rx="11" fill="#f6e9df"/>
+    <path d="M312 357h15v17h-15zM316 353h8v5h-8zM315 363h9m-9 4h7" fill="none" stroke="#a45e39" stroke-width="1.5"/>
+    <text x="350" y="359" class="small bold ink">New quotation</text>
+    <text x="350" y="377" class="tiny muted">Private customer order</text>
+    <text x="302" y="414" class="tiny bold" fill="#a45e39">CREATE DOCUMENT</text>
+    <path d="m489 408 6 6-6 6" fill="none" stroke="#a45e39" stroke-width="1.5"/>
+
+    <rect x="546" y="347" width="37" height="37" rx="11" fill="#e8eff4"/>
+    <path d="M557 354h15v21h-15zM560 360h9m-9 4h9m-9 4h6" fill="none" stroke="#31566e" stroke-width="1.5"/>
+    <text x="594" y="359" class="small bold ink">Service bill</text>
+    <text x="594" y="377" class="tiny muted">Create or follow up</text>
+    <text x="546" y="414" class="tiny bold" fill="#31566e">CREATE BILL</text>
+    <path d="m732 408 6 6-6 6" fill="none" stroke="#31566e" stroke-width="1.5"/>
+
+    <rect x="790" y="347" width="37" height="37" rx="11" fill="#e5efe9"/>
+    <path d="M798 357h16l4 4v13h-20zM814 357v5h4M802 366h12m-12 4h9" fill="none" stroke="#47785e" stroke-width="1.5"/>
+    <text x="838" y="359" class="small bold ink">Delivery challan</text>
+    <text x="838" y="377" class="tiny muted">Select repaired units</text>
+    <text x="790" y="414" class="tiny bold" fill="#47785e">GENERATE DC</text>
+    <path d="m1002 408 6 6-6 6" fill="none" stroke="#47785e" stroke-width="1.5"/>
+
+    <rect x="286" y="456" width="747" height="223" rx="16" fill="#fff" stroke="#e6e9e5"/>
+    <text x="306" y="483" class="small bold ink">Assessment queue · TGSPDCL</text>
+    <text x="306" y="501" class="tiny muted">One SPM Center per TNote · up to 10 transformers · open a received unit to assess</text>
+    <rect x="841" y="469" width="172" height="26" rx="13" fill="#fbf1df"/>
+    <circle cx="857" cy="482" r="4" fill="#d0934e"/>
+    <text x="930" y="486" text-anchor="middle" class="tiny bold" fill="#805721">UP TO 5 OPEN TNOTES</text>
+    <text x="306" y="527" class="tiny bold" fill="#82909a">TNOTE / SPM CENTER</text>
+    <text x="533" y="527" class="tiny bold" fill="#82909a">TRANSFORMERS · STATUS COUNTS</text>
+    <text x="978" y="527" text-anchor="end" class="tiny bold" fill="#82909a">ACTION</text>
+    <line x1="306" y1="536" x2="1013" y2="536" stroke="#edf0ee"/>
+    <rect x="300" y="540" width="719" height="23" rx="6" fill="#fcf8f3"/>
+    <text x="310" y="555" class="tiny bold ink">TN-146 · Warangal</text>
+    <text x="533" y="555" class="tiny muted">8/10  ·  2 received  ·  2 assessing  ·  3 repair  ·  1 repaired</text>
+    <rect x="945" y="544" width="63" height="17" rx="8" fill="#b8754f"/>
+    <text x="976" y="556" text-anchor="middle" class="tiny bold white">ASSESS 2</text>
+    <text x="310" y="580" class="tiny bold ink">TN-145 · Karimnagar</text>
+    <text x="533" y="580" class="tiny muted">10/10  ·  1 received  ·  3 assessing  ·  4 repair  ·  2 repaired</text>
+    <rect x="945" y="569" width="63" height="17" rx="8" fill="#b8754f"/>
+    <text x="976" y="581" text-anchor="middle" class="tiny bold white">ASSESS 1</text>
+    <rect x="300" y="588" width="719" height="23" rx="6" fill="#fcf8f3"/>
+    <text x="310" y="603" class="tiny bold ink">TN-144 · Khammam</text>
+    <text x="533" y="603" class="tiny muted">6/10  ·  1 received  ·  2 repair  ·  2 repaired  ·  1 delivered</text>
+    <rect x="945" y="592" width="63" height="17" rx="8" fill="#b8754f"/>
+    <text x="976" y="604" text-anchor="middle" class="tiny bold white">ASSESS 1</text>
+    <text x="310" y="628" class="tiny bold ink">TN-143 · Nalgonda</text>
+    <text x="533" y="628" class="tiny muted">9/10  ·  1 received  ·  2 repair  ·  4 repaired  ·  2 delivered</text>
+    <rect x="945" y="617" width="63" height="17" rx="8" fill="#b8754f"/>
+    <text x="976" y="629" text-anchor="middle" class="tiny bold white">ASSESS 1</text>
+    <rect x="300" y="636" width="719" height="23" rx="6" fill="#fcf8f3"/>
+    <text x="310" y="651" class="tiny bold ink">TN-142 · Mahabubnagar</text>
+    <text x="533" y="651" class="tiny muted">7/10  ·  1 received  ·  2 assessing  ·  2 repair  ·  2 repaired</text>
+    <rect x="945" y="640" width="63" height="17" rx="8" fill="#b8754f"/>
+    <text x="976" y="652" text-anchor="middle" class="tiny bold white">ASSESS 1</text>
+    <text x="306" y="672" class="tiny" fill="#72808a">Assess received units · only repaired units go on a DC · bill only after delivery.</text>
+
+    <rect x="286" y="699" width="458" height="242" rx="16" fill="#fff" stroke="#e6e9e5"/>
+    <text x="306" y="727" class="small bold ink">Private customer orders</text>
+    <text x="306" y="745" class="tiny muted">Enquiry → quotation / ad-hoc quote → service bill</text>
+    <rect x="306" y="762" width="418" height="48" rx="10" fill="#f7f8f6"/>
+    <circle cx="324" cy="786" r="11" fill="#f1e3d9"/>
+    <text x="324" y="790" text-anchor="middle" class="tiny bold" fill="#965a3b">01</text>
+    <text x="345" y="782" class="tiny bold ink">New enquiry · Sree Lakshmi Industries</text>
+    <text x="345" y="798" class="tiny muted">Oil leakage · 250 kVA</text>
+    <rect x="644" y="777" width="67" height="20" rx="10" fill="#fff0d8"/>
+    <text x="677" y="791" text-anchor="middle" class="tiny bold" fill="#96651f">NEW</text>
+    <rect x="306" y="820" width="418" height="48" rx="10" fill="#f7f8f6"/>
+    <circle cx="324" cy="844" r="11" fill="#e5eee9"/>
+    <text x="324" y="848" text-anchor="middle" class="tiny bold" fill="#47785e">02</text>
+    <text x="345" y="840" class="tiny bold ink">Quotation Q-0731 · Metro Power</text>
+    <text x="345" y="856" class="tiny muted">PDF ready · ₹48,500</text>
+    <rect x="639" y="835" width="72" height="20" rx="10" fill="#e7f1eb"/>
+    <text x="675" y="849" text-anchor="middle" class="tiny bold" fill="#47785e">READY</text>
+    <text x="306" y="911" class="tiny bold" fill="#a45e39">OPEN PRIVATE ORDERS  →</text>
+
+    <rect x="760" y="699" width="273" height="242" rx="16" fill="#f8f6f1" stroke="#e7e4dc"/>
+    <text x="780" y="727" class="small bold ink">People &amp; payroll</text>
+    <text x="780" y="745" class="tiny muted">Attendance and monthly salary</text>
+    <circle cx="801" cy="786" r="17" fill="#d9e3dd"/>
+    <text x="801" y="790" text-anchor="middle" class="tiny bold" fill="#315e48">RK</text>
+    <text x="828" y="783" class="tiny bold ink">Ramesh Kumar</text>
+    <text x="828" y="799" class="tiny muted">Clocked in · 08:47</text>
+    <line x1="780" y1="818" x2="1013" y2="818" stroke="#e6e3dc"/>
+    <text x="780" y="842" class="tiny muted">OCTOBER PAYROLL</text>
+    <text x="780" y="873" font-size="25" font-weight="700" class="ink">₹1,42,800</text>
+    <rect x="780" y="891" width="118" height="29" rx="9" fill="#142b40"/>
+    <text x="839" y="910" text-anchor="middle" class="tiny bold white">Manage team</text>
+    <text x="913" y="910" class="tiny bold" fill="#a45e39">SALARIES →</text>
+  </g>
+
+  <!-- Mobile application concept -->
+  <g filter="url(#shadow)">
+    <rect x="1090" y="154" width="458" height="900" rx="32" fill="#142331"/>
+    <rect x="1102" y="166" width="434" height="876" rx="24" fill="#f7f7f3"/>
+  </g>
+  <rect x="1254" y="173" width="130" height="15" rx="8" fill="#142331"/>
+  <text x="1124" y="211" class="tiny bold ink">9:41</text>
+  <g transform="translate(1481 199)" fill="none" stroke="#243a4b" stroke-width="1.5">
+    <path d="M0 9h3V5H0zm6 0h3V3H6zm6 0h3V1h-3z"/>
+    <path d="M21 3h17v8H21zM38 5h2v4h-2z"/>
+    <rect x="23" y="5" width="11" height="4" rx="1" fill="#47785e" stroke="none"/>
+  </g>
+  <line x1="1102" y1="226" x2="1536" y2="226" stroke="#e8eae5"/>
+
+  <rect x="1124" y="245" width="40" height="40" rx="12" fill="url(#navy)"/>
+  <path d="M1134 272v-14h4l5 7 5-7h4v14h-4v-8l-5 6-5-6v8z" fill="#fff"/>
+  <circle cx="1157" cy="254" r="3.5" fill="#d18a5f"/>
+  <text x="1174" y="260" class="small bold ink">D.S. TRANSFORMERS</text>
+  <text x="1174" y="277" class="tiny muted">Workshop operations</text>
+  <circle cx="1464" cy="265" r="17" fill="#fff" stroke="#e4e8e3"/>
+  <path d="M1459 267v-4a5 5 0 0 1 10 0v4l2 3h-14z" fill="none" stroke="#536574" stroke-width="1.3"/>
+  <circle cx="1474" cy="251" r="9" fill="#b65343"/>
+  <text x="1474" y="254" text-anchor="middle" font-size="8" font-weight="700" class="white">3</text>
+  <circle cx="1505" cy="265" r="17" fill="#e8eee9"/>
+  <text x="1505" y="269" text-anchor="middle" class="tiny bold ink">RK</text>
+
+  <text x="1124" y="322" font-size="22" font-weight="700" class="ink">Good morning, Ravi</text>
+  <text x="1124" y="344" class="small muted">What do you need to do today?</text>
+  <rect x="1124" y="364" width="386" height="45" rx="13" fill="#fff" stroke="#e4e8e3"/>
+  <circle cx="1143" cy="386" r="6" fill="none" stroke="#788791" stroke-width="1.5"/>
+  <path d="m1147 390 4 4" stroke="#788791" stroke-width="1.5"/>
+  <text x="1162" y="390" class="small muted">Find a customer, TNote or transformer</text>
+
+  <text x="1124" y="442" class="label" fill="#82909a">QUICK ACTIONS</text>
+  <rect x="1355" y="423" width="155" height="27" rx="13" fill="#fbf1df"/>
+  <circle cx="1371" cy="436" r="4" fill="#b65343"/>
+  <text x="1440" y="440" text-anchor="middle" class="tiny bold" fill="#805721">3 NEW ENQUIRIES</text>
+  <rect x="1124" y="457" width="185" height="96" rx="15" fill="#fff" stroke="#e6e9e5"/>
+  <rect x="1321" y="457" width="189" height="96" rx="15" fill="#fff" stroke="#e6e9e5"/>
+  <rect x="1139" y="472" width="34" height="34" rx="10" fill="#f6e9df"/>
+  <path d="M1148 480h15v17h-15zM1152 477h8v5h-8zM1151 486h9m-9 4h7" fill="none" stroke="#a45e39" stroke-width="1.4"/>
+  <text x="1182" y="485" class="small bold ink">Quotation</text>
+  <text x="1182" y="501" class="tiny muted">Private orders</text>
+  <text x="1139" y="534" class="tiny bold" fill="#a45e39">+ NEW QUOTE</text>
+  <rect x="1336" y="472" width="34" height="34" rx="10" fill="#e8eff4"/>
+  <path d="M1345 478h15v21h-15zM1348 484h9m-9 4h9m-9 4h6" fill="none" stroke="#31566e" stroke-width="1.4"/>
+  <text x="1379" y="485" class="small bold ink">Service bill</text>
+  <text x="1379" y="501" class="tiny muted">Private work</text>
+  <text x="1336" y="534" class="tiny bold" fill="#31566e">+ NEW BILL</text>
+  <rect x="1124" y="565" width="386" height="77" rx="15" fill="#fff" stroke="#e6e9e5"/>
+  <rect x="1139" y="580" width="37" height="37" rx="11" fill="#e5efe9"/>
+  <path d="M1147 589h16l4 4v13h-20zM1163 589v5h4M1151 598h12m-12 4h9" fill="none" stroke="#47785e" stroke-width="1.4"/>
+  <text x="1188" y="590" class="small bold ink">Delivery challan</text>
+  <text x="1188" y="608" class="tiny muted">Pick repaired units · create PDF</text>
+  <rect x="1391" y="586" width="101" height="34" rx="10" fill="#142b40"/>
+  <text x="1441" y="608" text-anchor="middle" class="tiny bold white">CREATE DC</text>
+
+  <rect x="1124" y="660" width="386" height="191" rx="16" fill="#fff" stroke="#e6e9e5"/>
+  <text x="1142" y="686" class="small bold ink">Assessment due · TGSPDCL</text>
+  <text x="1142" y="704" class="tiny muted">Up to 5 open TNotes · one SPM Center each · max 10 units</text>
+  <rect x="1142" y="716" width="350" height="51" rx="10" fill="#fbf1df"/>
+  <circle cx="1160" cy="740" r="8" fill="#d0934e"/>
+  <text x="1176" y="736" class="tiny bold" fill="#805721">TN-146 · Warangal · 8 / 10 transformers</text>
+  <text x="1176" y="752" class="tiny" fill="#8b7458">2 received · 2 assessing · 3 repair · 1 repaired</text>
+  <rect x="1398" y="729" width="78" height="25" rx="8" fill="#b8754f"/>
+  <text x="1437" y="746" text-anchor="middle" class="tiny bold white">ASSESS 2</text>
+  <rect x="1142" y="775" width="350" height="45" rx="10" fill="#f7f8f6"/>
+  <circle cx="1160" cy="797" r="7" fill="#d0934e"/>
+  <text x="1176" y="794" class="tiny bold ink">TN-145 · Karimnagar · 10 / 10 transformers</text>
+  <text x="1176" y="808" class="tiny muted">1 received · 3 assessing · 4 repair · 2 repaired</text>
+  <path d="m1470 791 6 6-6 6" fill="none" stroke="#7f8b8c" stroke-width="1.5"/>
+  <text x="1142" y="839" class="tiny bold" fill="#a45e39">VIEW ALL TNOTES WITH RECEIVED UNITS  →</text>
+
+  <rect x="1124" y="869" width="386" height="96" rx="15" fill="#f0f2ed" stroke="#e3e6df"/>
+  <circle cx="1150" cy="901" r="17" fill="#d9e3dd"/>
+  <path d="M1143 902a7 7 0 1 1 14 0m-11-4a4 4 0 1 0 8 0" fill="none" stroke="#315e48" stroke-width="1.3"/>
+  <text x="1178" y="897" class="small bold ink">People &amp; payroll</text>
+  <text x="1178" y="915" class="tiny muted">Employees · attendance · monthly salary</text>
+  <path d="m1477 896 7 6-7 6" fill="none" stroke="#7f8b8c" stroke-width="1.5"/>
+  <text x="1142" y="947" class="tiny bold" fill="#47785e">3 EMPLOYEES · OCTOBER PAYROLL READY</text>
+
+  <line x1="1102" y1="982" x2="1536" y2="982" stroke="#e2e6e1"/>
+  <g>
+    <rect x="1124" y="992" width="82" height="42" rx="11" fill="#e8eee9"/>
+    <path d="M1156 1003h12v12h-12zm-2 15h16" fill="none" stroke="#315e48" stroke-width="1.4"/>
+    <text x="1162" y="1030" text-anchor="middle" class="tiny bold" fill="#315e48">Home</text>
+    <path d="M1266 1004h15v14h-15zM1269 1008h9m-9 4h9" fill="none" stroke="#74838a" stroke-width="1.4"/>
+    <text x="1274" y="1030" text-anchor="middle" class="tiny muted">Orders</text>
+    <circle cx="1378" cy="1008" r="8" fill="none" stroke="#74838a" stroke-width="1.4"/>
+    <path d="M1364 1021a14 14 0 0 1 28 0" fill="none" stroke="#74838a" stroke-width="1.4"/>
+    <text x="1378" y="1030" text-anchor="middle" class="tiny muted">Team</text>
+    <circle cx="1480" cy="1008" r="1.7" fill="#74838a"/>
+    <circle cx="1487" cy="1008" r="1.7" fill="#74838a"/>
+    <circle cx="1494" cy="1008" r="1.7" fill="#74838a"/>
+    <text x="1487" y="1030" text-anchor="middle" class="tiny muted">More</text>
+  </g>
+
+  <text x="64" y="1090" class="tiny muted">CONCEPT ONLY · One SPM Center per TNote · Up to 10 transformers per TNote · Up to 5 open TNotes in assessment queue</text>
+  <text x="1536" y="1090" text-anchor="end" class="tiny bold" fill="#71808b">DESKTOP + MOBILE · PREMIUM INDUSTRIAL</text>
+</svg>
