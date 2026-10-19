@@ -5824,19 +5824,21 @@ h1 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     min-width: 0;
     overflow: visible;
-    border: 1px solid #dbe4ec;
-    border-left: 3px solid #4f8a86;
-    border-radius: 10px;
-    background: linear-gradient(115deg, #fff 0%, #fbfdff 100%);
-    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.045);
+    border: 1px solid #cbd8e3;
+    border-left: 4px solid #4f8a86;
+    border-radius: 11px;
+    background: #f4f9fb;
+    box-shadow: 0 2px 7px rgba(15, 23, 42, 0.07);
   }
 
   .tnote-management-table tbody tr:nth-child(3n + 2) {
     border-left-color: #6f83b5;
+    background: #f5f6fc;
   }
 
   .tnote-management-table tbody tr:nth-child(3n) {
     border-left-color: #c28b54;
+    background: #fff8ef;
   }
 
   .tnote-management-table.jobs-table tbody tr:hover > td {
@@ -5845,13 +5847,13 @@ h1 {
 
   .tnote-management-table.jobs-table tbody td {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(76px, 0.38fr) minmax(0, 1fr);
     align-items: center;
-    gap: 3px;
+    gap: 6px;
     min-width: 0;
-    padding: 6px 8px;
-    border-bottom: 1px solid #f1f5f9;
-    text-align: left;
+    padding: 6px 9px;
+    border-bottom: 1px solid rgba(203, 216, 227, 0.72);
+    text-align: right;
     white-space: normal;
     overflow-wrap: anywhere;
   }
@@ -5859,7 +5861,7 @@ h1 {
   .tnote-management-table.jobs-table tbody td::before {
     content: attr(data-label);
     color: #64748b;
-    font-size: 0.58rem;
+    font-size: 0.6rem;
     font-weight: 700;
     letter-spacing: 0.03em;
     text-align: left;
@@ -5868,14 +5870,31 @@ h1 {
 
   .tnote-management-table.jobs-table tbody td[data-label="TNote No"] {
     grid-area: number;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding-top: 8px;
+    padding-bottom: 7px;
     color: #174a4d;
     font-size: 0.9rem;
     font-weight: 750;
+    text-align: left;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="TNote No"]::before {
+    font-size: 0.55rem;
+    letter-spacing: 0.07em;
   }
 
   .tnote-management-table.jobs-table tbody td[data-label="Date"] {
     grid-area: date;
-    justify-items: end;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding-top: 8px;
+    padding-bottom: 7px;
+    text-align: right;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Date"]::before {
     text-align: right;
   }
 
@@ -5885,9 +5904,9 @@ h1 {
 
   .tnote-management-table.jobs-table tbody td[data-label="Transformers Count"] {
     grid-area: count;
-    grid-template-columns: auto auto minmax(0, 1fr);
-    gap: 7px;
-    border-bottom: 1px solid #e9eff5;
+    grid-template-columns: minmax(76px, 0.38fr) auto minmax(0, 1fr);
+    gap: 6px;
+    text-align: left;
   }
 
   .tnote-management-table.jobs-table tbody td[data-label="Attachments"] {
@@ -5908,6 +5927,8 @@ h1 {
   }
 
   .tnote-management-table.jobs-table tbody td[data-label="Transformers Count"] > .tnote-transformer-status-counts {
+    min-width: 0;
+    gap: 3px 4px;
     align-items: center;
     margin-top: 0;
   }
@@ -5923,7 +5944,10 @@ h1 {
   .tnote-management-table.jobs-table tbody td[data-label="Attachments"],
   .tnote-management-table.jobs-table tbody td.actions-cell {
     grid-template-columns: minmax(0, 1fr);
-    align-content: center;
+    align-content: start;
+    gap: 3px;
+    padding-top: 5px;
+    padding-bottom: 6px;
   }
 
   .tnote-attachment-actions,
@@ -5935,8 +5959,8 @@ h1 {
   }
 
   .tnote-management-table.jobs-table tbody td.actions-cell {
-    display: flex;
-    justify-content: flex-end;
+    display: grid;
+    justify-items: end;
   }
 
   .tnote-management-table.jobs-table tbody td.actions-cell > .tnote-row-actions {
@@ -5952,5 +5976,48 @@ h1 {
 
   .tnote-management-table.jobs-table tbody td.tnote-empty-row::before {
     content: none;
+  }
+
+  .kpis--tnotes {
+    display: grid;
+    grid-auto-columns: minmax(112px, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    gap: 7px;
+    margin: 0 0 8px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .kpis--tnotes .kpi-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 8px;
+    min-height: 52px;
+    padding: 7px 9px;
+    border-radius: 10px;
+  }
+
+  .kpis--tnotes .kpi-card p {
+    min-width: 0;
+    margin: 0;
+    font-size: 0.67rem;
+    line-height: 1.15;
+  }
+
+  .kpis--tnotes .kpi-card h3 {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .kpis--tnotes .kpi-card small {
+    grid-column: 1 / -1;
+    font-size: 0.57rem;
+    line-height: 1.1;
   }
 }

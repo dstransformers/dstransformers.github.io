@@ -4185,7 +4185,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       )}
 
       {currentTab !== 'quotations' && currentTab !== 'employees' && currentTab !== 'dashboard' && currentTab !== 'more' && (
-        <section className="kpis">
+        <section className={`kpis${currentTab === 'tnotes' ? ' kpis--tnotes' : ''}`}>
           <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
             <p>Recieved</p>
             <h3>{summary.recieve}</h3>
