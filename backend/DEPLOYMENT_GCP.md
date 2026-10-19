@@ -1,16 +1,16 @@
 # Secure deployment: GitHub Pages and Google Cloud Run
 
-The management app is published at `https://dstransformers.github.io/`. The public business website remains available at `/staticpage/`. The Spring API runs as a Cloud Run service. Only health checks and public enquiry submissions are anonymous. All management endpoints require a valid Firebase ID token from the configured Firebase project and a `@gmail.com` email. Email verification and a per-admin email allowlist are not required.
+The management app is published at `https://dstransformers.github.io/`. The public business website remains available at `/staticpage/`. The Spring API runs as a Cloud Run service. Only health checks and public enquiry submissions are anonymous. All management endpoints require a valid Firebase ID token with an email from the configured Firebase project. Email verification and a per-admin email allowlist are not required.
 
 ## 1. Configure Firebase Authentication
 
 1. In Firebase Console, create or select a project and register a Web app.
 2. Enable **Authentication → Sign-in method → Google** (and **Email/Password** if password login is also needed).
 3. Under **Authentication → Settings → Authorized domains**, add `dstransformers.github.io` and `localhost` for local development.
-4. Ensure each authorized user signs in with a Gmail address. Any Gmail account that can authenticate with this Firebase project is granted admin access to management endpoints.
+4. Ensure only intended users can create accounts or sign in. Any account with an email that can authenticate with this Firebase project is granted admin access to management endpoints.
 5. Copy the Web app's API key, auth domain, project ID, and app ID into `frontend/.env.production` using `frontend/.env.example` as the template.
 
-Firebase web configuration is public client configuration, not a server secret. Restrict its API key to the required Firebase APIs and HTTP referrers in Google Cloud Console. The API verifies token signatures and project identity, then requires a Gmail address. There is no email-verification requirement or per-user backend allowlist.
+Firebase web configuration is public client configuration, not a server secret. Restrict its API key to the required Firebase APIs and HTTP referrers in Google Cloud Console. The API verifies token signatures and project identity, then requires an email address. There is no email-verification requirement or per-user backend allowlist.
 
 ## 2. Deploy the API to Cloud Run
 
@@ -43,7 +43,7 @@ gcloud run deploy vstms-api `
   --set-env-vars "FIREBASE_PROJECT_ID=YOUR_GCP_PROJECT_ID,GOOGLE_APPS_SCRIPT_URL=YOUR_APPS_SCRIPT_WEB_APP_URL,CORS_ALLOWED_ORIGINS=https://dstransformers.github.io,http://localhost:5173,http://127.0.0.1:5173"
 ```
 
-`--allow-unauthenticated` allows the browser to reach the API; it does **not** grant access to management data. Firebase ID tokens and Gmail-domain checks protect those endpoints. The health check and `POST /api/enquiries` are intentionally public. Since every Gmail user authenticated with this Firebase project is an admin, restrict project authentication providers and account creation to the users you intend to authorize. Never put passwords or service-account keys in frontend files, Git, or build arguments.
+`--allow-unauthenticated` allows the browser to reach the API; it does **not** grant access to management data. Firebase ID tokens protect those endpoints. The health check and `POST /api/enquiries` are intentionally public. Since every account authenticated with this Firebase project and having an email address is an admin, restrict project authentication providers and account creation to the users you intend to authorize. Never put passwords or service-account keys in frontend files, Git, or build arguments.
 
 Copy the Cloud Run service URL printed by the deploy command. Verify `https://YOUR_CLOUD_RUN_URL/api/health` returns `{"status":"UP",...}`. A request to a protected endpoint without a Firebase token must return HTTP 401.
 
