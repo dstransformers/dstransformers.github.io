@@ -7,9 +7,21 @@ VSTMS Backend API with Google Sheets Integration
 **Google Sheets Integration:** Connected via Google Apps Script  
 **Data Storage:** Google Sheets (5 sheets: Enquiries, Services, Jobs, Transformers, Bills)
 
+## Concurrent Requests
+
+Read-only requests can run concurrently. Apps Script serializes write requests with a shared script lock so simultaneous changes do not overwrite one another. A write can wait up to 30 seconds for another write to finish; if the lock cannot be acquired, the API returns an error response. Initialize the sheets before users begin working so read requests do not need to create or migrate sheets.
+
+### Troubleshooting HTTP 502
+
+The backend returns HTTP 502 when Google Apps Script fails, times out, or returns an invalid upstream response. Read-only Apps Script requests retry once after a transient network or server failure; writes are not retried because repeating a write could create duplicate records. Check Cloud Run logs for the failing Apps Script action and the Apps Script editor's **Executions** page for errors or lock timeouts. A 502 on `/api/health` instead points to Cloud Run availability rather than Google Sheets.
+
 ---
 
 ## Endpoints
+
+### Dropdown Defaults
+
+`GET /api/defaults` returns dropdown values from the `Dropdown Defaults` sheet. The `transformerTypes` field is sourced from the `Transformer Type` category; its initial choices are `CSP`, `Amorphous`, `Conventional`, and `RGP`. The browser caches this endpoint without expiry until a hard refresh.
 
 ### 1. ENQUIRIES Endpoints
 

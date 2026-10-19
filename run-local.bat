@@ -31,6 +31,7 @@ if not exist "%APPDATA%\gcloud\application_default_credentials.json" (
 )
 
 set "FIREBASE_PROJECT_ID=vs-transformers-quotation"
+set "ADMIN_EMAILS=ds.transformerelectrical@gmail.com,sushmasampurna@gmail.com"
 
 set "GOOGLE_APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec"
 set "CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://dstransformers.github.io"

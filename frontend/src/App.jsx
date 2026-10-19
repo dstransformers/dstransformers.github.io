@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import LandingPage from './LandingPage'
 import { signOut } from 'firebase/auth'
 import { auth, getAuthSnapshot, subscribeToAuth } from './firebase'
-import { apiFetch } from './api'
+import { apiErrorMessage, apiFetch } from './api'
 import { finishInitialLoading, hideLoading, showLoading, withGlobalLoading } from './globalLoading'
 import deliveryChallanTemplateUrl from '/assets/delivery_challan_template.pdf'
 import EmployeePage from './EmployeePage'
@@ -623,6 +623,7 @@ function App() {
     makes: [],
     spmCenters: [],
     services: [],
+    transformerTypes: [],
     businessGstin: '',
     tgspdclGstin: '',
   })
@@ -1243,7 +1244,7 @@ ${styles}
     setDropdownDefaultsError('')
     try {
       const response = await apiFetch('/api/defaults')
-      if (!response.ok) throw new Error(`Failed to load dropdown defaults (${response.status})`)
+      if (!response.ok) throw new Error(await apiErrorMessage(response, 'Failed to load dropdown defaults'))
       const result = await response.json()
       if (result.status !== 'SUCCESS' || !result.data) {
         throw new Error(result.message || 'Failed to load dropdown defaults')
@@ -1253,6 +1254,7 @@ ${styles}
         makes: Array.isArray(result.data.makes) ? result.data.makes : [],
         spmCenters: Array.isArray(result.data.spmCenters) ? result.data.spmCenters : [],
         services: Array.isArray(result.data.services) ? result.data.services : [],
+        transformerTypes: Array.isArray(result.data.transformerTypes) ? result.data.transformerTypes : [],
         businessGstin: result.data.businessGstin || '',
         tgspdclGstin: result.data.tgspdclGstin || '',
       })
@@ -6653,8 +6655,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   </label>
                   <label>
                     Type
-                    <input
+                    <DefaultSelect
                       value={newTNoteTransformer.type}
+                      options={dropdownDefaults.transformerTypes}
+                      placeholder="Select Transformer Type"
                       onChange={event => setNewTNoteTransformer(current => ({ ...current, type: event.target.value }))}
                       required
                       disabled={addingTNoteTransformer}
@@ -6954,9 +6958,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       onChange={(e) => handleTransformerInputChange(index, 'capacity', e.target.value)}
                       required
                     />
-                    <input
-                      placeholder="Type"
+                    <DefaultSelect
                       value={transformer.type}
+                      options={dropdownDefaults.transformerTypes}
+                      placeholder="Select Transformer Type"
                       onChange={(e) => handleTransformerInputChange(index, 'type', e.target.value)}
                       required
                     />
