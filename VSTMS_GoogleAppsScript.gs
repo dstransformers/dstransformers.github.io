@@ -7,13 +7,15 @@
  *
  * Deployment:
  * 1. Open Google Sheet > Extensions > Apps Script
- * 2. Replace all code with this file
- * 3. Click Deploy > Manage deployments > Edit > New version
+ * 2. Replace the code and set appsscript.json oauthScopes from this repository
+ * 3. Run authorizeVstmsAccess() in the editor and approve the requested scopes
+ * 4. Set Script Property VSTMS_BACKEND_SHARED_SECRET to the same 32+ character
+ *    secret configured in the backend environment.
+ * 5. Click Deploy > Manage deployments > Edit > New version
  *    - Execute as: Me
- *    - Who has access: Anyone
- * 4. Authorize Google Drive, Google Slides, and external request access when prompted
- * 5. Enable the Google Slides API in the Apps Script project's linked Cloud project for PNG exports
- * 6. Keep the Web App URL in backend application.properties (google.apps.script.url)
+ *    - Who has access: Anyone (requests are authenticated by the shared secret)
+ * 6. Enable the Google Slides API in the Apps Script project's linked Cloud project for PNG exports
+ * 7. Keep the Web App URL in backend application.properties (google.apps.script.url)
  */
 
 // ============ CONFIGURATION ============
@@ -69,6 +71,15 @@ const DEFAULT_QUOTATION_SETTINGS = [
   ['Quotation Folder', 'Quotations'],
   ['Bill Folder', 'Service Bills']
 ];
+
+function isAuthorizedBackendRequest_(providedSecret) {
+  const expectedSecret = PropertiesService.getScriptProperties()
+    .getProperty('VSTMS_BACKEND_SHARED_SECRET');
+  return typeof expectedSecret === 'string'
+    && expectedSecret.length >= 32
+    && typeof providedSecret === 'string'
+    && providedSecret === expectedSecret;
+}
 
 const DEFAULT_QUOTATION_RATES = [
   ['100 kVA', 'Transformer Oil Filtration', 6000],
@@ -156,22 +167,44 @@ const DEFAULT_SERVICES = [
 
 const DEFAULT_DROPDOWN_VALUES = {
   Capacity: [
-    '25 kVA', '50 kVA', '63 kVA', '100 kVA', '160 kVA', '250 kVA',
-    '315 kVA', '500 kVA', '630 kVA', '1000 kVA', '1250 kVA', '1600 kVA',
+    '25 kVA', '63 kVA', '100 kVA', '160 kVA', '250 kVA', '315 kVA',
+    '500 kVA', '630 kVA', '750 kVA', '1000 kVA', '1250 kVA', '1600 kVA',
     'Other', 'Not sure'
   ],
-  Make: ['ABB', 'Siemens'],
-  'SPM Center': ['Warangal', 'Salem', 'Rajahmundry', 'Mysuru', 'Karimnagar'],
-  Service: Array.from(new Set([
-    ...QUOTATION_SERVICES,
-    ...DEFAULT_SERVICES.map(service => service.ServiceName),
+  Make: [
+    'Vijay', 'Venu Gopal', 'Manu', 'VVE', 'SNR', 'Bhavani',
+    'Tejas Electrical', 'ECE', 'Victory', 'Kirloskar', 'Transcon'
+  ],
+  'SPM Center': ['Madannapet', 'Saroor Nagar'],
+  Service: [
+    'Transformer Oil Filtration',
+    'Gasket Changing',
+    'Repair & Servicing of Sick DTR',
+    'New Breather',
+    'Transformer Painting',
+    'Transformer Rewinding',
+    'Transformer Assembly',
+    'Oven / Drying Charges',
+    'New Transformer Oil',
+    'Earth Pit Testing',
+    'Oil Leakage Rectification',
+    'Transformer Inspection / Fault Assessment',
+    'Emergency Breakdown Support',
+    'Transformer Breakdown Repair',
+    'Coil Rewinding',
+    'Oil Filtration',
+    'Gasket Replacement',
+    'Testing & Diagnostics',
+    'Annual Maintenance',
+    'Custom Repairs',
     'Transformer Inspection',
     'Sick Transformer Repair / Restoration',
     'Transformer Coil Rewinding',
     'Preventive Maintenance',
     'Transformer Servicing',
     'Other'
-  ]))
+  ],
+  'Transformer Type': ['CSP', 'Amorphous', 'Conventional', 'RGP']
 };
 
 const QUOTATION_CAPACITIES = DEFAULT_DROPDOWN_VALUES.Capacity;
@@ -181,7 +214,36 @@ const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired',
 // ============ UTILITY FUNCTIONS ============
 
 function getSpreadsheet() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty('VSTMS_SPREADSHEET_ID');
+  if (spreadsheetId) {
+    return SpreadsheetApp.openById(spreadsheetId);
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) {
+    throw new Error('VSTMS spreadsheet is not configured. Run authorizeVstmsAccess() from the bound spreadsheet project.');
+  }
+  return spreadsheet;
+}
+
+function authorizeVstmsAccess() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) {
+    throw new Error('No active spreadsheet is available. Open this script from the VSTMS spreadsheet.');
+  }
+  const spreadsheetId = spreadsheet.getId();
+  SpreadsheetApp.openById(spreadsheetId);
+  const driveRoot = DriveApp.getRootFolder();
+  const probeFile = driveRoot.createFile(
+    Utilities.newBlob('VSTMS Drive authorization check', 'text/plain', `vstms-drive-auth-check-${Utilities.getUuid()}.txt`)
+  );
+  try {
+    probeFile.setTrashed(true);
+  } catch (error) {
+    throw new Error(`Drive file creation succeeded, but the temporary authorization check file could not be trashed (${probeFile.getId()}): ${error.message}`);
+  }
+  PropertiesService.getScriptProperties().setProperty('VSTMS_SPREADSHEET_ID', spreadsheetId);
+  return 'Spreadsheet openById and Drive file creation authorization confirmed; temporary test file trashed.';
 }
 
 function getOrCreateSheet(sheetName) {
@@ -191,6 +253,17 @@ function getOrCreateSheet(sheetName) {
     sheet = ss.insertSheet(sheetName);
   }
   return sheet;
+}
+
+function withScriptLock_(callback) {
+  const lock = LockService.getScriptLock();
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
+  try {
+    return callback();
+  } finally {
+    if (ownsLock) lock.releaseLock();
+  }
 }
 
 function initializeSheet(sheetName, headers) {
@@ -261,6 +334,14 @@ function initializeDropdownDefaults_() {
     }
   }
   const rows = getSheetData(SHEET_NAMES.DROPDOWN_DEFAULTS);
+  const transformerTypeRows = rows.filter(row =>
+    String(row.Category || '').trim() === 'Transformer Type'
+  );
+  if (transformerTypeRows.length === 0) {
+    DEFAULT_DROPDOWN_VALUES['Transformer Type'].forEach(value => {
+      sheet.appendRow(['Transformer Type', value, true]);
+    });
+  }
   const gstinRows = {
     businessGstin: rows.find(row => String(row.Category || '').trim() === 'Business GSTIN'),
     tgspdclGstin: rows.find(row => String(row.Category || '').trim() === 'TGSPDCL GSTIN')
@@ -287,12 +368,13 @@ function initializeDropdownDefaults_() {
 }
 
 function getDropdownDefaults_() {
-  initializeDropdownDefaults_();
+  withScriptLock_(initializeDropdownDefaults_);
   const values = {
     capacities: [],
     makes: [],
     spmCenters: [],
     services: [],
+    transformerTypes: [],
     businessGstin: '36AAUFM2590B1Z4',
     tgspdclGstin: '27ABCDE1234F1Z5'
   };
@@ -301,6 +383,7 @@ function getDropdownDefaults_() {
     Make: 'makes',
     'SPM Center': 'spmCenters',
     Service: 'services',
+    'Transformer Type': 'transformerTypes',
     'Business GSTIN': 'businessGstin',
     'TGSPDCL GSTIN': 'tgspdclGstin'
   };
@@ -475,71 +558,94 @@ function getEmployeeById(id) {
 }
 
 function saveEmployee(data) {
-  const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
-  const employeeCode = String(data.employeeCode || '').trim();
-  const name = String(data.name || '').trim();
-  const department = String(data.department || '').trim();
-  const monthlySalary = Number(data.salary);
-  if (!employeeCode || !name || !department || !Number.isFinite(monthlySalary) || monthlySalary < 0) {
-    throw new Error('Employee code, name, department, and monthly salary are required.');
+  const isNewEmployee = !data.id;
+  const lock = isNewEmployee ? LockService.getScriptLock() : null;
+  const ownsLock = lock && !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
+  try {
+    const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
+    let employeeCode = String(data.employeeCode || '').trim();
+    const name = String(data.name || '').trim();
+    const department = String(data.department || '').trim();
+    const monthlySalary = Number(data.salary);
+    if ((!isNewEmployee && !employeeCode) || !name || !department ||
+        !Number.isFinite(monthlySalary) || monthlySalary < 0) {
+      throw new Error('Employee code, name, department, and monthly salary are required.');
+    }
+    const employeeRows = getSheetData(SHEET_NAMES.EMPLOYEES);
+    if (isNewEmployee) employeeCode = nextEmployeeCode_(employeeRows, new Date());
+    const existingById = data.id ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.id)) : null;
+    if (data.id && !existingById) throw new Error('Employee not found.');
+    const existingEmployee = rowObject_(existingById);
+    const normalizedEmployeeCode = employeeCode.toLowerCase();
+    const existingByCode = employeeRows.find(row =>
+      String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode);
+    const employeeCodeUnchanged = existingEmployee &&
+      String(existingEmployee.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode;
+    const conflictingEmployeeCode = employeeRows.find(row =>
+      String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode &&
+      (!existingEmployee || Number(row.ID) !== Number(existingEmployee.ID)));
+    if (conflictingEmployeeCode && !employeeCodeUnchanged) {
+      throw new Error('An employee with this employee code already exists.');
+    }
+    const existing = existingEmployee || existingByCode;
+    const existingRow = existingById || (existingByCode
+      ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(existingByCode.ID))
+      : null);
+    const id = existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
+    const now = getTimestamp();
+    const photoUrl = saveEmployeePhoto_(data.photoUrl, data.photoName);
+    const supportingDocuments = Array.isArray(data.supportingDocuments) ? data.supportingDocuments : [];
+    const existingDocuments = supportingDocuments.filter(document => document && !document.dataUrl);
+    const newDocumentFiles = supportingDocuments.filter(document => document && document.dataUrl);
+    if (existingDocuments.length + newDocumentFiles.length > 5) {
+      throw new Error('Please upload no more than 5 supporting documents.');
+    }
+    const savedDocuments = [
+      ...existingDocuments,
+      ...saveRecordAttachments_(newDocumentFiles, 'D.S. Transformer Employee Documents')
+    ];
+    const values = {
+      ID: id,
+      EmployeeCode: employeeCode,
+      Name: name,
+      Department: department,
+      MonthlySalary: monthlySalary,
+      PhotoUrl: photoUrl,
+      PhotoName: String(data.photoName || ''),
+      SupportingDocuments: JSON.stringify(savedDocuments),
+      Active: data.active === false ? false : true,
+      CreatedAt: existing ? existing.CreatedAt : now,
+      UpdatedAt: now
+    };
+    if (existing) {
+      existingRow.headers.forEach((header, index) => {
+        if (Object.prototype.hasOwnProperty.call(values, header)) {
+          sheet.getRange(existingRow.rowIndex, index + 1).setValue(values[header]);
+        }
+      });
+    } else {
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+      sheet.appendRow(headers.map(header =>
+        Object.prototype.hasOwnProperty.call(values, header) ? values[header] : ''));
+    }
+    return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
+  } finally {
+    if (ownsLock) lock.releaseLock();
   }
-  const employeeRows = getSheetData(SHEET_NAMES.EMPLOYEES);
-  const existingById = data.id ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(data.id)) : null;
-  if (data.id && !existingById) throw new Error('Employee not found.');
-  const existingEmployee = rowObject_(existingById);
-  const normalizedEmployeeCode = employeeCode.toLowerCase();
-  const existingByCode = employeeRows.find(row =>
-    String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode);
-  const employeeCodeUnchanged = existingEmployee &&
-    String(existingEmployee.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode;
-  const conflictingEmployeeCode = employeeRows.find(row =>
-    String(row.EmployeeCode || '').trim().toLowerCase() === normalizedEmployeeCode &&
-    (!existingEmployee || Number(row.ID) !== Number(existingEmployee.ID)));
-  if (conflictingEmployeeCode && !employeeCodeUnchanged) {
-    throw new Error('An employee with this employee code already exists.');
-  }
-  const existing = existingEmployee || existingByCode;
-  const existingRow = existingById || (existingByCode
-    ? findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(existingByCode.ID))
-    : null);
-  const id = existing ? Number(existing.ID) : getNextNumericId(SHEET_NAMES.EMPLOYEES, 'ID');
-  const now = getTimestamp();
-  const photoUrl = saveEmployeePhoto_(data.photoUrl, data.photoName);
-  const supportingDocuments = Array.isArray(data.supportingDocuments) ? data.supportingDocuments : [];
-  const existingDocuments = supportingDocuments.filter(document => document && !document.dataUrl);
-  const newDocumentFiles = supportingDocuments.filter(document => document && document.dataUrl);
-  if (existingDocuments.length + newDocumentFiles.length > 5) {
-    throw new Error('Please upload no more than 5 supporting documents.');
-  }
-  const savedDocuments = [
-    ...existingDocuments,
-    ...saveRecordAttachments_(newDocumentFiles, 'D.S. Transformer Employee Documents')
-  ];
-  const values = {
-    ID: id,
-    EmployeeCode: employeeCode,
-    Name: name,
-    Department: department,
-    MonthlySalary: monthlySalary,
-    PhotoUrl: photoUrl,
-    PhotoName: String(data.photoName || ''),
-    SupportingDocuments: JSON.stringify(savedDocuments),
-    Active: data.active === false ? false : true,
-    CreatedAt: existing ? existing.CreatedAt : now,
-    UpdatedAt: now
-  };
-  if (existing) {
-    existingRow.headers.forEach((header, index) => {
-      if (Object.prototype.hasOwnProperty.call(values, header)) {
-        sheet.getRange(existingRow.rowIndex, index + 1).setValue(values[header]);
-      }
-    });
-  } else {
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
-    sheet.appendRow(headers.map(header =>
-      Object.prototype.hasOwnProperty.call(values, header) ? values[header] : ''));
-  }
-  return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
+}
+
+function nextEmployeeCode_(employees, currentDate) {
+  const month = Number(Utilities.formatDate(currentDate, 'Asia/Kolkata', 'M'));
+  const calendarYear = Number(Utilities.formatDate(currentDate, 'Asia/Kolkata', 'yyyy'));
+  const fiscalYearStart = month >= 4 ? calendarYear : calendarYear - 1;
+  const fiscalYear = `${String(fiscalYearStart).slice(-2)}-${String((fiscalYearStart + 1) % 100).padStart(2, '0')}`;
+  const pattern = new RegExp(`^DS/${fiscalYear}/(\\d+)$`, 'i');
+  const highestSequence = employees.reduce((highest, employee) => {
+    const match = String(employee.EmployeeCode || '').trim().match(pattern);
+    return match ? Math.max(highest, Number(match[1]) || 0) : highest;
+  }, 0);
+  return `DS/${fiscalYear}/${String(highestSequence + 1).padStart(3, '0')}`;
 }
 
 function saveEmployeePhoto_(photoUrl, photoName) {
@@ -917,7 +1023,8 @@ function generateSalary(employeeId, month) {
   }
   const monthValue = `${monthMatch[1]}-${monthMatch[2]}`;
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(employeeId));
     if (!employee) throw new Error('Employee not found.');
@@ -981,7 +1088,7 @@ function generateSalary(employeeId, month) {
     }
     return { status: 'SUCCESS', data: salaryRecord_(row) };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1116,7 +1223,7 @@ function addEnquiry(data) {
     Date: new Date().toLocaleDateString(),
     CustomerName: data.customerName || '',
     CustomerPhone: customerPhone,
-    CustomerEmail: '',
+    CustomerEmail: data.customerEmail || '',
     ServicesRequired: data.servicesRequired || '',
     TransformerLocation: '',
     LeakageLocation: '',
@@ -1461,11 +1568,12 @@ function getTransformerById(id) {
 
 function addTransformer(data) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     return addTransformerLocked_(data);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1474,7 +1582,8 @@ function addTransformers(dataList) {
     throw new Error('Select at least one transformer.');
   }
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     return {
       status: 'SUCCESS',
@@ -1487,7 +1596,7 @@ function addTransformers(dataList) {
       })
     };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1660,11 +1769,12 @@ function deleteTransformer(id) {
 
 function updateTransformerStatus(id, newStatus, assessmentDetails, backward) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     return updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backward);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1775,7 +1885,8 @@ function validateTransformerAssessment_(assessmentDetails) {
 
 function updateTransformerAssessment(id, assessmentDetails) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
@@ -1799,13 +1910,14 @@ function updateTransformerAssessment(id, assessmentDetails) {
     sheet.getRange(found.rowIndex, firstColumn, 1, updatedValues.length).setValues([updatedValues]);
     return getTransformerById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
 function deleteTransformerAssessment(id) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
@@ -1827,7 +1939,7 @@ function deleteTransformerAssessment(id) {
     if (updatedIdx >= 0) sheet.getRange(found.rowIndex, updatedIdx + 1).setValue(getTimestamp());
     return getTransformerById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1862,7 +1974,8 @@ function deliverTransformer(id, dcNo) {
 
 function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
     const dc = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
@@ -1959,7 +2072,7 @@ function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
     setValue('UpdatedAt', getTimestamp());
     return getDCByNo(dcNo);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2020,7 +2133,8 @@ function billTransformers(transformerIds, sapNo) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     ensureTNoteTransformerLinks_();
     const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
@@ -2077,7 +2191,7 @@ function billTransformers(transformerIds, sapNo) {
     ]));
     return { status: 'SUCCESS', data: ids.map(id => updatedById.get(id)) };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2211,7 +2325,8 @@ function updateTNote(id, data) {
 
 function addTNoteAttachments(id, attachments) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
@@ -2234,13 +2349,14 @@ function addTNoteAttachments(id, attachments) {
     if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
     return getTNoteById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
 function deleteTNoteAttachment(id, attachmentUrl) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
@@ -2270,7 +2386,7 @@ function deleteTNoteAttachment(id, attachmentUrl) {
     if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
     return getTNoteById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2375,7 +2491,8 @@ function addDC(data) {
   const sheet = initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const now = getTimestamp();
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const dcRequest = data.dc || data;
     const transformerIds = Array.isArray(data.transformerIds)
@@ -2505,7 +2622,7 @@ function addDC(data) {
       sentToTgspdcl: values.SentToTGSPDCL, transformerDetails, delivered: false, attachments: []
     } };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2518,7 +2635,8 @@ function parseDCTransformerDetails_(value) {
 
 function markDCDelivered_(dcNo, attachments) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
     const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
@@ -2599,7 +2717,7 @@ function markDCDelivered_(dcNo, attachments) {
       throw error;
     }
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2810,7 +2928,8 @@ function addBill(data) {
   if (!sapNo) throw new Error('SAP number is required.');
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     if (findRowByValue(SHEET_NAMES.BILLS, 'SapNo', sapNo)) {
       throw new Error(`A bill with SAP number "${sapNo}" already exists.`);
@@ -2844,7 +2963,7 @@ function addBill(data) {
       gstFilingMonth: values.GSTFilingMonth, invoiceNo: values.InvoiceNo, attachments: attachments
     } };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -3032,7 +3151,8 @@ function getQuotationByNo(quotationNo) {
 
 function deleteQuotation(quotationNo) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeQuotationSheets();
     const found = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', quotationNo);
@@ -3083,7 +3203,7 @@ function deleteQuotation(quotationNo) {
         : `Quotation deleted successfully.${fileCleanupWarning}`
     };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -3726,7 +3846,8 @@ function reserveQuotationNumbers(data) {
     throw new Error('A quotation or bill can reserve one or two document numbers.');
   }
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeQuotationSheets();
     return {
@@ -3736,7 +3857,7 @@ function reserveQuotationNumbers(data) {
       },
     };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -3859,7 +3980,8 @@ function saveGeneratedQuotationGroup(data) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   let generatedFile = null;
   const changedRows = [];
   const appendedRows = [];
@@ -4035,7 +4157,7 @@ function saveGeneratedQuotationGroup(data) {
     if (generatedFile) generatedFile.setTrashed(true);
     throw error;
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -4090,7 +4212,8 @@ function saveQuotation(data) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const settings = getQuotationConfig().data.settings;
     const sheet = initializeSheet(SHEET_NAMES.QUOTATIONS, SHEET_HEADERS.Quotations);
@@ -4189,7 +4312,7 @@ function saveQuotation(data) {
     }
     return { status: 'SUCCESS', data: quotation };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -4285,8 +4408,14 @@ function initializeSampleData() {
 function doPost(e) {
   try {
     const raw = JSON.parse(e.postData.contents);
+    if (!isAuthorizedBackendRequest_(raw.integrationSecret)) {
+      return respond({ status: 'ERROR', message: 'Unauthorized request.' });
+    }
     const action = String(raw.action || '').toUpperCase();
-    const payload = raw.payload || raw;
+    const payload = raw.payload && typeof raw.payload === 'object' && !Array.isArray(raw.payload)
+      ? { ...raw.payload }
+      : { ...raw };
+    delete payload.integrationSecret;
 
     let result;
     switch (action) {
@@ -4590,53 +4719,10 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  try {
-    const action = String(e.parameter.action || '').toUpperCase();
-    const id = e.parameter.id;
-
-    let result;
-    switch (action) {
-      case 'STATUS':
-        result = { status: 'SUCCESS', message: 'VSTMS Google Apps Script API is running', timestamp: getTimestamp() };
-        break;
-      case 'SERVICES':
-        result = getAllServices();
-        break;
-      case 'ENQUIRIES':
-        result = getAllEnquiries();
-        break;
-      case 'JOBS':
-        result = getAllJobs();
-        break;
-      case 'TRANSFORMERS':
-        result = getAllTransformers();
-        break;
-      case 'TNOTES':
-        result = getAllTNotes();
-        break;
-      case 'DCS':
-        result = getAllDCs();
-        break;
-      case 'BILLS':
-        result = getAllBills();
-        break;
-      case 'SUMMARY':
-        result = getTransformersSummary();
-        break;
-      case 'INIT':
-        result = initializeSampleData();
-        break;
-      default:
-        result = {
-          status: 'SUCCESS',
-          message: 'VSTMS Google Sheets API Ready',
-          availableSheets: Object.values(SHEET_NAMES)
-        };
-    }
-    return respond(result);
-  } catch (err) {
-    return respond({ status: 'ERROR', message: err.toString() });
-  }
+  return respond({
+    status: 'ERROR',
+    message: 'Direct Apps Script access is disabled. Use the authenticated backend API.'
+  });
 }
 
 function respond(data) {

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import LandingPage from './LandingPage'
 import { signOut } from 'firebase/auth'
 import { auth, getAuthSnapshot, subscribeToAuth } from './firebase'
-import { apiFetch } from './api'
+import { apiErrorMessage, apiFetch } from './api'
 import { finishInitialLoading, hideLoading, showLoading, withGlobalLoading } from './globalLoading'
 import deliveryChallanTemplateUrl from '/assets/delivery_challan_template.pdf'
 import EmployeePage from './EmployeePage'
@@ -25,6 +25,21 @@ const DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE = 9
 function uniqueValues(items, accessor) {
   return [...new Set(items.map(accessor).filter(value => value !== undefined && value !== null && value !== ''))]
     .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+}
+
+function getAuthProfile(email, displayName) {
+  const emailName = String(email || '').split('@')[0].split('+')[0]
+  const emailParts = emailName.split(/[^a-zA-Z0-9]+/).filter(Boolean)
+  const displayParts = String(displayName || '').trim().split(/\s+/).filter(Boolean)
+  const nameParts = emailParts.length > 0 ? emailParts : displayParts
+  const firstName = nameParts[0]
+    ? `${nameParts[0][0].toUpperCase()}${nameParts[0].slice(1).toLowerCase()}`
+    : 'User'
+  const initials = nameParts.length > 1
+    ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+    : (nameParts[0] || 'U').slice(0, 2).toUpperCase()
+
+  return { firstName, initials }
 }
 
 function columnOptions(rows, column) {
@@ -91,15 +106,15 @@ function getIndexedTransformerTNoteDetails(transformer, tnotesByTransformer, tno
 }
 
 const ENQUIRY_COLUMNS = [
-  { key: 'id', value: enquiry => String(enquiry.ID || '—') },
-  { key: 'date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
-  { key: 'company', value: enquiry => enquiry.CustomerName || '—' },
-  { key: 'contact', value: enquiry => enquiry.ContactPerson || '—' },
-  { key: 'mobile', value: enquiry => enquiry.CustomerPhone || '—' },
-  { key: 'capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
-  { key: 'make', value: enquiry => enquiry.TransformerMake || '—' },
-  { key: 'services', value: enquiry => enquiry.ServicesRequired || '—' },
-  { key: 'status', value: enquiry => enquiry.Status || 'NEW' },
+  { key: 'id', label: 'ID', value: enquiry => String(enquiry.ID || '—') },
+  { key: 'date', label: 'Date', value: enquiry => dateInputValue(enquiry.Date) || '—' },
+  { key: 'company', label: 'Company', value: enquiry => enquiry.CustomerName || '—' },
+  { key: 'contact', label: 'Contact', value: enquiry => enquiry.ContactPerson || '—' },
+  { key: 'mobile', label: 'Mobile', value: enquiry => enquiry.CustomerPhone || '—' },
+  { key: 'capacity', label: 'Capacity', value: enquiry => enquiry.TransformerCapacity || '—' },
+  { key: 'make', label: 'Make', value: enquiry => enquiry.TransformerMake || '—' },
+  { key: 'services', label: 'Services', value: enquiry => enquiry.ServicesRequired || '—' },
+  { key: 'status', label: 'Status', value: enquiry => enquiry.Status || 'NEW' },
 ]
 
 const QUOTATION_COLUMNS = [
@@ -446,6 +461,7 @@ function App() {
   const initialPageReady = Boolean(authUser && initialPageLoadedFor === authUser.uid)
   const adminLoginOnly = window.location.pathname.replace(/\/+$/, '') === '/admin'
   const [currentTab, setCurrentTab] = useState('employees')
+  const [dashboardSearch, setDashboardSearch] = useState('')
   const [transformers, setTransformers] = useState([])
   const [transformersLoading, setTransformersLoading] = useState(false)
   const [transformerExportLoading, setTransformerExportLoading] = useState(false)
@@ -607,6 +623,7 @@ function App() {
     makes: [],
     spmCenters: [],
     services: [],
+    transformerTypes: [],
     businessGstin: '',
     tgspdclGstin: '',
   })
@@ -640,6 +657,15 @@ function App() {
   })
 
   const navItems = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: (
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 7h8v11h-8V10zM3 13h8v8H3v-8z" />
+        </svg>
+      ),
+    },
     {
       id: 'employees',
       label: 'Employees',
@@ -831,7 +857,7 @@ function App() {
     if (!authUser || !initialPageReady) return
     fetchTransformers()
     fetchSummary()
-  }, [authUser, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, typeFilter, capacityFilter])
+  }, [authUser, initialPageReady, currentTab, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, tNoteFilter, typeFilter, capacityFilter])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -845,11 +871,11 @@ function App() {
 
   useEffect(() => {
     if (!authUser || !initialPageReady) return
-    if (currentTab === 'enquiries') fetchEnquiries()
-    if (currentTab === 'tnotes') fetchTNotes()
+    if (currentTab === 'enquiries' || currentTab === 'dashboard') fetchEnquiries()
+    if (currentTab === 'tnotes' || currentTab === 'dashboard') fetchTNotes()
     if (currentTab === 'dcs') fetchDCs()
     if (currentTab === 'bills') fetchBills()
-  }, [authUser, currentTab])
+  }, [authUser, initialPageReady, currentTab])
 
   const formattedDate = (value) => {
     if (!value) return ''
@@ -1010,7 +1036,7 @@ function App() {
           .filter(Boolean)
         if (nonEmptyValues.length > 0) params.set(key, nonEmptyValues.join(','))
       })
-      const response = await apiFetch(`/api/transformers?${params.toString()}`)
+      const response = await apiFetch(`/api/transformers?${params.toString()}`, { cache: 'no-store' })
       if (!response.ok) {
         throw new Error(`Failed to fetch transformers (${response.status})`)
       }
@@ -1218,7 +1244,7 @@ ${styles}
     setDropdownDefaultsError('')
     try {
       const response = await apiFetch('/api/defaults')
-      if (!response.ok) throw new Error(`Failed to load dropdown defaults (${response.status})`)
+      if (!response.ok) throw new Error(await apiErrorMessage(response, 'Failed to load dropdown defaults'))
       const result = await response.json()
       if (result.status !== 'SUCCESS' || !result.data) {
         throw new Error(result.message || 'Failed to load dropdown defaults')
@@ -1228,6 +1254,7 @@ ${styles}
         makes: Array.isArray(result.data.makes) ? result.data.makes : [],
         spmCenters: Array.isArray(result.data.spmCenters) ? result.data.spmCenters : [],
         services: Array.isArray(result.data.services) ? result.data.services : [],
+        transformerTypes: Array.isArray(result.data.transformerTypes) ? result.data.transformerTypes : [],
         businessGstin: result.data.businessGstin || '',
         tgspdclGstin: result.data.tgspdclGstin || '',
       })
@@ -1357,6 +1384,7 @@ ${styles}
       fetchQuotations(),
     ]).finally(() => {
       if (cancelled) return
+      setCurrentTab(window.matchMedia('(max-width: 760px)').matches ? 'dashboard' : 'employees')
       setInitialPageLoadedFor(authUser.uid)
     })
 
@@ -1364,6 +1392,15 @@ ${styles}
       cancelled = true
     }
   }, [authUser])
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 760px)')
+    const handleViewportChange = (event) => {
+      if (!event.matches && ['dashboard', 'more'].includes(currentTab)) setCurrentTab('employees')
+    }
+    mobileQuery.addEventListener('change', handleViewportChange)
+    return () => mobileQuery.removeEventListener('change', handleViewportChange)
+  }, [currentTab])
 
   useEffect(() => {
     if (authUser === null || initialPageReady) finishInitialLoading()
@@ -3614,6 +3651,84 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       : 'Completed'
   }
 
+  const dashboardReceivedTNotes = sortByDateDescending(
+    tnotes.filter(tnote => (tnote.transformers || []).some(transformer =>
+      ['recieved', 'received'].includes(String(transformer.status || '').toLowerCase())
+    )),
+    tnote => tnote.date,
+    tnote => tnote.tNoteNo || tnote.id,
+  ).slice(0, 5)
+  const dashboardNewEnquiries = enquiries.filter(enquiry =>
+    !String(enquiry.Status || 'NEW').trim() || String(enquiry.Status || 'NEW').trim().toLowerCase() === 'new'
+  ).length
+  const dashboardSearchResults = dashboardSearch.trim()
+    ? [
+      ...tnotes
+        .filter(tnote => `${tnote.tNoteNo || ''} ${tnote.id || ''} ${getTNoteSpmCenter(tnote)}`.toLowerCase().includes(dashboardSearch.trim().toLowerCase()))
+        .map(tnote => ({ type: 'tnote', key: `tnote-${tnote.id}`, label: `TNote ${tnote.tNoteNo || tnote.id}`, detail: getTNoteSpmCenter(tnote), record: tnote })),
+      ...transformers
+        .filter(transformer => `${transformer.dtrNo || ''} ${transformer.sNo || ''} ${transformer.spmCenter || ''}`.toLowerCase().includes(dashboardSearch.trim().toLowerCase()))
+        .map(transformer => ({ type: 'transformer', key: `transformer-${transformer.id}`, label: `DTR ${transformer.dtrNo || transformer.id}`, detail: `${transformer.sNo || 'Serial not set'} · ${transformer.spmCenter || 'SPM Center not set'}`, record: transformer })),
+      ...enquiries
+        .filter(enquiry => `${enquiry.CustomerName || ''} ${enquiry.ContactPerson || ''} ${enquiry.CustomerPhone || ''}`.toLowerCase().includes(dashboardSearch.trim().toLowerCase()))
+        .map(enquiry => ({ type: 'enquiry', key: `enquiry-${enquiry.ID}`, label: enquiry.CustomerName || 'Customer enquiry', detail: `${enquiry.CustomerPhone || 'No phone'} · ${enquiry.Status || 'NEW'}`, record: enquiry })),
+    ].slice(0, 5)
+    : []
+
+  const openDashboardSearchResult = (result) => {
+    setDashboardSearch('')
+    if (result.type === 'tnote') {
+      setCurrentTab('tnotes')
+      openTNoteDetails(result.record)
+      return
+    }
+    if (result.type === 'enquiry') {
+      setCurrentTab('enquiries')
+      setExpandedEnquiryId(result.record.ID)
+      return
+    }
+    setStatusFilter([])
+    setSpmCenterFilter([])
+    setDtrNoFilter(result.record.dtrNo ? [String(result.record.dtrNo)] : [])
+    setSNoFilter(result.record.sNo ? [String(result.record.sNo)] : [])
+    setTNoteFilter([])
+    setTypeFilter([])
+    setCapacityFilter([])
+    setPage(0)
+    setCurrentTab('transformers')
+  }
+
+  const submitDashboardSearch = (event) => {
+    event.preventDefault()
+    const query = dashboardSearch.trim()
+    if (!query) return
+    if (/^(sap|agr)/i.test(query)) {
+      setBillSapFilter([query])
+      setBillDateFilter([])
+      setBillSpmCenterFilter([])
+      setCurrentTab('bills')
+      return
+    }
+    if (dashboardSearchResults.length > 0) {
+      openDashboardSearchResult(dashboardSearchResults[0])
+      return
+    }
+    setStatusFilter([])
+    setSpmCenterFilter([])
+    setDtrNoFilter([query])
+    setSNoFilter([])
+    setTNoteFilter([])
+    setTypeFilter([])
+    setCapacityFilter([])
+    setPage(0)
+    setCurrentTab('transformers')
+  }
+
+  const dashboardGreeting = new Date().getHours() < 12
+    ? 'Good morning'
+    : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'
+  const authProfile = getAuthProfile(authUser?.email, authUser?.displayName)
+
   const billTransformer = async (transformer) => {
     if (transformer.status !== 'Delivered') {
       return
@@ -3792,7 +3907,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   }
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${currentTab === 'dashboard' ? 'app-shell--mobile-dashboard' : ''} ${currentTab === 'more' ? 'app-shell--mobile-more' : ''}`}>
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-brand">
           <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((prev) => !prev)} aria-label="Toggle sidebar">
@@ -3805,8 +3920,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           {navItems.map((item) => (
             <button
               key={item.id}
-              className={`nav-item ${currentTab === item.id ? 'active' : ''}`}
-              onClick={() => setCurrentTab(item.id)}
+              className={`nav-item ${item.id === 'dashboard' ? 'nav-item--dashboard' : ''} ${currentTab === item.id ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTab(item.id)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
               aria-label={item.label}
             >
               <span className="nav-icon">{item.icon}</span>
@@ -3815,6 +3933,21 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           ))}
         </nav>
       </aside>
+
+      <nav className="mobile-bottom-nav" aria-label="Primary navigation">
+        {navItems.map((item) => (
+          <button
+            type="button"
+            key={item.id}
+            className={currentTab === item.id ? 'active' : ''}
+            onClick={() => setCurrentTab(item.id)}
+            aria-current={currentTab === item.id ? 'page' : undefined}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
 
       <main className="main-shell">
         <header className="hero">
@@ -3845,6 +3978,230 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
           </div>
         </header>
         {dropdownDefaultsError && <p className="status status--error jobs-feedback" role="alert">{dropdownDefaultsError}</p>}
+
+      {currentTab === 'dashboard' && (
+        <section className="mobile-dashboard" aria-labelledby="mobile-dashboard-title">
+          <header className="mobile-dashboard-header">
+            <div className="mobile-dashboard-brand">
+              <span className="mobile-dashboard-brand-mark" aria-hidden="true">M<i /></span>
+              <div>
+                <strong>D.S. TRANSFORMERS</strong>
+                <span>Workshop operations</span>
+              </div>
+            </div>
+            <div className="mobile-dashboard-header-actions">
+              <button
+                type="button"
+                className="mobile-dashboard-notifications"
+                onClick={() => setCurrentTab('enquiries')}
+                aria-label={`${dashboardNewEnquiries} new enquiries`}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+                </svg>
+                {dashboardNewEnquiries > 0 && <span>{dashboardNewEnquiries}</span>}
+              </button>
+              <button
+                type="button"
+                className="mobile-dashboard-avatar"
+                onClick={() => signOut(auth)}
+                aria-label={`Sign out${authUser?.email ? ` (${authUser.email})` : ''}`}
+                title={authUser?.email || 'Sign out'}
+              >
+                {authProfile.initials}
+              </button>
+            </div>
+          </header>
+
+          <div className="mobile-dashboard-content">
+            <div className="mobile-dashboard-welcome">
+              <h2 id="mobile-dashboard-title">{dashboardGreeting}, {authProfile.firstName}</h2>
+              <p>What do you need to do today?</p>
+            </div>
+
+            <form className="mobile-dashboard-search-wrap" role="search" onSubmit={submitDashboardSearch}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></svg>
+              <input
+                type="search"
+                value={dashboardSearch}
+                onChange={event => setDashboardSearch(event.target.value)}
+                placeholder="Find a customer, TNote or transformer"
+                aria-label="Search customers, TNotes, transformers and SAP numbers"
+              />
+              {dashboardSearch && <button type="button" onClick={() => setDashboardSearch('')} aria-label="Clear search">×</button>}
+            </form>
+            {dashboardSearch.trim() && (
+              <div className="mobile-dashboard-search-results" role="listbox" aria-label="Search results">
+                {dashboardSearchResults.map(result => (
+                  <button key={result.key} type="button" onClick={() => openDashboardSearchResult(result)}>
+                    <strong>{result.label}</strong><span>{result.detail}</span>
+                  </button>
+                ))}
+                {dashboardSearchResults.length === 0 && <p>Press Enter to search transformer records or SAP bills.</p>}
+              </div>
+            )}
+
+            <div className="mobile-dashboard-section-heading">
+              <h3>Quick actions</h3>
+              <button
+                type="button"
+                className="mobile-dashboard-enquiry-pill"
+                onClick={() => setCurrentTab('enquiries')}
+                aria-label={`Open ${dashboardNewEnquiries} new enquiries`}
+              >
+                <i />{dashboardNewEnquiries} new enquiries
+              </button>
+            </div>
+            <div className="mobile-dashboard-quick-actions">
+              <button type="button" className="mobile-dashboard-quick-card" onClick={() => {
+                setCurrentTab('quotations')
+                openNewQuotation()
+              }}>
+                <span className="mobile-dashboard-action-icon mobile-dashboard-action-icon--copper">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12v14H6zM9 5h6v3H9zM8 12h8m-8 4h7" /></svg>
+                </span>
+                <span className="mobile-dashboard-quick-copy"><strong>Quotation</strong><small>Private orders</small></span>
+                <b className="mobile-dashboard-action-label mobile-dashboard-action-label--copper">+ New quote</b>
+              </button>
+              <button type="button" className="mobile-dashboard-quick-card" onClick={() => {
+                setCurrentTab('quotations')
+                openNewQuotation('BILL')
+              }}>
+                <span className="mobile-dashboard-action-icon mobile-dashboard-action-icon--blue">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 9h6m-6 4h6m-6 4h4" /></svg>
+                </span>
+                <span className="mobile-dashboard-quick-copy"><strong>Service bill</strong><small>Private work</small></span>
+                <b className="mobile-dashboard-action-label mobile-dashboard-action-label--blue">+ New bill</b>
+              </button>
+              <button type="button" className="mobile-dashboard-quick-card mobile-dashboard-quick-card--dc" onClick={() => {
+                setCurrentTab('dcs')
+                openDCModal()
+              }}>
+                <span className="mobile-dashboard-action-icon mobile-dashboard-action-icon--green">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h13l3 3v12H5zM18 5v4h3" /></svg>
+                </span>
+                <span className="mobile-dashboard-quick-copy"><strong>Delivery challan</strong><small>Pick repaired units · create PDF</small></span>
+                <b className="mobile-dashboard-action-label mobile-dashboard-action-label--green">Create DC</b>
+              </button>
+            </div>
+
+            <section className="mobile-dashboard-assessment" aria-labelledby="assessment-due-title">
+              <div className="mobile-dashboard-section-heading mobile-dashboard-assessment-heading">
+                <div>
+                  <h3 id="assessment-due-title">Assessment due · TGSPDCL</h3>
+                  <p>Up to 5 open TNotes · one SPM Center each · max 10 units</p>
+                </div>
+              </div>
+              {tnoteError && <p className="mobile-dashboard-error" role="alert">{tnoteError}</p>}
+              {tnoteLoading && dashboardReceivedTNotes.length === 0 && <p className="mobile-dashboard-empty">Loading received TNotes…</p>}
+              {!tnoteLoading && !tnoteError && dashboardReceivedTNotes.length === 0 && (
+                <div className="mobile-dashboard-empty">No transformers are currently waiting for assessment.</div>
+              )}
+              <div className="mobile-dashboard-tnote-list">
+                {dashboardReceivedTNotes.map(tnote => {
+                  const noteTransformers = Array.isArray(tnote.transformers) ? tnote.transformers : []
+                  const receivedCount = noteTransformers.filter(transformer =>
+                    ['recieved', 'received'].includes(String(transformer.status || '').toLowerCase())
+                  ).length
+                  const assessingCount = noteTransformers.filter(transformer =>
+                    ['assesment', 'assessment'].includes(String(transformer.status || '').toLowerCase())
+                  ).length
+                  const repairCount = noteTransformers.filter(transformer =>
+                    String(transformer.status || '').toLowerCase() === 'repair in progress'
+                  ).length
+                  const repairedCount = noteTransformers.filter(transformer =>
+                    String(transformer.status || '').toLowerCase() === 'repaired'
+                  ).length
+                  const noteCenter = getTNoteSpmCenter(tnote)
+                  return (
+                    <article className="mobile-dashboard-tnote-card" key={tnote.id}>
+                      <button type="button" className="mobile-dashboard-tnote-main" onClick={() => openTNoteDetails(tnote)}>
+                        <strong>{tnote.tNoteNo || tnote.id} · {noteCenter} · {noteTransformers.length} / 10 transformers</strong>
+                        <small>{receivedCount} received · {assessingCount} assessing · {repairCount} repair · {repairedCount} repaired</small>
+                      </button>
+                      <button type="button" className="mobile-dashboard-assess-button" onClick={() => openTNoteDetails(tnote)}>
+                        Assess {receivedCount}
+                      </button>
+                    </article>
+                  )
+                })}
+              </div>
+              {enquiriesError && <p className="mobile-dashboard-error" role="alert">{enquiriesError}</p>}
+              {enquiriesLoading && <p className="mobile-dashboard-supporting-note">Refreshing enquiry count…</p>}
+              <button type="button" className="mobile-dashboard-view-all" onClick={() => setCurrentTab('tnotes')}>
+                View all TNotes with Received units <span aria-hidden="true">→</span>
+              </button>
+            </section>
+
+            <button type="button" className="mobile-dashboard-people-card" onClick={() => setCurrentTab('employees')}>
+              <span className="mobile-dashboard-people-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 13a8 8 0 0 1 16 0M7 17a5 5 0 0 1 10 0M12 13a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5" /></svg>
+              </span>
+              <span className="mobile-dashboard-people-copy">
+                <strong>People &amp; payroll</strong>
+                <small>Employees · attendance · monthly salary</small>
+              </span>
+              <svg className="mobile-dashboard-people-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+              <b>Open employee management</b>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {currentTab === 'more' && (
+        <section className="panel mobile-more-panel">
+          <div className="panel-header"><h2>Workshop operations</h2></div>
+          <p>Open a register or workflow.</p>
+          <div className="mobile-more-links">
+            {[
+              ['employees', 'Employees & salary'],
+              ['enquiries', 'Service enquiries'],
+              ['tnotes', 'TGSPDCL TNotes'],
+              ['transformers', 'Transformer register'],
+              ['dcs', 'Delivery challans'],
+              ['bills', 'TGSPDCL bills'],
+              ['quotations', 'Quotations & service bills'],
+            ].map(([tab, label]) => (
+              <button type="button" key={tab} onClick={() => setCurrentTab(tab)}>{label}<span aria-hidden="true">→</span></button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {currentTab !== 'quotations' && currentTab !== 'employees' && currentTab !== 'dashboard' && currentTab !== 'more' && (
+        <section className="kpis">
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
+            <p>Recieved</p>
+            <h3>{summary.recieve}</h3>
+            <small>New inward entries</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Assesment')} aria-label={`View ${summary.assesment} transformers awaiting assessment`}>
+            <p>Assesment</p>
+            <h3>{summary.assesment}</h3>
+            <small>Fault verification pending</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repair In Progress')} aria-label={`View ${summary.repairInProgress} transformers in repair`}>
+            <p>Repair In Progress</p>
+            <h3>{summary.repairInProgress}</h3>
+            <small>Workshop jobs in progress</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repaired')} aria-label={`View ${summary.repaired} repaired transformers`}>
+            <p>Repaired</p>
+            <h3>{summary.repaired}</h3>
+            <small>Ready for dispatch planning</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Delivered')} aria-label={`View ${summary.delivered} delivered transformers`}>
+            <p>Delivered</p>
+            <h3>{summary.delivered}</h3>
+            <small>Customer handover completed</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Billed')} aria-label={`View ${summary.billed} billed transformers`}>
+            <p>Billed</p>
+            <h3>{summary.billed}</h3>
+            <small>Invoice posted after delivery</small>
+          </button>
+        </section>
+      )}
 
       {currentTab === 'enquiries' && (
         <section className="panel jobs-panel">
@@ -3956,7 +4313,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             <table className="jobs-table enquiries-table">
               <thead>
                 <tr>
-                  {enquiryColumns.map(column => (
+                  {ENQUIRY_COLUMNS.map(column => (
                     <th key={column.key}>
                       <FilterHeader
                         column={column.label}
@@ -4355,7 +4712,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                                 onChange={event => updateQuotationLine(index, 'rate', event.target.value)}
                                 required
                               />
-                              {(item.service === 'Transformer Oil Filtration' || item.service === 'New Transformer Oil') && <small className="quotation-rate-note">Rate per litre</small>}
+                              {(item.service === 'New Transformer Oil') && <small className="quotation-rate-note">Rate per litre</small>}
                               {item.service === 'Earth Pit Testing' && <small className="quotation-rate-note">Rate per pit</small>}
                             </td>
                             {quotationDraft.documentType === 'BILL' && <td>₹{(Number(item.quantity || 0) * Number(item.rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
@@ -6298,8 +6655,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   </label>
                   <label>
                     Type
-                    <input
+                    <DefaultSelect
                       value={newTNoteTransformer.type}
+                      options={dropdownDefaults.transformerTypes}
+                      placeholder="Select Transformer Type"
                       onChange={event => setNewTNoteTransformer(current => ({ ...current, type: event.target.value }))}
                       required
                       disabled={addingTNoteTransformer}
@@ -6599,9 +6958,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       onChange={(e) => handleTransformerInputChange(index, 'capacity', e.target.value)}
                       required
                     />
-                    <input
-                      placeholder="Type"
+                    <DefaultSelect
                       value={transformer.type}
+                      options={dropdownDefaults.transformerTypes}
+                      placeholder="Select Transformer Type"
                       onChange={(e) => handleTransformerInputChange(index, 'type', e.target.value)}
                       required
                     />

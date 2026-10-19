@@ -50,6 +50,7 @@ public class GoogleSheetsService {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsService.class);
     private static final long SHEET_READ_CACHE_TTL_NANOS = Duration.ofSeconds(2).toNanos();
+    private static final int MAX_READ_ATTEMPTS = 2;
 
     private static final List<String> STATUS_ORDER = List.of(
             "Recieved",
@@ -62,6 +63,9 @@ public class GoogleSheetsService {
 
     @Value("${google.apps.script.url}")
     private String appsScriptUrl;
+
+    @Value("${google.apps.script.shared-secret:}")
+    private String appsScriptSharedSecret;
 
     @Value("${google.apps.script.request-timeout:45s}")
     private Duration appsScriptRequestTimeout;
@@ -129,10 +133,16 @@ public class GoogleSheetsService {
 
     private Map<String, Object> postToAppsScript(Map<String, Object> payload, Duration requestTimeout) {
         String action = String.valueOf(payload.getOrDefault("action", "")).toUpperCase(Locale.ROOT);
-        boolean readOnlyAction = action.startsWith("GET") || action.startsWith("FIND");
+        boolean readOnlyAction = isReadOnlyAction(action);
         if (!readOnlyAction) invalidateSheetReadSnapshots();
+        if (appsScriptSharedSecret == null || appsScriptSharedSecret.length() < 32) {
+            log.error("Google Apps Script shared secret is missing or shorter than 32 characters.");
+            return errorResponse("Google Apps Script integration is not configured.");
+        }
         try {
-            String jsonPayload = objectMapper.writeValueAsString(payload);
+            Map<String, Object> authenticatedPayload = new HashMap<>(payload);
+            authenticatedPayload.put("integrationSecret", appsScriptSharedSecret);
+            String jsonPayload = objectMapper.writeValueAsString(authenticatedPayload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(appsScriptUrl))
                     .header("Content-Type", "application/json")
@@ -140,31 +150,106 @@ public class GoogleSheetsService {
                     .timeout(requestTimeout)
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            // Handle potential manual redirect if not automatically handled
-            if (response.statusCode() == 302 || response.statusCode() == 301 || response.statusCode() == 307) {
-                String redirectUrl = response.headers().firstValue("Location").orElse(null);
-                if (redirectUrl != null) {
-                    HttpRequest getReq = HttpRequest.newBuilder()
-                            .uri(URI.create(redirectUrl))
-                            .GET()
-                            .timeout(requestTimeout)
-                            .build();
-                    response = httpClient.send(getReq, HttpResponse.BodyHandlers.ofString());
+            for (int attempt = 1; attempt <= (readOnlyAction ? MAX_READ_ATTEMPTS : 1); attempt++) {
+                HttpResponse<String> response;
+                try {
+                    response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                } catch (IOException e) {
+                    log.warn("Communication with Google Apps Script failed for action {} (attempt {}/{}): {}",
+                            action, attempt, readOnlyAction ? MAX_READ_ATTEMPTS : 1, e.getMessage());
+                    if (readOnlyAction && attempt < MAX_READ_ATTEMPTS) {
+                        pauseBeforeReadRetry(attempt, action);
+                        continue;
+                    }
+                    return errorResponse("Google Apps Script error for action " + action + ": " + e.getMessage());
                 }
-            }
+                if (isTransientUpstreamStatus(response.statusCode())) {
+                    log.warn("Google Apps Script returned HTTP {} for action {} (attempt {}/{})",
+                            response.statusCode(), action, attempt,
+                            readOnlyAction ? MAX_READ_ATTEMPTS : 1);
+                    if (readOnlyAction && attempt < MAX_READ_ATTEMPTS) {
+                        pauseBeforeReadRetry(attempt, action);
+                        continue;
+                    }
+                    return errorResponse("Google Apps Script returned HTTP " + response.statusCode()
+                            + " for action " + action);
+                }
 
-            String body = response.body();
-            if (body != null && !body.isBlank()) {
-                Map<String, Object> result = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
-                if (!readOnlyAction) invalidateSheetReadSnapshots();
-                return result;
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    log.warn("Google Apps Script returned HTTP {} for action {}",
+                            response.statusCode(), action);
+                    return errorResponse("Google Apps Script returned HTTP " + response.statusCode()
+                            + " for action " + action);
+                }
+
+                String body = response.body();
+                if (body != null && !body.isBlank()) {
+                    Map<String, Object> result = objectMapper.readValue(
+                            body, new TypeReference<Map<String, Object>>() {});
+                    boolean transientAppsScriptError = isTransientAppsScriptError(result);
+                    if ("ERROR".equals(result.get("status"))) {
+                        log.warn("Google Apps Script returned an error for action {} (attempt {}/{})",
+                                action, attempt, readOnlyAction ? MAX_READ_ATTEMPTS : 1);
+                    }
+                    if (readOnlyAction && transientAppsScriptError) {
+                        log.warn("Google Apps Script reported a transient error for action {} (attempt {}/{})",
+                                action, attempt, readOnlyAction ? MAX_READ_ATTEMPTS : 1);
+                        if (attempt < MAX_READ_ATTEMPTS) {
+                            pauseBeforeReadRetry(attempt, action);
+                            continue;
+                        }
+                    }
+                    if (!readOnlyAction) invalidateSheetReadSnapshots();
+                    return result;
+                }
+                log.warn("Google Apps Script returned an empty response for action {} (attempt {}/{})",
+                        action, attempt, readOnlyAction ? MAX_READ_ATTEMPTS : 1);
+                if (readOnlyAction && attempt < MAX_READ_ATTEMPTS) {
+                    pauseBeforeReadRetry(attempt, action);
+                    continue;
+                }
+                return errorResponse("Empty response from Google Apps Script for action " + action);
             }
-            return errorResponse("Empty response from Google Apps Script");
-        } catch (Exception e) {
-            log.warn("Communication with Google Apps Script failed: {}", e.getMessage());
-            return errorResponse("Google Apps Script error: " + e.getMessage());
+        } catch (IOException e) {
+            log.warn("Communication with Google Apps Script failed for action {}: {}", action, e.getMessage());
+            return errorResponse("Google Apps Script error for action " + action + ": " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Communication with Google Apps Script was interrupted for action {}", action);
+            return errorResponse("Google Apps Script request was interrupted for action " + action);
+        } catch (RuntimeException e) {
+            log.warn("Google Apps Script request failed for action {}: {}", action, e.getMessage());
+            return errorResponse("Google Apps Script error for action " + action + ": " + e.getMessage());
+        }
+        return errorResponse("Google Apps Script request failed for action " + action);
+    }
+
+    static boolean isReadOnlyAction(String action) {
+        return action.startsWith("GET") || action.startsWith("FIND");
+    }
+
+    static boolean isTransientUpstreamStatus(int statusCode) {
+        return statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504;
+    }
+
+    static boolean isTransientAppsScriptError(Map<String, Object> response) {
+        if (!"ERROR".equals(response.get("status"))) return false;
+        String message = String.valueOf(response.getOrDefault("message", "")).toLowerCase(Locale.ROOT);
+        return message.contains("timed out")
+                || message.contains("timeout")
+                || message.contains("temporarily unavailable")
+                || message.contains("service invoked too many times")
+                || message.contains("internal error")
+                || message.contains("server error");
+    }
+
+    private void pauseBeforeReadRetry(int attempt, String action) throws InterruptedException {
+        try {
+            Thread.sleep(250L * attempt);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Retry delay was interrupted for Google Apps Script action {}", action);
+            throw e;
         }
     }
 

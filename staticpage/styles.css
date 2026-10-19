@@ -2014,6 +2014,11 @@ p {
     padding-bottom: calc(0.7rem + env(safe-area-inset-bottom));
   }
 
+  .mobile-cta-bar .btn {
+    max-width: 420px;
+    min-height: 46px;
+  }
+
   body {
     padding-bottom: calc(4.8rem + env(safe-area-inset-bottom));
   }

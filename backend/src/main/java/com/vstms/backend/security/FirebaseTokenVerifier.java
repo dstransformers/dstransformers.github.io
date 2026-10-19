@@ -7,11 +7,7 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
@@ -22,33 +18,22 @@ public class FirebaseTokenVerifier {
     private static final Logger LOGGER = LoggerFactory.getLogger(FirebaseTokenVerifier.class);
 
     private final String projectId;
-    private final Set<String> adminEmails;
     private FirebaseAuth firebaseAuth;
 
     public FirebaseTokenVerifier(
-            @Value("${app.firebase.project-id:}") String projectId,
-            @Value("${app.admin.emails:}") String configuredAdminEmails) {
+            @Value("${app.firebase.project-id:}") String projectId) {
         this.projectId = projectId.trim();
-        this.adminEmails = Arrays.stream(configuredAdminEmails.split(","))
-                .map(String::trim)
-                .filter(email -> !email.isEmpty())
-                .map(email -> email.toLowerCase(Locale.ROOT))
-                .collect(Collectors.toUnmodifiableSet());
     }
 
     public Optional<String> verifyAdminToken(String token) {
         try {
             FirebaseToken decodedToken = getFirebaseAuth().verifyIdToken(token, true);
-            String email = decodedToken.getEmail();
-            if (!decodedToken.isEmailVerified()) {
-                LOGGER.warn("Firebase admin access denied: email is not verified.");
+            Optional<String> adminEmail = firebaseEmail(decodedToken.getEmail());
+            if (adminEmail.isEmpty()) {
+                LOGGER.warn("Firebase admin access denied: account does not have an email address.");
                 return Optional.empty();
             }
-            if (email == null || !adminEmails.contains(email.toLowerCase(Locale.ROOT))) {
-                LOGGER.warn("Firebase admin access denied: account is not on the admin allowlist.");
-                return Optional.empty();
-            }
-            return Optional.of(email);
+            return adminEmail;
         } catch (FirebaseAuthException exception) {
             LOGGER.warn("Firebase ID token verification failed ({}).", exception.getClass().getSimpleName());
             return Optional.empty();
@@ -62,8 +47,8 @@ public class FirebaseTokenVerifier {
         if (firebaseAuth != null) {
             return firebaseAuth;
         }
-        if (projectId.isBlank() || adminEmails.isEmpty()) {
-            throw new IllegalStateException("Firebase project and admin email allowlist must be configured.");
+        if (projectId.isBlank()) {
+            throw new IllegalStateException("Firebase project must be configured.");
         }
 
         FirebaseApp app = FirebaseApp.getApps().stream()
@@ -79,5 +64,12 @@ public class FirebaseTokenVerifier {
         }
         firebaseAuth = FirebaseAuth.getInstance(app);
         return firebaseAuth;
+    }
+
+    static Optional<String> firebaseEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(email.trim());
     }
 }

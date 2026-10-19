@@ -1,6 +1,12 @@
 .employee-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 22px;
+}
+
+.employee-page > * {
+  min-width: 0;
 }
 
 .employee-page .page-heading {
@@ -267,6 +273,10 @@
   min-width: 0;
 }
 
+.calendar-action-short {
+  display: none;
+}
+
 .calendar-weekday {
   padding: 8px;
   color: #64748b;
@@ -288,6 +298,10 @@
   background: #f8fafc;
   color: #334155;
   font-size: 0.78rem;
+}
+
+.calendar-day--empty {
+  visibility: hidden;
 }
 
 .calendar-day-date {
@@ -452,6 +466,11 @@
   background: #fff;
 }
 
+.employee-modal input[readonly] {
+  background: #f8fafc;
+  color: #475569;
+}
+
 .employee-modal input[type="checkbox"] {
   width: auto;
   justify-self: start;
@@ -460,6 +479,12 @@
 .form-grid--full {
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+.employee-code-hint {
+  margin: -10px 0 0;
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .employee-photo-preview {
@@ -593,8 +618,8 @@
   }
 
   .employee-card-actions button {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
 
   .employee-card-copy {
@@ -636,24 +661,76 @@
   }
 
   .attendance-calendar-scroll {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .attendance-calendar {
-    min-width: 560px;
-    grid-template-columns: repeat(7, minmax(70px, 1fr));
+    min-width: 0;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 3px;
   }
 
   .calendar-day {
-    min-height: 82px;
-    padding: 7px;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 0;
+    min-height: 94px;
+    padding: 4px 2px;
+    font-size: 0.66rem;
+  }
+
+  .calendar-day--empty {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .calendar-weekday {
+    padding: 5px 0;
+    font-size: 0.62rem;
+  }
+
+  .calendar-day-info {
+    min-width: 0;
+    width: 100%;
+    text-align: center;
+  }
+
+  .calendar-day-date {
+    font-size: 0.8rem;
+  }
+
+  .calendar-day-info > small {
+    overflow-wrap: anywhere;
+    margin-top: 2px;
+    font-size: 0.52rem;
+  }
+
+  .calendar-day-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    gap: 2px;
+    margin-top: auto;
   }
 
   .calendar-day-actions button {
-    min-height: 30px;
-    padding: 5px 6px;
+    min-width: 0;
+    min-height: 24px;
+    padding: 2px 0;
+    font-size: 0.52rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .calendar-action-full {
+    display: none;
+  }
+
+  .calendar-action-short {
+    display: block;
   }
 
   .salary-row {
@@ -672,12 +749,20 @@
   }
 
   .salary-actions .btn {
-    min-height: 42px;
+    min-height: 44px;
     padding-inline: 8px;
   }
 
   .employee-modal .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .employee-modal,
+  .employee-clock-modal {
+    width: 100%;
+    max-height: 94dvh;
+    padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0;
   }
 
   .form-grid--full {
@@ -724,11 +809,105 @@
   }
 
   .employee-card-actions button {
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
   }
 
   .employee-toolbar-actions {
     grid-template-columns: 1fr;
   }
+}
+
+.employee-page .page-heading h2,
+.employee-card-copy h3,
+.salary-row strong {
+  color: var(--navy);
+}
+
+.employee-page .page-heading h2 {
+  font-family: var(--sans);
+  font-size: var(--type-title);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.employee-page {
+  font-family: var(--sans);
+}
+
+.employee-page .section-heading h3 {
+  color: var(--navy);
+  font-family: var(--sans);
+  font-size: var(--type-section);
+  font-weight: 700;
+}
+
+.employee-page .page-heading p,
+.employee-card-copy p,
+.salary-row span {
+  color: #727c84;
+}
+
+.employee-page .eyebrow {
+  color: var(--copper-deep);
+}
+
+.employee-toolbar,
+.employee-section,
+.employee-card,
+.salary-card {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.employee-toolbar {
+  background: var(--surface-alt);
+}
+
+.employee-photo-wrap {
+  background: linear-gradient(145deg, #eeece6, #e5e8e7);
+}
+
+.employee-photo > span:first-child {
+  background: var(--navy);
+}
+
+.employee-toolbar input[type="month"],
+.employee-toolbar input[type="date"] {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.attendance-badge.present,
+.attendance-badge.generated,
+.calendar-day--present {
+  background: var(--status-green-bg);
+  border-color: #c8dfce;
+  color: var(--status-green);
+}
+
+.attendance-badge.absent,
+.calendar-day--absent,
+.calendar-day--holiday {
+  background: var(--status-red-bg);
+  border-color: #e9c8c3;
+  color: var(--status-red);
+}
+
+.attendance-badge.leave,
+.calendar-day--leave,
+.calendar-day--overtime {
+  background: var(--status-amber-bg);
+  border-color: #ead8b8;
+  color: var(--status-amber);
+}
+
+.attendance-badge.received {
+  background: #e9edf0;
+  color: var(--navy);
+}
+
+.calendar-day--holiday small,
+.calendar-day--overtime small {
+  color: inherit;
 }

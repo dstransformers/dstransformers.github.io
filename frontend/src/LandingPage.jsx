@@ -281,6 +281,8 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
               src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`}
               alt="DS Transformers logo"
               className="brand-mark"
+              loading="eager"
+              decoding="async"
             />
             <span className="brand-text">
               <strong>D.S. TRANSFORMERS</strong>
@@ -381,7 +383,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
           </div>
 
           <div className="hero-image-wrap">
-            <img src="/PhotoGallery/Shed-1.jpeg" alt="D.S. Transformers Heavy Workshop" onError={(e) => { e.target.src = '/PhotoGallery/Shed.jpeg'; }} />
+            <img src="/PhotoGallery/Shed-1.jpeg" alt="D.S. Transformers Heavy Workshop" loading="eager" fetchPriority="high" decoding="async" onError={(e) => { e.target.src = '/PhotoGallery/Shed.jpeg'; }} />
             <div className="hero-overlay-badge">
               <div>
                 <strong>D.S. Transformers Facility</strong>
@@ -489,35 +491,35 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
 
           <div className="gallery-grid">
             <div className="gallery-item">
-              <img src="/PhotoGallery/BDVKit.jpeg" alt="Oil BDV Testing Kit" />
+              <img src="/PhotoGallery/BDVKit.jpeg" alt="Oil BDV Testing Kit" loading="lazy" decoding="async" />
               <div className="gallery-item-title">Oil BDV Testing Kit (60-80 kV)</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/HVKit.jpeg" alt="High Voltage Test Bench" />
+              <img src="/PhotoGallery/HVKit.jpeg" alt="High Voltage Test Bench" loading="lazy" decoding="async" />
               <div className="gallery-item-title">High Voltage Test Bench</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/FilterMachine.jpeg" alt="Oil Filtration Machine" />
+              <img src="/PhotoGallery/FilterMachine.jpeg" alt="Oil Filtration Machine" loading="lazy" decoding="async" />
               <div className="gallery-item-title">Oil Dehydration & Filtration Unit</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/Crame5MT.jpeg" alt="5-Metric-Ton Crane" />
+              <img src="/PhotoGallery/Crame5MT.jpeg" alt="5-Metric-Ton Crane" loading="lazy" decoding="async" />
               <div className="gallery-item-title">5 MT Heavy Overhead Crane</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/RatioMeter.jpeg" alt="Ratio Meter" />
+              <img src="/PhotoGallery/RatioMeter.jpeg" alt="Ratio Meter" loading="lazy" decoding="async" />
               <div className="gallery-item-title">Digital Turns Ratio Meter</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/Meggar.jpeg" alt="Megger Insulation Tester" />
+              <img src="/PhotoGallery/Meggar.jpeg" alt="Megger Insulation Tester" loading="lazy" decoding="async" />
               <div className="gallery-item-title">Digital Megger & Resistance Meter</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/Oven.jpeg" alt="Industrial Baking Oven" />
+              <img src="/PhotoGallery/Oven.jpeg" alt="Industrial Baking Oven" loading="lazy" decoding="async" />
               <div className="gallery-item-title">Coil Baking & Dehydration Oven</div>
             </div>
             <div className="gallery-item">
-              <img src="/PhotoGallery/WeldingMachine.jpeg" alt="Tank Welding Setup" />
+              <img src="/PhotoGallery/WeldingMachine.jpeg" alt="Tank Welding Setup" loading="lazy" decoding="async" />
               <div className="gallery-item-title">Precision Tank Welding & Fabrication</div>
             </div>
           </div>

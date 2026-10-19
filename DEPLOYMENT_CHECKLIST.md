@@ -15,15 +15,52 @@
 1. Open Google Sheet used for VSTMS
 2. Click: Extensions → Apps Script
 3. Replace code with VSTMS_GoogleAppsScript.gs content
-4. Deploy as Web App:
-   - Click "Deploy" → "New Deployment"
+4. In Apps Script, open Project Settings and enable "Show appsscript.json
+   manifest file in editor". Replace the manifest with this repository's
+   `appsscript.json`, then save both files. Its OAuth scopes are required for
+   Sheets, Drive, Slides, and external requests.
+5. In the Apps Script editor, select `authorizeVstmsAccess` and click Run.
+   Sign in as the account that will own and execute the web app deployment
+   and approve the requested Sheets and Drive scopes. This is a one-time
+   authorization for the deployment account, not each VSTMS application user.
+   The function saves the bound spreadsheet ID in script properties and opens
+   it by ID to verify the Sheets permission required by web-app requests.
+   This check also creates a uniquely named temporary text file in Drive and
+   immediately trashes it to verify file creation permission.
+6. Create a cryptographically random secret of at least 32 characters. Store it
+   in Apps Script **Project Settings → Script Properties** as
+   `VSTMS_BACKEND_SHARED_SECRET`. Store the same value in the backend's
+   `GOOGLE_APPS_SCRIPT_SHARED_SECRET` environment variable or Secret Manager.
+   Never put the secret in frontend code, a URL, or a committed file.
+7. Deploy as Web App:
+   - Click "Deploy" → "Manage deployments" → Edit → New version
    - Type: "Web app"
-   - Execute as: "Your account"
-   - Who has access: "Anyone can access"
-5. Copy deployment URL
-6. Verify URL matches application.properties:
+   - Execute as: "Me" (the account that authorized the script)
+   - Who has access: "Anyone" (the Apps Script validates the backend secret;
+     direct GET requests and unauthenticated POST requests do not access data)
+8. Copy deployment URL
+9. Verify URL matches application.properties:
    https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec
+10. Verify a direct GET returns no sheet data and a POST without
+    `integrationSecret` returns `Unauthorized request`.
+11. Retire the legacy Apps Script deployment previously embedded in the public
+    site (`AKfycbzrWX_cP6X7vh52AHN0pqz-njTVtPJFd4V7kkpc728I2kNcnnp-Hs7TxJRDPgEfLgCV`).
+    The public site now sends enquiries to Spring; disable that old deployment
+    after confirming it has no other consumers.
 ```
+
+If the authorization error remains, confirm the deployed web app is configured
+to execute as the same account that granted the scopes, and that the request URL
+is the deployment whose new version was just created. Running the dropdown action
+in the editor alone does not change an existing web-app deployment.
+VSTMS users authenticate to the application; they do not grant Google Sheets
+scopes. The Apps Script deployment must execute as the authorized deployment
+owner. Reauthorization is only needed if the deployment owner changes, the
+owner's spreadsheet access is revoked, or the script requests additional scopes.
+If the deployed API still reports that `openById` is unauthorized after this
+function completes successfully, the deployment is either running as a different
+Google account or its authorization has not been granted under the account shown
+in Apps Script. Verify the account, then create and deploy a new web-app version.
 
 ---
 
@@ -43,7 +80,14 @@
 **Location:** `backend/src/main/resources/application.properties`
 ```properties
 google.apps.script.url=https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec
+google.apps.script.shared-secret=${GOOGLE_APPS_SCRIPT_SHARED_SECRET}
 ```
+
+Set `GOOGLE_APPS_SCRIPT_SHARED_SECRET` securely for the backend runtime. The
+same secret must be configured in the Apps Script project's Script Properties.
+For the public business website, set the `vstms-api-base-url` meta tag in
+`staticpage/index.html` to the deployed Cloud Run service URL; its enquiry form
+uses the public `POST /api/enquiries` endpoint and no longer calls Apps Script.
 
 ### Build & Run:
 ```bash
@@ -208,11 +252,10 @@ mvn clean install -Pprod
 netstat -ano | find "8082"
 ```
 
-### Issue: Google Apps Script returns 403 Forbidden
-**Solution:** Check deployment permissions
-- Verify Google account has access to Google Sheet
-- Verify Apps Script is deployed with "Anyone can access"
-- Check URL in application.properties matches deployment
+### Issue: Google Apps Script returns an unauthorized response
+**Solution:** Verify `GOOGLE_APPS_SCRIPT_SHARED_SECRET` matches the
+`VSTMS_BACKEND_SHARED_SECRET` Script Property, is at least 32 characters, and
+the latest Apps Script version is deployed.
 
 ### Issue: CORS errors in browser
 **Solution:** Controllers already have `@CrossOrigin(origins = "*")`
