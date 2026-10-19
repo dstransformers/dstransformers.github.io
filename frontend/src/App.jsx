@@ -79,6 +79,22 @@ function getTNoteSpmCenter(tnote) {
   return centers.length === 0 ? '-' : centers.join(', ')
 }
 
+function getTNoteTransformerStatusCounts(tnote) {
+  const counts = new Map()
+  for (const transformer of Array.isArray(tnote?.transformers) ? tnote.transformers : []) {
+    const status = String(transformer?.status || '').trim().toLowerCase() || 'unknown'
+    counts.set(status, (counts.get(status) || 0) + 1)
+  }
+  return [...counts.entries()].sort(([statusA], [statusB]) => {
+    const rankA = STATUS_ORDER.findIndex(status => status.toLowerCase() === statusA)
+    const rankB = STATUS_ORDER.findIndex(status => status.toLowerCase() === statusB)
+    if (rankA === -1 && rankB === -1) return statusA.localeCompare(statusB)
+    if (rankA === -1) return 1
+    if (rankB === -1) return -1
+    return rankA - rankB
+  })
+}
+
 function getTNoteSpmCenters(tnote) {
   if (!tnote || !Array.isArray(tnote.transformers)) return []
   return [...new Set(tnote.transformers
@@ -4169,7 +4185,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       )}
 
       {currentTab !== 'quotations' && currentTab !== 'employees' && currentTab !== 'dashboard' && currentTab !== 'more' && (
-        <section className="kpis">
+        <section className={`kpis${currentTab === 'tnotes' ? ' kpis--tnotes' : ''}`}>
           <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
             <p>Recieved</p>
             <h3>{summary.recieve}</h3>
@@ -4983,8 +4999,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             </div>
           </div>
           {tnoteError && <p className="status status--error jobs-feedback">{tnoteError}</p>}
-          <div className="jobs-table-wrap">
-            <table className="jobs-table">
+          <div className="jobs-table-wrap tnote-management-table-wrap">
+            <table className="jobs-table tnote-management-table">
               <thead>
                 <tr>
                   <th>
@@ -5030,10 +5046,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <tbody>
                 {visibleTNotes.map((tnote) => (
                   <tr key={tnote.id}>
-                    <td>{tnote.tNoteNo || '—'}</td>
-                    <td>{getTNoteSpmCenter(tnote)}</td>
-                    <td>{formattedDate(tnote.date) || '—'}</td>
-                    <td>
+                    <td data-label="TNote No">{tnote.tNoteNo || '—'}</td>
+                    <td data-label="SPM Center">{getTNoteSpmCenter(tnote)}</td>
+                    <td data-label="Date">{formattedDate(tnote.date) || '—'}</td>
+                    <td data-label="Transformers Count">
                       <button
                         type="button"
                         className="tnote-count-link"
@@ -5042,8 +5058,15 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       >
                         {tnote.numberOfTransformers}
                       </button>
+                      <div className="tnote-transformer-status-counts" aria-label="Transformer counts by status">
+                        {getTNoteTransformerStatusCounts(tnote).length > 0
+                          ? getTNoteTransformerStatusCounts(tnote).map(([status, count]) => (
+                            <span key={status}>{count} {status}</span>
+                          ))
+                          : <span>status details unavailable</span>}
+                      </div>
                     </td>
-                    <td>
+                    <td data-label="Attachments">
                       <div className="tnote-attachment-actions">
                         {renderAttachmentViewerButton(
                           `TNote ${tnote.tNoteNo || tnote.id}`,
@@ -5066,55 +5089,57 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         </button>
                       </div>
                     </td>
-                    <td className="actions-cell">
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small btn--icon"
-                        aria-label={`Generate delivery challan for TNote ${tnote.tNoteNo || tnote.id}`}
-                        title={tnote.transformers?.some(transformer => transformer.status === 'Repaired')
-                          ? 'Generate delivery challan from this TNote'
-                          : 'No transformers in this TNote have a Repaired status'}
-                        onClick={() => openDCModal(tnote)}
-                        disabled={!tnote.transformers?.some(transformer => transformer.status === 'Repaired')}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 6h11l4 4v9H3z" />
-                          <path d="M14 6v4h4M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM18 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
-                          <path d="M7 10h7M7 14h5" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small btn--icon"
-                        aria-label={`Export assessment for TNote ${tnote.tNoteNo || tnote.id}`}
-                        title="Export Joint Inspection Excel"
-                        onClick={() => exportTNoteAssessment(tnote)}
-                        disabled={tnoteAssessmentExporting === tnote.id}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
-                          <path d="M5 3h14v4M5 3v18" />
-                        </svg>
-                      </button>
-                      <button
-                        className="btn btn--danger btn--small btn--icon"
-                        aria-label={`Delete TNote ${tnote.tNoteNo || tnote.id}`}
-                        title={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))
-                          ? 'A TNote linked to a delivered transformer cannot be deleted'
-                          : 'Delete TNote'}
-                        onClick={() => deleteTNote(tnote.id)}
-                        disabled={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v6m4-6v6" />
-                        </svg>
-                      </button>
+                    <td data-label="Actions" className="actions-cell">
+                      <div className="tnote-row-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small btn--icon"
+                          aria-label={`Generate delivery challan for TNote ${tnote.tNoteNo || tnote.id}`}
+                          title={tnote.transformers?.some(transformer => transformer.status === 'Repaired')
+                            ? 'Generate delivery challan from this TNote'
+                            : 'No transformers in this TNote have a Repaired status'}
+                          onClick={() => openDCModal(tnote)}
+                          disabled={!tnote.transformers?.some(transformer => transformer.status === 'Repaired')}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h11l4 4v9H3z" />
+                            <path d="M14 6v4h4M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM18 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+                            <path d="M7 10h7M7 14h5" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small btn--icon"
+                          aria-label={`Export assessment for TNote ${tnote.tNoteNo || tnote.id}`}
+                          title="Export Joint Inspection Excel"
+                          onClick={() => exportTNoteAssessment(tnote)}
+                          disabled={tnoteAssessmentExporting === tnote.id}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
+                            <path d="M5 3h14v4M5 3v18" />
+                          </svg>
+                        </button>
+                        <button
+                          className="btn btn--danger btn--small btn--icon"
+                          aria-label={`Delete TNote ${tnote.tNoteNo || tnote.id}`}
+                          title={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))
+                            ? 'A TNote linked to a delivered transformer cannot be deleted'
+                            : 'Delete TNote'}
+                          onClick={() => deleteTNote(tnote.id)}
+                          disabled={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v6m4-6v6" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {filteredTNotes.length === 0 && (
                   <tr>
-                    <td colSpan="6">No TNotes available.</td>
+                    <td className="tnote-empty-row" colSpan="6">No TNotes available.</td>
                   </tr>
                 )}
               </tbody>

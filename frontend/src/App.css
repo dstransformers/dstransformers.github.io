@@ -1467,6 +1467,17 @@ h1 {
   outline-offset: 2px;
 }
 
+.tnote-transformer-status-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-transform: lowercase;
+}
+
 .tnote-details-overlay {
   z-index: 1100;
 }
@@ -5736,5 +5747,277 @@ h1 {
     width: 18px;
     height: 18px;
     color: var(--copper-deep);
+  }
+}
+
+@media (max-width: 760px) {
+  .tnote-management-table-wrap {
+    overflow: visible;
+  }
+
+  .tnote-management-table.jobs-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    font-size: 0.86rem;
+  }
+
+  .tnote-management-table thead {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .tnote-management-table thead tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .tnote-management-table thead th {
+    display: block;
+    min-width: 0;
+    padding: 4px 6px 4px 9px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    background: #fff;
+  }
+
+  .tnote-management-table thead th:nth-child(n + 5) {
+    display: none;
+  }
+
+  .tnote-management-table thead .filter-header {
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .tnote-management-table thead .filter-header span {
+    min-width: 0;
+    font-size: 0.66rem;
+    overflow-wrap: anywhere;
+  }
+
+  .tnote-management-table thead .filter-icon-btn {
+    flex: 0 0 36px;
+    width: 36px;
+    min-height: 36px;
+    padding: 8px;
+  }
+
+  .tnote-management-table thead .filter-dropdown {
+    z-index: 30;
+    width: min(280px, calc(100vw - 48px));
+  }
+
+  .tnote-management-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .tnote-management-table tbody tr {
+    display: grid;
+    grid-template-areas:
+      "number date"
+      "center center"
+      "count count"
+      "attachments actions";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-width: 0;
+    overflow: visible;
+    border: 1px solid #cbd8e3;
+    border-left: 4px solid #4f8a86;
+    border-radius: 11px;
+    background: #f4f9fb;
+    box-shadow: 0 2px 7px rgba(15, 23, 42, 0.07);
+  }
+
+  .tnote-management-table tbody tr:nth-child(3n + 2) {
+    border-left-color: #6f83b5;
+    background: #f5f6fc;
+  }
+
+  .tnote-management-table tbody tr:nth-child(3n) {
+    border-left-color: #c28b54;
+    background: #fff8ef;
+  }
+
+  .tnote-management-table.jobs-table tbody tr:hover > td {
+    background: transparent;
+  }
+
+  .tnote-management-table.jobs-table tbody td {
+    display: grid;
+    grid-template-columns: minmax(76px, 0.38fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px 9px;
+    border-bottom: 1px solid rgba(203, 216, 227, 0.72);
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .tnote-management-table.jobs-table tbody td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="TNote No"] {
+    grid-area: number;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding-top: 8px;
+    padding-bottom: 7px;
+    color: #174a4d;
+    font-size: 0.9rem;
+    font-weight: 750;
+    text-align: left;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="TNote No"]::before {
+    font-size: 0.55rem;
+    letter-spacing: 0.07em;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Date"] {
+    grid-area: date;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding-top: 8px;
+    padding-bottom: 7px;
+    text-align: right;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Date"]::before {
+    text-align: right;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="SPM Center"] {
+    grid-area: center;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Transformers Count"] {
+    grid-area: count;
+    grid-template-columns: minmax(76px, 0.38fr) auto minmax(0, 1fr);
+    gap: 6px;
+    text-align: left;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Attachments"] {
+    grid-area: attachments;
+  }
+
+  .tnote-management-table.jobs-table tbody td.actions-cell {
+    grid-area: actions;
+  }
+
+  .tnote-management-table.jobs-table tbody td:last-child {
+    border-bottom: 0;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Transformers Count"] > .tnote-count-link {
+    min-height: 32px;
+    padding: 3px 9px;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Transformers Count"] > .tnote-transformer-status-counts {
+    min-width: 0;
+    gap: 3px 4px;
+    align-items: center;
+    margin-top: 0;
+  }
+
+  .tnote-management-table.jobs-table .tnote-transformer-status-counts span {
+    padding: 2px 5px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    font-size: 0.6rem;
+    line-height: 1.25;
+  }
+
+  .tnote-management-table.jobs-table tbody td[data-label="Attachments"],
+  .tnote-management-table.jobs-table tbody td.actions-cell {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 3px;
+    padding-top: 5px;
+    padding-bottom: 6px;
+  }
+
+  .tnote-attachment-actions,
+  .tnote-row-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .tnote-management-table.jobs-table tbody td.actions-cell {
+    display: grid;
+    justify-items: end;
+  }
+
+  .tnote-management-table.jobs-table tbody td.actions-cell > .tnote-row-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .tnote-management-table.jobs-table tbody td.tnote-empty-row {
+    display: block;
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+
+  .tnote-management-table.jobs-table tbody td.tnote-empty-row::before {
+    content: none;
+  }
+
+  .kpis--tnotes {
+    display: grid;
+    grid-auto-columns: minmax(112px, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    gap: 7px;
+    margin: 0 0 8px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .kpis--tnotes .kpi-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 8px;
+    min-height: 52px;
+    padding: 7px 9px;
+    border-radius: 10px;
+  }
+
+  .kpis--tnotes .kpi-card p {
+    min-width: 0;
+    margin: 0;
+    font-size: 0.67rem;
+    line-height: 1.15;
+  }
+
+  .kpis--tnotes .kpi-card h3 {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .kpis--tnotes .kpi-card small {
+    grid-column: 1 / -1;
+    font-size: 0.57rem;
+    line-height: 1.1;
   }
 }
