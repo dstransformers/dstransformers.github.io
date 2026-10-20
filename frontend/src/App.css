@@ -5807,6 +5807,47 @@ h1 {
 }
 
 @media (max-width: 760px) {
+  .app-shell .tnote-management-panel {
+    margin-top: 8px;
+    padding: 10px 9px;
+  }
+
+  .app-shell .tnote-management-panel > .panel-header {
+    display: grid;
+    gap: 7px;
+    margin-bottom: 8px;
+  }
+
+  .app-shell .tnote-management-panel > .panel-header h2 {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .app-shell .tnote-management-panel .panel-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+
+  .app-shell .tnote-management-panel .page-size-row,
+  .app-shell .tnote-management-panel .page-size-row .filter-select {
+    width: 100%;
+    min-height: 36px;
+  }
+
+  .app-shell .tnote-management-panel .panel-controls > .btn {
+    width: auto;
+    min-height: 36px;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+
+  .app-shell .tnote-management-panel > .jobs-feedback {
+    margin: 0 0 7px;
+    padding: 7px 9px;
+    font-size: 0.75rem;
+  }
+
   .tnote-management-table-wrap {
     overflow: visible;
   }
@@ -5820,21 +5861,21 @@ h1 {
 
   .tnote-management-table thead {
     display: block;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
 
   .tnote-management-table thead tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 5px;
   }
 
   .tnote-management-table thead th {
     display: block;
     min-width: 0;
-    padding: 4px 6px 4px 9px;
+    padding: 2px 5px 2px 7px;
     border: 1px solid #e2e8f0;
-    border-radius: 9px;
+    border-radius: 8px;
     background: #fff;
   }
 
@@ -5849,15 +5890,16 @@ h1 {
 
   .tnote-management-table thead .filter-header span {
     min-width: 0;
-    font-size: 0.66rem;
+    font-size: 0.62rem;
+    line-height: 1.1;
     overflow-wrap: anywhere;
   }
 
   .tnote-management-table thead .filter-icon-btn {
-    flex: 0 0 36px;
-    width: 36px;
-    min-height: 36px;
-    padding: 8px;
+    flex: 0 0 32px;
+    width: 32px;
+    min-height: 32px;
+    padding: 6px;
   }
 
   .tnote-management-table thead .filter-dropdown {

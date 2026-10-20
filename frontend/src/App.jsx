@@ -5009,7 +5009,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       )}
 
       {currentTab === 'tnotes' && (
-        <section className="panel jobs-panel">
+        <section className="panel jobs-panel tnote-management-panel">
           <div className="panel-header">
             <h2>TNote Management</h2>
             <div className="panel-controls">
