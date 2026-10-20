@@ -31,7 +31,7 @@ function getAuthProfile(email, displayName) {
   const emailName = String(email || '').split('@')[0].split('+')[0]
   const emailParts = emailName.split(/[^a-zA-Z0-9]+/).filter(Boolean)
   const displayParts = String(displayName || '').trim().split(/\s+/).filter(Boolean)
-  const nameParts = emailParts.length > 0 ? emailParts : displayParts
+  const nameParts = displayParts.length > 0 ? displayParts : emailParts
   const firstName = nameParts[0]
     ? `${nameParts[0][0].toUpperCase()}${nameParts[0].slice(1).toLowerCase()}`
     : 'User'
@@ -478,6 +478,8 @@ function App() {
   const adminLoginOnly = window.location.pathname.replace(/\/+$/, '') === '/admin'
   const [currentTab, setCurrentTab] = useState('employees')
   const [dashboardSearch, setDashboardSearch] = useState('')
+  const [dashboardSearchLoading, setDashboardSearchLoading] = useState(false)
+  const [dashboardSearchError, setDashboardSearchError] = useState('')
   const [transformers, setTransformers] = useState([])
   const [transformersLoading, setTransformersLoading] = useState(false)
   const [transformerExportLoading, setTransformerExportLoading] = useState(false)
@@ -3714,11 +3716,13 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     setCurrentTab('transformers')
   }
 
-  const submitDashboardSearch = (event) => {
+  const submitDashboardSearch = async (event) => {
     event.preventDefault()
     const query = dashboardSearch.trim()
     if (!query) return
+    setDashboardSearchError('')
     if (/^(sap|agr)/i.test(query)) {
+      setDashboardSearch('')
       setBillSapFilter([query])
       setBillDateFilter([])
       setBillSpmCenterFilter([])
@@ -3729,6 +3733,31 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       openDashboardSearchResult(dashboardSearchResults[0])
       return
     }
+    setDashboardSearchLoading(true)
+    try {
+      const lookupResults = await Promise.all(['dtrNo', 'sNo'].map(async field => {
+        const params = new URLSearchParams({ [field]: query })
+        const response = await apiFetch(`/api/transformers/lookup?${params.toString()}`, { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error(await apiErrorMessage(response, `Transformer search failed (${response.status})`))
+        }
+        const records = await response.json()
+        return Array.isArray(records) ? records : []
+      }))
+      const transformer = lookupResults.flat()[0]
+      if (transformer) {
+        openDashboardSearchResult({
+          type: 'transformer',
+          record: transformer,
+        })
+        return
+      }
+    } catch (error) {
+      setDashboardSearchError(error instanceof Error ? error.message : 'Dashboard search failed')
+      return
+    } finally {
+      setDashboardSearchLoading(false)
+    }
     setStatusFilter([])
     setSpmCenterFilter([])
     setDtrNoFilter([query])
@@ -3737,6 +3766,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     setTypeFilter([])
     setCapacityFilter([])
     setPage(0)
+    setDashboardSearch('')
     setCurrentTab('transformers')
   }
 
@@ -3999,7 +4029,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         <section className="mobile-dashboard" aria-labelledby="mobile-dashboard-title">
           <header className="mobile-dashboard-header">
             <div className="mobile-dashboard-brand">
-              <span className="mobile-dashboard-brand-mark" aria-hidden="true">M<i /></span>
+              <img
+                src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`}
+                alt="D.S. Transformers logo"
+              />
               <div>
                 <strong>D.S. TRANSFORMERS</strong>
                 <span>Workshop operations</span>
@@ -4040,7 +4073,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <input
                 type="search"
                 value={dashboardSearch}
-                onChange={event => setDashboardSearch(event.target.value)}
+                onChange={event => {
+                  setDashboardSearch(event.target.value)
+                  setDashboardSearchError('')
+                }}
                 placeholder="Find a customer, TNote or transformer"
                 aria-label="Search customers, TNotes, transformers and SAP numbers"
               />
@@ -4053,7 +4089,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     <strong>{result.label}</strong><span>{result.detail}</span>
                   </button>
                 ))}
-                {dashboardSearchResults.length === 0 && <p>Press Enter to search transformer records or SAP bills.</p>}
+                {dashboardSearchLoading && <p role="status">Searching transformer records…</p>}
+                {dashboardSearchError && <p role="alert">{dashboardSearchError}</p>}
+                {dashboardSearchResults.length === 0 && !dashboardSearchLoading && !dashboardSearchError && (
+                  <p>Press Enter to search all transformer records or SAP bills.</p>
+                )}
               </div>
             )}
 
@@ -5050,20 +5090,22 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     <td data-label="SPM Center">{getTNoteSpmCenter(tnote)}</td>
                     <td data-label="Date">{formattedDate(tnote.date) || '—'}</td>
                     <td data-label="Transformers Count">
-                      <button
-                        type="button"
-                        className="tnote-count-link"
-                        onClick={() => openTNoteDetails(tnote)}
-                        aria-label={`View ${tnote.numberOfTransformers} transformers in TNote ${tnote.tNoteNo || tnote.id}`}
-                      >
-                        {tnote.numberOfTransformers}
-                      </button>
-                      <div className="tnote-transformer-status-counts" aria-label="Transformer counts by status">
-                        {getTNoteTransformerStatusCounts(tnote).length > 0
-                          ? getTNoteTransformerStatusCounts(tnote).map(([status, count]) => (
-                            <span key={status}>{count} {status}</span>
-                          ))
-                          : <span>status details unavailable</span>}
+                      <div className="tnote-transformer-count">
+                        <button
+                          type="button"
+                          className="tnote-count-link"
+                          onClick={() => openTNoteDetails(tnote)}
+                          aria-label={`View ${tnote.numberOfTransformers} transformers in TNote ${tnote.tNoteNo || tnote.id}`}
+                        >
+                          {tnote.numberOfTransformers}
+                        </button>
+                        <div className="tnote-transformer-status-counts" aria-label="Transformer counts by status">
+                          {getTNoteTransformerStatusCounts(tnote).length > 0
+                            ? getTNoteTransformerStatusCounts(tnote).map(([status, count]) => (
+                              <span key={status}>{count} {status}</span>
+                            ))
+                            : <span>status details unavailable</span>}
+                        </div>
                       </div>
                     </td>
                     <td data-label="Attachments">
