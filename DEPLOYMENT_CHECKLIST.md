@@ -20,10 +20,13 @@
    `appsscript.json`, then save both files. Its OAuth scopes are required for
    Sheets, Drive, Slides, and external requests.
 5. In the Apps Script editor, select `authorizeVstmsAccess` and click Run.
-   Sign in as the account that owns the web app deployment and approve the
-   requested Sheets and Drive scopes. This check creates a uniquely named
-   temporary text file in Drive and immediately trashes it to verify file
-   creation permission.
+   Sign in as the account that will own and execute the web app deployment
+   and approve the requested Sheets and Drive scopes. This is a one-time
+   authorization for the deployment account, not each VSTMS application user.
+   The function saves the bound spreadsheet ID in script properties and opens
+   it by ID to verify the Sheets permission required by web-app requests.
+   This check also creates a uniquely named temporary text file in Drive and
+   immediately trashes it to verify file creation permission.
 6. Create a cryptographically random secret of at least 32 characters. Store it
    in Apps Script **Project Settings → Script Properties** as
    `VSTMS_BACKEND_SHARED_SECRET`. Store the same value in the backend's
@@ -50,6 +53,14 @@ If the authorization error remains, confirm the deployed web app is configured
 to execute as the same account that granted the scopes, and that the request URL
 is the deployment whose new version was just created. Running the dropdown action
 in the editor alone does not change an existing web-app deployment.
+VSTMS users authenticate to the application; they do not grant Google Sheets
+scopes. The Apps Script deployment must execute as the authorized deployment
+owner. Reauthorization is only needed if the deployment owner changes, the
+owner's spreadsheet access is revoked, or the script requests additional scopes.
+If the deployed API still reports that `openById` is unauthorized after this
+function completes successfully, the deployment is either running as a different
+Google account or its authorization has not been granted under the account shown
+in Apps Script. Verify the account, then create and deploy a new web-app version.
 
 ---
 

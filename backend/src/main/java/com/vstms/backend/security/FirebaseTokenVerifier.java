@@ -7,7 +7,6 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import java.io.IOException;
-import java.util.Locale;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -29,9 +28,9 @@ public class FirebaseTokenVerifier {
     public Optional<String> verifyAdminToken(String token) {
         try {
             FirebaseToken decodedToken = getFirebaseAuth().verifyIdToken(token, true);
-            Optional<String> adminEmail = gmailAddress(decodedToken.getEmail());
+            Optional<String> adminEmail = firebaseEmail(decodedToken.getEmail());
             if (adminEmail.isEmpty()) {
-                LOGGER.warn("Firebase admin access denied: account does not have a Gmail address.");
+                LOGGER.warn("Firebase admin access denied: account does not have an email address.");
                 return Optional.empty();
             }
             return adminEmail;
@@ -67,14 +66,10 @@ public class FirebaseTokenVerifier {
         return firebaseAuth;
     }
 
-    static Optional<String> gmailAddress(String email) {
+    static Optional<String> firebaseEmail(String email) {
         if (email == null || email.isBlank()) {
             return Optional.empty();
         }
-        String normalizedEmail = email.trim();
-        if (!normalizedEmail.toLowerCase(Locale.ROOT).endsWith("@gmail.com")) {
-            return Optional.empty();
-        }
-        return Optional.of(normalizedEmail);
+        return Optional.of(email.trim());
     }
 }

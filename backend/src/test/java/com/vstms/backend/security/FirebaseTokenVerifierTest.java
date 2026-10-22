@@ -7,32 +7,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class FirebaseTokenVerifierTest {
     @Test
-    void allowsAnyFirebaseAuthenticatedGmailAddress() {
+    void allowsAnyFirebaseAuthenticatedEmailAddress() {
         assertEquals(
                 Optional.of("workshop.user@gmail.com"),
-                FirebaseTokenVerifier.gmailAddress("workshop.user@gmail.com"));
+                FirebaseTokenVerifier.firebaseEmail("workshop.user@gmail.com"));
     }
 
     @Test
-    void allowsGmailAddressWithMixedCaseDomain() {
+    void allowsNonGmailFirebaseEmailAddress() {
         assertEquals(
-                Optional.of("workshop.user@GMAIL.COM"),
-                FirebaseTokenVerifier.gmailAddress("workshop.user@GMAIL.COM"));
-    }
-
-    @Test
-    void rejectsNonGmailAddresses() {
-        assertEquals(
-                Optional.empty(),
-                FirebaseTokenVerifier.gmailAddress("workshop.user@example.com"));
-        assertEquals(
-                Optional.empty(),
-                FirebaseTokenVerifier.gmailAddress("workshop.user@gmail.com.example.com"));
+                Optional.of("workshop.user@example.com"),
+                FirebaseTokenVerifier.firebaseEmail("workshop.user@example.com"));
     }
 
     @Test
     void rejectsMissingEmail() {
-        assertEquals(Optional.empty(), FirebaseTokenVerifier.gmailAddress(null));
-        assertEquals(Optional.empty(), FirebaseTokenVerifier.gmailAddress("  "));
+        assertEquals(Optional.empty(), FirebaseTokenVerifier.firebaseEmail(null));
+        assertEquals(Optional.empty(), FirebaseTokenVerifier.firebaseEmail("  "));
     }
 }

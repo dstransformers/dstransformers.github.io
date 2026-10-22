@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiFetch } from './api'
+import { apiErrorMessage, apiFetch } from './api'
 import './EmployeePage.css'
 
 const EMPTY_EMPLOYEE = {
@@ -128,7 +128,9 @@ export default function EmployeePage() {
     setLoading(true)
     try {
       const employeeResponse = await apiFetch('/api/employees')
-      if (!employeeResponse.ok) throw new Error('Unable to load employee data.')
+      if (!employeeResponse.ok) {
+        throw new Error(await apiErrorMessage(employeeResponse, 'Unable to load employee data'))
+      }
       const employeeData = await employeeResponse.json()
       setEmployees(employeeData)
       setHolidayEmployeeId(current =>
@@ -139,8 +141,7 @@ export default function EmployeePage() {
       const requestData = async (path) => {
         const response = await apiFetch(path)
         if (!response.ok) {
-          const body = await response.json().catch(() => ({}))
-          throw new Error(body.message || body.detail || `Unable to load employee data (${response.status}).`)
+          throw new Error(await apiErrorMessage(response, 'Unable to load employee data'))
         }
         return response.json()
       }

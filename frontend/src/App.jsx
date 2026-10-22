@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import LandingPage from './LandingPage'
 import { signOut } from 'firebase/auth'
 import { auth, getAuthSnapshot, subscribeToAuth } from './firebase'
-import { apiFetch } from './api'
+import { apiErrorMessage, apiFetch } from './api'
 import { generateDeliveryChallanPdf } from './deliveryChallanPdf'
 import { finishInitialLoading, hideLoading, showLoading, withGlobalLoading } from './globalLoading'
 import deliveryChallanTemplateUrl from '/assets/delivery_challan_template.pdf'
@@ -30,7 +30,7 @@ function getAuthProfile(email, displayName) {
   const emailName = String(email || '').split('@')[0].split('+')[0]
   const emailParts = emailName.split(/[^a-zA-Z0-9]+/).filter(Boolean)
   const displayParts = String(displayName || '').trim().split(/\s+/).filter(Boolean)
-  const nameParts = emailParts.length > 0 ? emailParts : displayParts
+  const nameParts = displayParts.length > 0 ? displayParts : emailParts
   const firstName = nameParts[0]
     ? `${nameParts[0][0].toUpperCase()}${nameParts[0].slice(1).toLowerCase()}`
     : 'User'
@@ -76,6 +76,22 @@ function getTNoteSpmCenter(tnote) {
   if (!tnote || !Array.isArray(tnote.transformers)) return '-'
   const centers = [...new Set(tnote.transformers.map(transformer => transformer.spmCenter).filter(Boolean))]
   return centers.length === 0 ? '-' : centers.join(', ')
+}
+
+function getTNoteTransformerStatusCounts(tnote) {
+  const counts = new Map()
+  for (const transformer of Array.isArray(tnote?.transformers) ? tnote.transformers : []) {
+    const status = String(transformer?.status || '').trim().toLowerCase() || 'unknown'
+    counts.set(status, (counts.get(status) || 0) + 1)
+  }
+  return [...counts.entries()].sort(([statusA], [statusB]) => {
+    const rankA = STATUS_ORDER.findIndex(status => status.toLowerCase() === statusA)
+    const rankB = STATUS_ORDER.findIndex(status => status.toLowerCase() === statusB)
+    if (rankA === -1 && rankB === -1) return statusA.localeCompare(statusB)
+    if (rankA === -1) return 1
+    if (rankB === -1) return -1
+    return rankA - rankB
+  })
 }
 
 function getTNoteSpmCenters(tnote) {
@@ -323,6 +339,8 @@ function App() {
   const adminLoginOnly = window.location.pathname.replace(/\/+$/, '') === '/admin'
   const [currentTab, setCurrentTab] = useState('employees')
   const [dashboardSearch, setDashboardSearch] = useState('')
+  const [dashboardSearchLoading, setDashboardSearchLoading] = useState(false)
+  const [dashboardSearchError, setDashboardSearchError] = useState('')
   const [transformers, setTransformers] = useState([])
   const [transformersLoading, setTransformersLoading] = useState(false)
   const [transformerExportLoading, setTransformerExportLoading] = useState(false)
@@ -485,6 +503,7 @@ function App() {
     spmCenters: [],
     services: [],
     types: [],
+    transformerTypes: [],
     businessGstin: '',
     tgspdclGstin: '',
   })
@@ -1106,17 +1125,20 @@ ${styles}
     setDropdownDefaultsError('')
     try {
       const response = await apiFetch('/api/defaults', { cache: 'no-store' })
-      if (!response.ok) throw new Error(`Failed to load dropdown defaults (${response.status})`)
+      if (!response.ok) throw new Error(await apiErrorMessage(response, 'Failed to load dropdown defaults'))
       const result = await response.json()
       if (result.status !== 'SUCCESS' || !result.data) {
         throw new Error(result.message || 'Failed to load dropdown defaults')
       }
+      const types = Array.isArray(result.data.types) ? result.data.types : []
+      const transformerTypes = Array.isArray(result.data.transformerTypes) ? result.data.transformerTypes : []
       setDropdownDefaults({
         capacities: Array.isArray(result.data.capacities) ? result.data.capacities : [],
         makes: Array.isArray(result.data.makes) ? result.data.makes : [],
         spmCenters: Array.isArray(result.data.spmCenters) ? result.data.spmCenters : [],
         services: Array.isArray(result.data.services) ? result.data.services : [],
-        types: Array.isArray(result.data.types) ? result.data.types : [],
+        types: types.length ? types : transformerTypes,
+        transformerTypes: transformerTypes.length ? transformerTypes : types,
         businessGstin: result.data.businessGstin || '',
         tgspdclGstin: result.data.tgspdclGstin || '',
       })
@@ -3560,11 +3582,13 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     setCurrentTab('transformers')
   }
 
-  const submitDashboardSearch = (event) => {
+  const submitDashboardSearch = async (event) => {
     event.preventDefault()
     const query = dashboardSearch.trim()
     if (!query) return
+    setDashboardSearchError('')
     if (/^(sap|agr)/i.test(query)) {
+      setDashboardSearch('')
       setBillSapFilter([query])
       setBillDateFilter([])
       setBillSpmCenterFilter([])
@@ -3575,6 +3599,31 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       openDashboardSearchResult(dashboardSearchResults[0])
       return
     }
+    setDashboardSearchLoading(true)
+    try {
+      const lookupResults = await Promise.all(['dtrNo', 'sNo'].map(async field => {
+        const params = new URLSearchParams({ [field]: query })
+        const response = await apiFetch(`/api/transformers/lookup?${params.toString()}`, { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error(await apiErrorMessage(response, `Transformer search failed (${response.status})`))
+        }
+        const records = await response.json()
+        return Array.isArray(records) ? records : []
+      }))
+      const transformer = lookupResults.flat()[0]
+      if (transformer) {
+        openDashboardSearchResult({
+          type: 'transformer',
+          record: transformer,
+        })
+        return
+      }
+    } catch (error) {
+      setDashboardSearchError(error instanceof Error ? error.message : 'Dashboard search failed')
+      return
+    } finally {
+      setDashboardSearchLoading(false)
+    }
     setStatusFilter([])
     setSpmCenterFilter([])
     setDtrNoFilter([query])
@@ -3583,6 +3632,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     setTypeFilter([])
     setCapacityFilter([])
     setPage(0)
+    setDashboardSearch('')
     setCurrentTab('transformers')
   }
 
@@ -3845,7 +3895,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         <section className="mobile-dashboard" aria-labelledby="mobile-dashboard-title">
           <header className="mobile-dashboard-header">
             <div className="mobile-dashboard-brand">
-              <span className="mobile-dashboard-brand-mark" aria-hidden="true">M<i /></span>
+              <img
+                src={`${import.meta.env.BASE_URL}PhotoGallery/DS_Transformers_Logo.png`}
+                alt="D.S. Transformers logo"
+              />
               <div>
                 <strong>D.S. TRANSFORMERS</strong>
                 <span>Workshop operations</span>
@@ -3886,7 +3939,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <input
                 type="search"
                 value={dashboardSearch}
-                onChange={event => setDashboardSearch(event.target.value)}
+                onChange={event => {
+                  setDashboardSearch(event.target.value)
+                  setDashboardSearchError('')
+                }}
                 placeholder="Find a customer, TNote or transformer"
                 aria-label="Search customers, TNotes, transformers and SAP numbers"
               />
@@ -3899,7 +3955,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     <strong>{result.label}</strong><span>{result.detail}</span>
                   </button>
                 ))}
-                {dashboardSearchResults.length === 0 && <p>Press Enter to search transformer records or SAP bills.</p>}
+                {dashboardSearchLoading && <p role="status">Searching transformer records…</p>}
+                {dashboardSearchError && <p role="alert">{dashboardSearchError}</p>}
+                {dashboardSearchResults.length === 0 && !dashboardSearchLoading && !dashboardSearchError && (
+                  <p>Press Enter to search all transformer records or SAP bills.</p>
+                )}
               </div>
             )}
 
@@ -4031,7 +4091,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       )}
 
       {currentTab !== 'quotations' && currentTab !== 'employees' && currentTab !== 'dashboard' && currentTab !== 'more' && (
-        <section className="kpis">
+        <section className={`kpis${currentTab === 'tnotes' ? ' kpis--tnotes' : ''}`}>
           <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
             <p>Recieved</p>
             <h3>{summary.recieve}</h3>
@@ -4817,7 +4877,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       )}
 
       {currentTab === 'tnotes' && (
-        <section className="panel jobs-panel">
+        <section className="panel jobs-panel tnote-management-panel">
           <div className="panel-header">
             <h2>TNote Management</h2>
             <div className="panel-controls">
@@ -4847,8 +4907,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             </div>
           </div>
           {tnoteError && <p className="status status--error jobs-feedback">{tnoteError}</p>}
-          <div className="jobs-table-wrap">
-            <table className="jobs-table">
+          <div className="jobs-table-wrap tnote-management-table-wrap">
+            <table className="jobs-table tnote-management-table">
               <thead>
                 <tr>
                   <th>
@@ -4894,20 +4954,29 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <tbody>
                 {visibleTNotes.map((tnote) => (
                   <tr key={tnote.id}>
-                    <td>{tnote.tNoteNo || '—'}</td>
-                    <td>{getTNoteSpmCenter(tnote)}</td>
-                    <td>{formattedDate(tnote.date) || '—'}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="tnote-count-link"
-                        onClick={() => openTNoteDetails(tnote)}
-                        aria-label={`View ${tnote.numberOfTransformers} transformers in TNote ${tnote.tNoteNo || tnote.id}`}
-                      >
-                        {tnote.numberOfTransformers}
-                      </button>
+                    <td data-label="TNote No">{tnote.tNoteNo || '—'}</td>
+                    <td data-label="SPM Center">{getTNoteSpmCenter(tnote)}</td>
+                    <td data-label="Date">{formattedDate(tnote.date) || '—'}</td>
+                    <td data-label="Transformers Count">
+                      <div className="tnote-transformer-count">
+                        <button
+                          type="button"
+                          className="tnote-count-link"
+                          onClick={() => openTNoteDetails(tnote)}
+                          aria-label={`View ${tnote.numberOfTransformers} transformers in TNote ${tnote.tNoteNo || tnote.id}`}
+                        >
+                          {tnote.numberOfTransformers}
+                        </button>
+                        <div className="tnote-transformer-status-counts" aria-label="Transformer counts by status">
+                          {getTNoteTransformerStatusCounts(tnote).length > 0
+                            ? getTNoteTransformerStatusCounts(tnote).map(([status, count]) => (
+                              <span key={status}>{count} {status}</span>
+                            ))
+                            : <span>status details unavailable</span>}
+                        </div>
+                      </div>
                     </td>
-                    <td>
+                    <td data-label="Attachments">
                       <div className="tnote-attachment-actions">
                         {renderAttachmentViewerButton(
                           `TNote ${tnote.tNoteNo || tnote.id}`,
@@ -4930,55 +4999,57 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         </button>
                       </div>
                     </td>
-                    <td className="actions-cell">
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small btn--icon"
-                        aria-label={`Generate delivery challan for TNote ${tnote.tNoteNo || tnote.id}`}
-                        title={tnote.transformers?.some(transformer => transformer.status === 'Repaired')
-                          ? 'Generate delivery challan from this TNote'
-                          : 'No transformers in this TNote have a Repaired status'}
-                        onClick={() => openDCModal(tnote)}
-                        disabled={!tnote.transformers?.some(transformer => transformer.status === 'Repaired')}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 6h11l4 4v9H3z" />
-                          <path d="M14 6v4h4M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM18 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
-                          <path d="M7 10h7M7 14h5" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small btn--icon"
-                        aria-label={`Export assessment for TNote ${tnote.tNoteNo || tnote.id}`}
-                        title="Export Joint Inspection Excel"
-                        onClick={() => exportTNoteAssessment(tnote)}
-                        disabled={tnoteAssessmentExporting === tnote.id}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
-                          <path d="M5 3h14v4M5 3v18" />
-                        </svg>
-                      </button>
-                      <button
-                        className="btn btn--danger btn--small btn--icon"
-                        aria-label={`Delete TNote ${tnote.tNoteNo || tnote.id}`}
-                        title={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))
-                          ? 'A TNote linked to a delivered transformer cannot be deleted'
-                          : 'Delete TNote'}
-                        onClick={() => deleteTNote(tnote.id)}
-                        disabled={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v6m4-6v6" />
-                        </svg>
-                      </button>
+                    <td data-label="Actions" className="actions-cell">
+                      <div className="tnote-row-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small btn--icon"
+                          aria-label={`Generate delivery challan for TNote ${tnote.tNoteNo || tnote.id}`}
+                          title={tnote.transformers?.some(transformer => transformer.status === 'Repaired')
+                            ? 'Generate delivery challan from this TNote'
+                            : 'No transformers in this TNote have a Repaired status'}
+                          onClick={() => openDCModal(tnote)}
+                          disabled={!tnote.transformers?.some(transformer => transformer.status === 'Repaired')}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h11l4 4v9H3z" />
+                            <path d="M14 6v4h4M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM18 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+                            <path d="M7 10h7M7 14h5" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small btn--icon"
+                          aria-label={`Export assessment for TNote ${tnote.tNoteNo || tnote.id}`}
+                          title="Export Joint Inspection Excel"
+                          onClick={() => exportTNoteAssessment(tnote)}
+                          disabled={tnoteAssessmentExporting === tnote.id}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
+                            <path d="M5 3h14v4M5 3v18" />
+                          </svg>
+                        </button>
+                        <button
+                          className="btn btn--danger btn--small btn--icon"
+                          aria-label={`Delete TNote ${tnote.tNoteNo || tnote.id}`}
+                          title={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))
+                            ? 'A TNote linked to a delivered transformer cannot be deleted'
+                            : 'Delete TNote'}
+                          onClick={() => deleteTNote(tnote.id)}
+                          disabled={(tnote.transformers || []).some(transformer => ['delivered', 'billed'].includes(String(transformer.status || '').toLowerCase()))}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v6m4-6v6" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {filteredTNotes.length === 0 && (
                   <tr>
-                    <td colSpan="6">No TNotes available.</td>
+                    <td className="tnote-empty-row" colSpan="6">No TNotes available.</td>
                   </tr>
                 )}
               </tbody>

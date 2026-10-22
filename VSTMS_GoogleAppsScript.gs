@@ -203,7 +203,8 @@ const DEFAULT_DROPDOWN_VALUES = {
     'Preventive Maintenance',
     'Transformer Servicing',
     'Other'
-  ]
+  ],
+  'Transformer Type': ['CSP', 'Amorphous', 'Conventional', 'RGP']
 };
 
 const QUOTATION_CAPACITIES = DEFAULT_DROPDOWN_VALUES.Capacity;
@@ -213,15 +214,25 @@ const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired',
 // ============ UTILITY FUNCTIONS ============
 
 function getSpreadsheet() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty('VSTMS_SPREADSHEET_ID');
+  if (spreadsheetId) {
+    return SpreadsheetApp.openById(spreadsheetId);
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) {
+    throw new Error('VSTMS spreadsheet is not configured. Run authorizeVstmsAccess() from the bound spreadsheet project.');
+  }
+  return spreadsheet;
 }
 
 function authorizeVstmsAccess() {
-  const spreadsheet = getSpreadsheet();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   if (!spreadsheet) {
     throw new Error('No active spreadsheet is available. Open this script from the VSTMS spreadsheet.');
   }
-  spreadsheet.getId();
+  const spreadsheetId = spreadsheet.getId();
+  SpreadsheetApp.openById(spreadsheetId);
   const driveRoot = DriveApp.getRootFolder();
   const probeFile = driveRoot.createFile(
     Utilities.newBlob('VSTMS Drive authorization check', 'text/plain', `vstms-drive-auth-check-${Utilities.getUuid()}.txt`)
@@ -231,7 +242,8 @@ function authorizeVstmsAccess() {
   } catch (error) {
     throw new Error(`Drive file creation succeeded, but the temporary authorization check file could not be trashed (${probeFile.getId()}): ${error.message}`);
   }
-  return 'Sheets and Drive file creation authorization confirmed; temporary test file trashed.';
+  PropertiesService.getScriptProperties().setProperty('VSTMS_SPREADSHEET_ID', spreadsheetId);
+  return 'Spreadsheet openById and Drive file creation authorization confirmed; temporary test file trashed.';
 }
 
 function getOrCreateSheet(sheetName) {
@@ -241,6 +253,17 @@ function getOrCreateSheet(sheetName) {
     sheet = ss.insertSheet(sheetName);
   }
   return sheet;
+}
+
+function withScriptLock_(callback) {
+  const lock = LockService.getScriptLock();
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
+  try {
+    return callback();
+  } finally {
+    if (ownsLock) lock.releaseLock();
+  }
 }
 
 function initializeSheet(sheetName, headers) {
@@ -311,6 +334,14 @@ function initializeDropdownDefaults_() {
     }
   }
   const rows = getSheetData(SHEET_NAMES.DROPDOWN_DEFAULTS);
+  const transformerTypeRows = rows.filter(row =>
+    String(row.Category || '').trim() === 'Transformer Type'
+  );
+  if (transformerTypeRows.length === 0) {
+    DEFAULT_DROPDOWN_VALUES['Transformer Type'].forEach(value => {
+      sheet.appendRow(['Transformer Type', value, true]);
+    });
+  }
   const gstinRows = {
     businessGstin: rows.find(row => String(row.Category || '').trim() === 'Business GSTIN'),
     tgspdclGstin: rows.find(row => String(row.Category || '').trim() === 'TGSPDCL GSTIN')
@@ -337,13 +368,14 @@ function initializeDropdownDefaults_() {
 }
 
 function getDropdownDefaults_() {
-  initializeDropdownDefaults_();
+  withScriptLock_(initializeDropdownDefaults_);
   const values = {
     capacities: [],
     makes: [],
     spmCenters: [],
     services: [],
     types: [],
+    transformerTypes: [],
     businessGstin: '36AAUFM2590B1Z4',
     tgspdclGstin: '27ABCDE1234F1Z5'
   };
@@ -353,7 +385,7 @@ function getDropdownDefaults_() {
     'SPM Center': 'spmCenters',
     Service: 'services',
     Type: 'types',
-    'Transformer Type': 'types',
+    'Transformer Type': 'transformerTypes',
     'Business GSTIN': 'businessGstin',
     'TGSPDCL GSTIN': 'tgspdclGstin'
   };
@@ -530,7 +562,8 @@ function getEmployeeById(id) {
 function saveEmployee(data) {
   const isNewEmployee = !data.id;
   const lock = isNewEmployee ? LockService.getScriptLock() : null;
-  if (lock) lock.waitLock(30000);
+  const ownsLock = lock && !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const sheet = initializeSheet(SHEET_NAMES.EMPLOYEES, SHEET_HEADERS.Employees);
     let employeeCode = String(data.employeeCode || '').trim();
@@ -600,7 +633,7 @@ function saveEmployee(data) {
     }
     return { status: 'SUCCESS', data: employeeRecord_(getSheetData(SHEET_NAMES.EMPLOYEES).find(row => Number(row.ID) === id)) };
   } finally {
-    if (lock) lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -992,7 +1025,8 @@ function generateSalary(employeeId, month) {
   }
   const monthValue = `${monthMatch[1]}-${monthMatch[2]}`;
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const employee = findRowByValue(SHEET_NAMES.EMPLOYEES, 'ID', Number(employeeId));
     if (!employee) throw new Error('Employee not found.');
@@ -1056,7 +1090,7 @@ function generateSalary(employeeId, month) {
     }
     return { status: 'SUCCESS', data: salaryRecord_(row) };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1536,11 +1570,12 @@ function getTransformerById(id) {
 
 function addTransformer(data) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     return addTransformerLocked_(data);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1549,7 +1584,8 @@ function addTransformers(dataList) {
     throw new Error('Select at least one transformer.');
   }
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     return {
       status: 'SUCCESS',
@@ -1562,7 +1598,7 @@ function addTransformers(dataList) {
       })
     };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1735,11 +1771,12 @@ function deleteTransformer(id) {
 
 function updateTransformerStatus(id, newStatus, assessmentDetails, backward) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     return updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backward);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1850,7 +1887,8 @@ function validateTransformerAssessment_(assessmentDetails) {
 
 function updateTransformerAssessment(id, assessmentDetails) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
@@ -1874,13 +1912,14 @@ function updateTransformerAssessment(id, assessmentDetails) {
     sheet.getRange(found.rowIndex, firstColumn, 1, updatedValues.length).setValues([updatedValues]);
     return getTransformerById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
 function deleteTransformerAssessment(id) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
@@ -1902,7 +1941,7 @@ function deleteTransformerAssessment(id) {
     if (updatedIdx >= 0) sheet.getRange(found.rowIndex, updatedIdx + 1).setValue(getTimestamp());
     return getTransformerById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -1937,7 +1976,8 @@ function deliverTransformer(id, dcNo) {
 
 function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
     const dc = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
@@ -2034,7 +2074,7 @@ function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
     setValue('UpdatedAt', getTimestamp());
     return getDCByNo(dcNo);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2095,7 +2135,8 @@ function billTransformers(transformerIds, sapNo) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     ensureTNoteTransformerLinks_();
     const links = getSheetData(SHEET_NAMES.TNOTE_TRANSFORMERS);
@@ -2152,7 +2193,7 @@ function billTransformers(transformerIds, sapNo) {
     ]));
     return { status: 'SUCCESS', data: ids.map(id => updatedById.get(id)) };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2286,7 +2327,8 @@ function updateTNote(id, data) {
 
 function addTNoteAttachments(id, attachments) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
@@ -2309,13 +2351,14 @@ function addTNoteAttachments(id, attachments) {
     if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
     return getTNoteById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
 function deleteTNoteAttachment(id, attachmentUrl) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
     if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
@@ -2345,7 +2388,7 @@ function deleteTNoteAttachment(id, attachmentUrl) {
     if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
     return getTNoteById(id);
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2450,7 +2493,8 @@ function addDC(data) {
   const sheet = initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
   const now = getTimestamp();
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const dcRequest = data.dc || data;
     const transformerIds = Array.isArray(data.transformerIds)
@@ -2580,7 +2624,7 @@ function addDC(data) {
       sentToTgspdcl: values.SentToTGSPDCL, transformerDetails, delivered: false, attachments: []
     } };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2593,7 +2637,8 @@ function parseDCTransformerDetails_(value) {
 
 function markDCDelivered_(dcNo, attachments) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeSheet(SHEET_NAMES.DCS, SHEET_HEADERS.DCs);
     const found = findRowByValue(SHEET_NAMES.DCS, 'DcNo', dcNo);
@@ -2674,7 +2719,7 @@ function markDCDelivered_(dcNo, attachments) {
       throw error;
     }
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -2885,7 +2930,8 @@ function addBill(data) {
   if (!sapNo) throw new Error('SAP number is required.');
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     if (findRowByValue(SHEET_NAMES.BILLS, 'SapNo', sapNo)) {
       throw new Error(`A bill with SAP number "${sapNo}" already exists.`);
@@ -2919,7 +2965,7 @@ function addBill(data) {
       gstFilingMonth: values.GSTFilingMonth, invoiceNo: values.InvoiceNo, attachments: attachments
     } };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -3107,7 +3153,8 @@ function getQuotationByNo(quotationNo) {
 
 function deleteQuotation(quotationNo) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeQuotationSheets();
     const found = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', quotationNo);
@@ -3158,7 +3205,7 @@ function deleteQuotation(quotationNo) {
         : `Quotation deleted successfully.${fileCleanupWarning}`
     };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -3801,7 +3848,8 @@ function reserveQuotationNumbers(data) {
     throw new Error('A quotation or bill can reserve one or two document numbers.');
   }
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     initializeQuotationSheets();
     return {
@@ -3811,7 +3859,7 @@ function reserveQuotationNumbers(data) {
       },
     };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -3934,7 +3982,8 @@ function saveGeneratedQuotationGroup(data) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   let generatedFile = null;
   const changedRows = [];
   const appendedRows = [];
@@ -4110,7 +4159,7 @@ function saveGeneratedQuotationGroup(data) {
     if (generatedFile) generatedFile.setTrashed(true);
     throw error;
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 
@@ -4165,7 +4214,8 @@ function saveQuotation(data) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  const ownsLock = !lock.hasLock();
+  if (ownsLock) lock.waitLock(30000);
   try {
     const settings = getQuotationConfig().data.settings;
     const sheet = initializeSheet(SHEET_NAMES.QUOTATIONS, SHEET_HEADERS.Quotations);
@@ -4264,7 +4314,7 @@ function saveQuotation(data) {
     }
     return { status: 'SUCCESS', data: quotation };
   } finally {
-    lock.releaseLock();
+    if (ownsLock) lock.releaseLock();
   }
 }
 

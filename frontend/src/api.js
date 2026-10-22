@@ -4,6 +4,8 @@ import { withGlobalLoading } from './globalLoading'
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '')
 const GET_CACHE_TTL_MS = 5 * 60_000
 const GET_CACHE_MAX_ENTRIES = 50
+const PERMANENT_CACHE_PATHS = new Set(['/api/defaults', '/api/quotations/config'])
+const PERMANENT_CACHE_VERSION = 2
 const CACHE_DATABASE_NAME = 'vstms-browser-cache'
 const CACHE_STORE_NAME = 'responses'
 const HARD_REFRESH_MARKER = 'vstms:clear-cache-on-start'
@@ -74,7 +76,7 @@ async function deletePersistentCache(id) {
   })
 }
 
-async function clearPersistentCache(userId) {
+async function clearPersistentCache(userId, preservePermanent = false) {
   const database = await openCacheDatabase()
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(CACHE_STORE_NAME, 'readwrite')
@@ -85,7 +87,7 @@ async function clearPersistentCache(userId) {
     request.onsuccess = () => {
       const cursor = request.result
       if (!cursor) return
-      cursor.delete()
+      if (!preservePermanent || !cursor.value.permanent) cursor.delete()
       cursor.continue()
     }
     transaction.oncomplete = () => {
@@ -97,6 +99,16 @@ async function clearPersistentCache(userId) {
       reject(transaction.error || new Error('Unable to clear browser data cache.'))
     }
   })
+}
+
+function isPermanentCacheUrl(url) {
+  return PERMANENT_CACHE_PATHS.has(new URL(url, 'http://localhost').pathname)
+}
+
+function clearMemoryCache(preservePermanent = false) {
+  for (const [key, entry] of getResponseCache) {
+    if (!preservePermanent || !entry.permanent) getResponseCache.delete(key)
+  }
 }
 
 async function clearCachesForHardRefresh() {
@@ -145,6 +157,11 @@ export function apiUrl(path) {
   return apiBaseUrl ? `${apiBaseUrl}${path}` : path
 }
 
+export async function apiErrorMessage(response, fallback) {
+  const body = await response.json().catch(() => ({}))
+  return body?.message || body?.detail || `${fallback} (${response.status}).`
+}
+
 async function authenticatedFetch(input, init, allowAnonymous) {
   const url = typeof input === 'string' && input.startsWith('/')
     ? apiUrl(input)
@@ -169,7 +186,7 @@ async function authenticatedFetch(input, init, allowAnonymous) {
 
   const refreshedResponse = await requestWithToken(true)
   if (refreshedResponse.status === 401) {
-    throw new Error('The API rejected your refreshed admin session. Sign out and back in with the verified, authorized admin account.')
+    throw new Error('The API did not authorize this account. Confirm the Firebase email is verified and listed in the backend ADMIN_EMAILS setting, and that the API and app use the same Firebase project. Google Sheets editor access does not grant API admin access.')
   }
   return refreshedResponse
 }
@@ -185,6 +202,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
 
   if (useGetCache) {
     await cacheReady
+    const permanentCache = isPermanentCacheUrl(url)
     let cached = getResponseCache.get(cacheKey)
     if (!cached && !persistentCacheDisabled) {
       try {
@@ -194,7 +212,30 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
         console.warn('Unable to read browser data cache; fetching fresh data.', error)
       }
     }
-    if (cached && cached.expiresAt > Date.now()) {
+    if (permanentCache && cached && cached.cacheVersion !== PERMANENT_CACHE_VERSION) {
+      getResponseCache.delete(cacheKey)
+      cached = null
+      if (!persistentCacheDisabled) {
+        try {
+          await deletePersistentCache(cacheKey)
+        } catch (error) {
+          persistentCacheDisabled = true
+          console.warn('Unable to refresh browser data cache; fetching updated dropdown values.', error)
+        }
+      }
+    }
+    if (cached && (permanentCache || cached.expiresAt > Date.now())) {
+      if (permanentCache && (!cached.permanent || cached.expiresAt !== null)) {
+        cached = { ...cached, permanent: true, cacheVersion: PERMANENT_CACHE_VERSION, expiresAt: null }
+        if (!persistentCacheDisabled) {
+          try {
+            await writePersistentCache(cached)
+          } catch (error) {
+            persistentCacheDisabled = true
+            console.warn('Unable to save browser data cache; continuing with the server response.', error)
+          }
+        }
+      }
       getResponseCache.delete(cacheKey)
       getResponseCache.set(cacheKey, cached)
       return new Response(cached.body, {
@@ -216,11 +257,11 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
     }
   } else if (method !== 'GET') {
     await cacheReady
-    getResponseCache.clear()
+    clearMemoryCache(true)
     cacheGeneration += 1
     if (!persistentCacheDisabled) {
       try {
-        await clearPersistentCache()
+        await clearPersistentCache(undefined, true)
       } catch (error) {
         persistentCacheDisabled = true
         try {
@@ -242,11 +283,13 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
       const entry = {
         id: cacheKey,
         userId,
+        permanent: isPermanentCacheUrl(url),
+        cacheVersion: isPermanentCacheUrl(url) ? PERMANENT_CACHE_VERSION : undefined,
         body: await response.clone().text(),
         status: response.status,
         statusText: response.statusText,
         headers: [...response.headers.entries()],
-        expiresAt: Date.now() + GET_CACHE_TTL_MS,
+        expiresAt: isPermanentCacheUrl(url) ? null : Date.now() + GET_CACHE_TTL_MS,
       }
       if (!persistentCacheDisabled) {
         try {
@@ -258,17 +301,20 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
       }
       getResponseCache.set(cacheKey, entry)
       while (getResponseCache.size > GET_CACHE_MAX_ENTRIES) {
-        getResponseCache.delete(getResponseCache.keys().next().value)
+        const oldestExpiringEntry = [...getResponseCache]
+          .find(([, cachedEntry]) => !cachedEntry.permanent)
+        if (!oldestExpiringEntry) break
+        getResponseCache.delete(oldestExpiringEntry[0])
       }
     }
     return response
   } finally {
     if (method !== 'GET') {
-      getResponseCache.clear()
+      clearMemoryCache(true)
       cacheGeneration += 1
       if (!persistentCacheDisabled) {
         try {
-          await clearPersistentCache()
+          await clearPersistentCache(undefined, true)
         } catch (error) {
           persistentCacheDisabled = true
           try {
