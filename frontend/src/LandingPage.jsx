@@ -13,6 +13,9 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const firebaseNotConfiguredMessage = import.meta.env.DEV
+    ? 'Local admin sign-in is not configured. Copy frontend/.env.example to frontend/.env.local, add the Firebase web app values, then restart the Vite server.'
+    : 'Admin sign-in is not configured yet. Please contact the system administrator.';
 
   const [quotation, setQuotation] = useState({
     companyName: '',
@@ -99,7 +102,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     setLoginLoading(true);
 
     if (!firebaseConfigured || !auth) {
-      setLoginError('Admin sign-in is not configured yet. Please contact the system administrator.');
+      setLoginError(firebaseNotConfiguredMessage);
       setLoginLoading(false);
       return;
     }
@@ -135,7 +138,7 @@ export default function LandingPage({ onAdminLogin, isAuthenticated, onGoToDashb
     setLoginLoading(true);
 
     if (!firebaseConfigured || !auth) {
-      setLoginError('Admin sign-in is not configured yet. Please contact the system administrator.');
+      setLoginError(firebaseNotConfiguredMessage);
       setLoginLoading(false);
       return;
     }

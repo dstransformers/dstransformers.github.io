@@ -343,6 +343,7 @@ function getDropdownDefaults_() {
     makes: [],
     spmCenters: [],
     services: [],
+    types: [],
     businessGstin: '36AAUFM2590B1Z4',
     tgspdclGstin: '27ABCDE1234F1Z5'
   };
@@ -351,6 +352,8 @@ function getDropdownDefaults_() {
     Make: 'makes',
     'SPM Center': 'spmCenters',
     Service: 'services',
+    Type: 'types',
+    'Transformer Type': 'types',
     'Business GSTIN': 'businessGstin',
     'TGSPDCL GSTIN': 'tgspdclGstin'
   };

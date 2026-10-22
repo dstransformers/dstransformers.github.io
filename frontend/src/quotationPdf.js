@@ -15,7 +15,7 @@ const LETTERHEAD = { width: 589.68, height: 835.92 }
 const PAGE_MARGIN = 40
 const CONTENT_TOP = 155
 const CONTENT_BOTTOM = 798
-const FONT_SIZES = [9.5, 9, 8.5, 8, 7.5]
+const FONT_SIZES = [10.5, 10, 9.5, 9]
 const BLACK = rgb(0.08, 0.12, 0.18)
 const NAVY = rgb(0.12, 0.23, 0.37)
 const LIGHT_BLUE = rgb(0.94, 0.96, 0.98)
@@ -153,10 +153,12 @@ function layoutPage(quotation, rows, size, fonts) {
   const regularCurrency = fallbackCurrencyFont(regular, fonts)
   const semiboldCurrency = fallbackCurrencyFont(semibold, fonts)
   const boldCurrency = fallbackCurrencyFont(bold, fonts)
-  const termsSize = Math.max(7, size - 1)
+  const termsSize = Math.max(8.5, size - 1)
   const headingSize = size + 1
   const lineHeight = size * 1.28
   const infoLineHeight = detailSize * 1.25
+  const sectionGap = 14
+  const signatoryGap = 18
   const serviceRows = rows.map(item => ({
     item,
     description: serviceDescription(item),
@@ -169,10 +171,10 @@ function layoutPage(quotation, rows, size, fonts) {
   const grandTotal = Math.round((subtotal + gstAmount) * 100) / 100
   let cursor = CONTENT_TOP
   const operations = []
-  const pushText = (text, x, top, font, fontSize, maxWidth, align = 'left') => {
+  const pushText = (text, x, top, font, fontSize, maxWidth, align = 'left', color = BLACK) => {
     const currencyFont = fallbackCurrencyFont(font, fonts)
     const lines = textLines(text, font, fontSize, maxWidth, currencyFont)
-    operations.push({ type: 'text', lines, x, top, font, currencyFont, fontSize, maxWidth, align })
+    operations.push({ type: 'text', lines, x, top, font, currencyFont, fontSize, maxWidth, align, color })
     return lines.length * fontSize * 1.22
   }
   const pushRect = (x, top, rectWidth, height, fill = null, stroke = BORDER) => {
@@ -183,7 +185,7 @@ function layoutPage(quotation, rows, size, fonts) {
   }
 
   const documentTitle = isBill ? 'SERVICE BILL' : 'QUOTATION'
-  pushText(documentTitle, PAGE_MARGIN, cursor, bold, headingSize + 4, contentWidth, 'center')
+  pushText(documentTitle, PAGE_MARGIN, cursor, bold, headingSize + 4, contentWidth, 'center', NAVY)
   cursor += (headingSize + 4) * 1.5
   pushText(
     `${isBill ? 'Bill' : 'Quotation'} No.: ${quotation.quotationNo}     Date: ${displayDate(quotation.quotationDate)}`,
@@ -196,8 +198,8 @@ function layoutPage(quotation, rows, size, fonts) {
   )
   cursor += detailSize * 1.7
   const subject = `${isBill ? 'Bill' : 'Quotation'} for ${quotation.transformerCapacity || ''} Transformer${quotation.transformerMake ? ` - ${quotation.transformerMake}` : ''}`
-  pushText(subject, PAGE_MARGIN, cursor, semibold, detailSize + 0.25, contentWidth)
-  cursor += infoLineHeight + 4
+  pushText(subject, PAGE_MARGIN, cursor, semibold, detailSize + 0.25, contentWidth, 'left', NAVY)
+  cursor += infoLineHeight + sectionGap
 
   const gap = 10
   const panelWidth = (contentWidth - gap) / 2
@@ -236,7 +238,7 @@ function layoutPage(quotation, rows, size, fonts) {
   const cardHeight = Math.max(...cardLayouts.map(card => card.height))
   for (const { card, x } of cardLayouts) {
     pushRect(x, cursor, panelWidth, cardHeight, LIGHT_BLUE)
-    pushText(card.title, x + 7, cursor + 6, bold, Math.max(7, size - 0.5), panelWidth - 14)
+    pushText(card.title, x + 7, cursor + 6, bold, Math.max(8.5, size - 0.5), panelWidth - 14, 'left', NAVY)
     let textTop = cursor + 19
     for (const [label, value] of card.entries) {
       const text = `${label}: ${value || '—'}`
@@ -245,9 +247,9 @@ function layoutPage(quotation, rows, size, fonts) {
       textTop += lines.length * infoLineHeight + 2
     }
   }
-  cursor += cardHeight + 8
-  pushText(isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', PAGE_MARGIN, cursor, bold, headingSize, contentWidth)
-  cursor += headingSize * 1.45
+  cursor += cardHeight + sectionGap
+  pushText(isBill ? 'SERVICE DETAILS' : 'SERVICES / RATES', PAGE_MARGIN, cursor, bold, headingSize, contentWidth, 'left', NAVY)
+  cursor += headingSize * 1.45 + 8
 
   const columns = isBill
     ? [
@@ -269,7 +271,7 @@ function layoutPage(quotation, rows, size, fonts) {
   pushRect(tableX, cursor, contentWidth, tableHeaderHeight, LIGHT_BLUE)
   let columnX = tableX
   columns.forEach(column => {
-    pushText(column.title, columnX + 3, cursor + 4, bold, size, column.width - 6, column.align)
+    pushText(column.title, columnX + 3, cursor + 4, bold, size, column.width - 6, column.align, NAVY)
     columnX += column.width
   })
   cursor += tableHeaderHeight
@@ -310,9 +312,9 @@ function layoutPage(quotation, rows, size, fonts) {
     : 'Warranty, wherever applicable, will be as specified for the respective work.'
   const warrantyLines = textLines(warrantyText, regular, termsSize, contentWidth - 12, regularCurrency)
   const warrantyHeight = 17 + warrantyLines.length * (termsSize * 1.2)
-  const signatoryHeight = 38
   const totalsHeight = isBill ? 58 : 0
-  const finalContentHeight = totalsHeight + warrantyHeight + termsHeight + signatoryHeight + 24
+  const finalContentHeight = totalsHeight + warrantyHeight + termsHeight
+    + size * 2.75 + 8 + sectionGap * (isBill ? 3 : 2) + signatoryGap
   const rowHeightTotal = rowLayouts.reduce((sum, row) => sum + row.rowHeight, 0)
   const usedHeight = cursor + rowHeightTotal + finalContentHeight
   if (usedHeight > CONTENT_BOTTOM || rows.length === 0) {
@@ -353,7 +355,7 @@ function layoutPage(quotation, rows, size, fonts) {
     dividerX += column.width
     pushVerticalLine(dividerX, tableTop, rowTop)
   })
-  cursor = rowTop + 6
+  cursor = rowTop + sectionGap
 
   if (isBill) {
     pushRect(PAGE_MARGIN, cursor, contentWidth, totalsHeight, LIGHT_BLUE)
@@ -367,27 +369,27 @@ function layoutPage(quotation, rows, size, fonts) {
     const totalLineHeight = Math.max(size * 1.2, 10)
     totalRows.forEach((line, index) => {
       const strong = line.startsWith('TOTAL ')
-      pushText(line, PAGE_MARGIN + 8, cursor + 5 + index * totalLineHeight, strong ? bold : regular, strong ? size + 0.25 : size, contentWidth - 16, 'right')
+      pushText(line, PAGE_MARGIN + 8, cursor + 5 + index * totalLineHeight, strong ? bold : regular, strong ? size + 0.25 : size, contentWidth - 16, 'right', strong ? NAVY : BLACK)
     })
-    cursor += totalsHeight + 5
+    cursor += totalsHeight + sectionGap
   }
 
-  pushText('WARRANTY', PAGE_MARGIN, cursor, bold, termsSize + 0.5, contentWidth)
+  pushText('WARRANTY', PAGE_MARGIN, cursor, bold, termsSize + 0.5, contentWidth, 'left', NAVY)
   cursor += termsSize * 1.45
   warrantyLines.forEach(line => {
     pushText(line, PAGE_MARGIN, cursor, regular, termsSize, contentWidth)
     cursor += termsSize * 1.2
   })
-  cursor += 3
-  pushText('TERMS & CONDITIONS', PAGE_MARGIN, cursor, bold, termsSize + 0.5, contentWidth)
+  cursor += sectionGap
+  pushText('TERMS & CONDITIONS', PAGE_MARGIN, cursor, bold, termsSize + 0.5, contentWidth, 'left', NAVY)
   cursor += termsSize * 1.45
   termsLines.forEach(line => {
     pushText(line, PAGE_MARGIN, cursor, regular, termsSize, contentWidth)
     cursor += termsSize * 1.2
   })
-  cursor += 4
+  cursor += signatoryGap
   pushText('Digitally Authorized Signatory', PAGE_MARGIN, cursor, bold, size, contentWidth, 'right')
-  cursor += size * 1.35
+  cursor += size * 1.35 + 8
   pushText('M/s D.S. Transformers & Electrical Contractor', PAGE_MARGIN, cursor, semibold, size, contentWidth, 'right')
 
   return {
@@ -461,16 +463,16 @@ async function loadFonts(document) {
   return { regular, semibold, bold, currencyRegular, currencySemibold, currencyBold }
 }
 
-function drawTextWithCurrencyFallback(page, line, x, y, font, currencyFont, size) {
+function drawTextWithCurrencyFallback(page, line, x, y, font, currencyFont, size, color) {
   const parts = String(line).split(RUPEE)
   let nextX = x
   parts.forEach((part, index) => {
     if (part) {
-      page.drawText(part, { x: nextX, y, font, size, color: BLACK })
+      page.drawText(part, { x: nextX, y, font, size, color })
       nextX += font.widthOfTextAtSize(part, size)
     }
     if (index < parts.length - 1) {
-      page.drawText(RUPEE, { x: nextX, y, font: currencyFont, size, color: BLACK })
+      page.drawText(RUPEE, { x: nextX, y, font: currencyFont, size, color })
       nextX += currencyFont.widthOfTextAtSize(RUPEE, size)
     }
   })
@@ -518,6 +520,7 @@ function drawPageOperations(page, operations) {
           operation.font,
           operation.currencyFont,
           operation.fontSize,
+          operation.color || BLACK,
         )
       })
     }

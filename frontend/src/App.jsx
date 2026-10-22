@@ -3,6 +3,7 @@ import LandingPage from './LandingPage'
 import { signOut } from 'firebase/auth'
 import { auth, getAuthSnapshot, subscribeToAuth } from './firebase'
 import { apiFetch } from './api'
+import { generateDeliveryChallanPdf } from './deliveryChallanPdf'
 import { finishInitialLoading, hideLoading, showLoading, withGlobalLoading } from './globalLoading'
 import deliveryChallanTemplateUrl from '/assets/delivery_challan_template.pdf'
 import EmployeePage from './EmployeePage'
@@ -20,8 +21,6 @@ const STATUS_ORDER = [
 const MAX_ATTACHMENTS = 5
 const MAX_ATTACHMENT_SIZE = 2 * 1024 * 1024
 const ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp,.bmp,.heic,.heif,.avif,.pdf'
-const DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE = 9
-
 function uniqueValues(items, accessor) {
   return [...new Set(items.map(accessor).filter(value => value !== undefined && value !== null && value !== ''))]
     .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
@@ -126,144 +125,6 @@ const QUOTATION_COLUMNS = [
   { key: 'capacity', value: quotation => quotation.transformerCapacity || '—' },
   { key: 'output', value: quotation => quotation.outputFormat || (quotation.pdfUrl ? 'PDF' : 'PNG') },
 ]
-
-function wrapPdfText(text, font, fontSize, maxWidth, maxLines = 2) {
-  const words = String(text || '').trim().split(/\s+/).filter(Boolean)
-  const lines = []
-  let line = ''
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word
-    if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
-      line = candidate
-      continue
-    }
-    if (line) lines.push(line)
-    line = word
-  }
-  if (line) lines.push(line)
-  if (lines.length > maxLines) {
-    const lastLine = lines[maxLines - 1]
-    let truncated = lastLine
-    while (truncated && font.widthOfTextAtSize(`${truncated}...`, fontSize) > maxWidth) {
-      truncated = truncated.slice(0, -1)
-    }
-    lines.length = maxLines
-    lines[maxLines - 1] = `${truncated.trimEnd()}...`
-  }
-  return lines
-}
-
-function encodeBase64(bytes) {
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
-  }
-  return btoa(binary)
-}
-
-async function generateDeliveryChallanPdf(dc, templateUrl) {
-  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
-  const templateResponse = await fetch(templateUrl)
-  if (!templateResponse.ok) throw new Error(`Unable to load the delivery challan template (${templateResponse.status}).`)
-  const templateBytes = await templateResponse.arrayBuffer()
-  const templatePdf = await PDFDocument.load(templateBytes)
-  const document = await PDFDocument.create()
-  const templatePages = await document.embedPdf(templateBytes, [0])
-  const regularFont = await document.embedFont(StandardFonts.Helvetica)
-  const boldFont = await document.embedFont(StandardFonts.HelveticaBold)
-  const transformers = Array.isArray(dc.transformerDetails) ? dc.transformerDetails : []
-  const pages = []
-  for (let index = 0; index < transformers.length; index += DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE) {
-    pages.push(transformers.slice(index, index + DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE))
-  }
-  if (pages.length === 0) pages.push([])
-
-  const dateLabel = value => {
-    if (!value) return ''
-    const date = new Date(`${String(value).slice(0, 10)}T00:00:00`)
-    return Number.isNaN(date.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat('en-GB').format(date)
-  }
-  const drawText = (page, text, x, y, font, size, maxWidth, maxLines = 2) => {
-    const lines = wrapPdfText(text, font, size, maxWidth, maxLines)
-    lines.forEach((line, index) => page.drawText(line, {
-      x,
-      y: y - index * (size + 2),
-      font,
-      size,
-      color: rgb(0, 0, 0),
-    }))
-  }
-
-  pages.forEach((pageTransformers, pageIndex) => {
-    const page = document.addPage([templatePdf.getPage(0).getWidth(), templatePdf.getPage(0).getHeight()])
-    const background = templatePages[0]
-    page.drawPage(background, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() })
-
-    drawText(page, dc.customerName, 52, 676, boldFont, 9, 317, 1)
-    drawText(page, dc.customerAddress, 70, 649, boldFont, 8.5, 296, 2)
-    drawText(page, dc.customerGstin, 105, 587, boldFont, 8.5, 270, 1)
-    drawText(page, dc.dcNo, 423, 658, boldFont, 8.5, 65, 1)
-    drawText(page, dateLabel(dc.date), 520, 658, boldFont, 8.5, 62, 1)
-
-    pageTransformers.forEach((transformer, rowIndex) => {
-      const rowY = 527 - rowIndex * 34
-      const transformerName = String(transformer.transformerName || '').replace(/\s*·\s*/g, ' | ')
-      const description = transformerName || [
-        transformer.dtrNo && `DTR No: ${transformer.dtrNo}`,
-        transformer.sNo && `Serial No: ${transformer.sNo}`,
-        transformer.capacity && `${transformer.capacity} kVA`,
-        transformer.type,
-      ].filter(Boolean).join(' | ')
-      const references = (Array.isArray(transformer.tNotes) ? transformer.tNotes : [])
-        .map(note => `${note.tNoteNo || ''}${note.date ? ` / ${dateLabel(note.date)}` : ''}`.trim())
-        .filter(Boolean)
-      drawText(page, rowIndex + 1 + pageIndex * DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE, 18, rowY, boldFont, 8.5, 22, 1)
-      drawText(page, description, 44, rowY, boldFont, 9, 326, 2)
-      drawText(
-        page,
-        '1',
-        430 - boldFont.widthOfTextAtSize('1', 9) / 2,
-        rowY,
-        boldFont,
-        9,
-        46,
-        1,
-      )
-      drawText(page, references.join('; ') || '-', 482, rowY, boldFont, 8, 96, 3)
-    })
-
-    const totalY = 527 - pageTransformers.length * 34 - 12
-    page.drawText('TOTAL NO. OF TRANSFORMERS', {
-      x: 44, y: totalY, font: boldFont, size: 9, color: rgb(0, 0, 0),
-    })
-    const transformerTotal = String(pageTransformers.length)
-    page.drawText(String(pageTransformers.length), {
-      x: 430 - boldFont.widthOfTextAtSize(transformerTotal, 9) / 2,
-      y: totalY, font: boldFont, size: 9, color: rgb(0, 0, 0),
-    })
-
-    if (pageIndex === pages.length - 1) {
-      page.drawText('EMPTY OIL DRUMS RETURNED', {
-        x: 44, y: totalY - 22, font: boldFont, size: 9, color: rgb(0, 0, 0),
-      })
-      const emptyDrumTotal = String(dc.emptyDrumsAvailable ? Number(dc.emptyDrumCount || 0) : 0)
-      page.drawText(emptyDrumTotal, {
-        x: 430 - regularFont.widthOfTextAtSize(emptyDrumTotal, 9) / 2,
-        y: totalY - 22, font: regularFont, size: 9, color: rgb(0, 0, 0),
-      })
-    }
-  })
-
-  const pdfBytes = await document.save()
-  const fileName = `${String(dc.dcNo || 'Delivery-Challan').replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`
-  return {
-    fileName,
-    dataUrl: `data:application/pdf;base64,${encodeBase64(pdfBytes)}`,
-  }
-}
 
 function AttachmentUploadField({ id, attachments, onChange, onUploadingChange, label = 'Attachments (photos or PDFs)', disabled = false, maxAttachments = MAX_ATTACHMENTS }) {
   const [error, setError] = useState('')
@@ -623,6 +484,7 @@ function App() {
     makes: [],
     spmCenters: [],
     services: [],
+    types: [],
     businessGstin: '',
     tgspdclGstin: '',
   })
@@ -847,6 +709,7 @@ function App() {
         sNo: transformer.sNo || '',
         capacity: transformer.capacity || '',
         type: transformer.type || '',
+        oilCapacity: transformer.oilCapacity ?? '',
         intakeType: isRgp ? 'RGP' : 'NEW',
         tNotes: tNotesForTransformer,
       }
@@ -1242,7 +1105,7 @@ ${styles}
   const fetchDropdownDefaults = async () => {
     setDropdownDefaultsError('')
     try {
-      const response = await apiFetch('/api/defaults')
+      const response = await apiFetch('/api/defaults', { cache: 'no-store' })
       if (!response.ok) throw new Error(`Failed to load dropdown defaults (${response.status})`)
       const result = await response.json()
       if (result.status !== 'SUCCESS' || !result.data) {
@@ -1253,6 +1116,7 @@ ${styles}
         makes: Array.isArray(result.data.makes) ? result.data.makes : [],
         spmCenters: Array.isArray(result.data.spmCenters) ? result.data.spmCenters : [],
         services: Array.isArray(result.data.services) ? result.data.services : [],
+        types: Array.isArray(result.data.types) ? result.data.types : [],
         businessGstin: result.data.businessGstin || '',
         tgspdclGstin: result.data.tgspdclGstin || '',
       })
@@ -4772,7 +4636,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       {currentTab === 'employees' && <EmployeePage />}
 
       {currentTab === 'transformers' && (
-        <section className="panel jobs-panel">
+        <section className="panel jobs-panel transformers-panel">
           <div className="panel-header">
             <h2>Transformers Tracker</h2>
             <div className="panel-controls">
@@ -4801,8 +4665,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             </div>
           </div>
           {transformersError && <p className="status status--error jobs-feedback">{transformersError}</p>}
-          <div className="jobs-table-wrap">
-            <table className="jobs-table">
+          <div className="jobs-table-wrap transformers-table-wrap" role="region" aria-label="Transformer register table" tabIndex={0}>
+            <table className="jobs-table transformers-table">
               <thead>
                 <tr>
                   <th>ID</th>
@@ -4880,45 +4744,47 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       </span>
                     </td>
                     <td className="actions-cell">
-                      {getPreviousTransformerStage(transformer) && (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--small"
-                          onClick={() => moveToPreviousStage(transformer)}
-                          disabled={!hasValidTransformerId(transformer)}
-                          title={`Move transformer status back to ${getPreviousTransformerStage(transformer)}`}
-                        >
-                          Back to {getPreviousTransformerStage(transformer)}
-                        </button>
-                      )}
-                      {transformer.assessmentDetails &&
-                        !['Delivered', 'Billed'].includes(transformer.status) && (
+                      <div className="transformer-actions">
+                        {getPreviousTransformerStage(transformer) && (
                           <button
                             type="button"
-                            className="btn btn--ghost btn--small btn--icon assessment-edit-button"
-                            onClick={() => openAssessmentForm(transformer, 'edit')}
+                            className="btn btn--ghost btn--small"
+                            onClick={() => moveToPreviousStage(transformer)}
                             disabled={!hasValidTransformerId(transformer)}
-                            title="Edit assessment details"
-                            aria-label={`Edit assessment details for transformer ${transformer.dtrNo || transformer.id}`}
+                            title={`Move transformer status back to ${getPreviousTransformerStage(transformer)}`}
                           >
-                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
-                            </svg>
+                            Back to {getPreviousTransformerStage(transformer)}
                           </button>
                         )}
-                      <button
-                        className="btn btn--ghost btn--small"
-                        onClick={() => moveToNextStage(transformer)}
-                        disabled={!hasValidTransformerId(transformer) || ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)}
-                        title={!hasValidTransformerId(transformer)
-                          ? 'This record has no valid transformer ID.'
-                          : ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)
-                            ? 'This stage is handled through delivery challan or billing actions.'
-                            : `Move to ${getNextTransformerStage(transformer)}`}
-                      >
-                        {getNextTransformerStage(transformer)}
-                      </button>
+                        {transformer.assessmentDetails &&
+                          !['Delivered', 'Billed'].includes(transformer.status) && (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small btn--icon assessment-edit-button"
+                              onClick={() => openAssessmentForm(transformer, 'edit')}
+                              disabled={!hasValidTransformerId(transformer)}
+                              title="Edit assessment details"
+                              aria-label={`Edit assessment details for transformer ${transformer.dtrNo || transformer.id}`}
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                              </svg>
+                            </button>
+                          )}
+                        <button
+                          className="btn btn--ghost btn--small"
+                          onClick={() => moveToNextStage(transformer)}
+                          disabled={!hasValidTransformerId(transformer) || ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)}
+                          title={!hasValidTransformerId(transformer)
+                            ? 'This record has no valid transformer ID.'
+                            : ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)
+                              ? 'This stage is handled through delivery challan or billing actions.'
+                              : `Move to ${getNextTransformerStage(transformer)}`}
+                        >
+                          {getNextTransformerStage(transformer)}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -5947,8 +5813,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               </div>
               <div className="form-group">
                 <label>Type</label>
-                <input
+                <DefaultSelect
                   value={editingTransformer.type || ''}
+                  options={dropdownDefaults.types}
+                  placeholder="Select Type"
                   onChange={(e) => handleEditTransformerChange('type', e.target.value)}
                   required
                 />
@@ -6653,8 +6521,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   </label>
                   <label>
                     Type
-                    <input
+                    <DefaultSelect
                       value={newTNoteTransformer.type}
+                      options={dropdownDefaults.types}
+                      placeholder="Select Type"
                       onChange={event => setNewTNoteTransformer(current => ({ ...current, type: event.target.value }))}
                       required
                       disabled={addingTNoteTransformer}
@@ -6954,9 +6824,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       onChange={(e) => handleTransformerInputChange(index, 'capacity', e.target.value)}
                       required
                     />
-                    <input
-                      placeholder="Type"
+                    <DefaultSelect
                       value={transformer.type}
+                      options={dropdownDefaults.types}
+                      placeholder="Select Type"
                       onChange={(e) => handleTransformerInputChange(index, 'type', e.target.value)}
                       required
                     />

@@ -5738,3 +5738,86 @@ h1 {
     color: var(--copper-deep);
   }
 }
+
+@media (max-width: 760px) {
+  .app-shell .kpis {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(160px, 42vw);
+    grid-template-columns: none;
+    gap: 10px;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 3px 3px 12px;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-shell .kpi-card {
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+
+  .app-shell .transformers-panel .panel-controls {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-shell .transformers-panel .page-size-row,
+  .app-shell .transformers-panel .panel-controls > .btn {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .app-shell .transformers-panel .page-size-row .filter-select {
+    width: 120px;
+  }
+
+  .app-shell .transformers-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    scrollbar-width: thin;
+    touch-action: pan-x pan-y;
+  }
+
+  .app-shell .transformers-table {
+    min-width: 1080px;
+  }
+
+  .app-shell .transformers-table th,
+  .app-shell .transformers-table td {
+    white-space: nowrap;
+  }
+
+  .app-shell .transformers-table td.actions-cell {
+    min-width: 210px;
+    white-space: normal;
+  }
+
+  .app-shell .transformer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .app-shell .transformer-actions > .btn:not(.btn--icon) {
+    flex: 1 1 130px;
+    min-width: 110px;
+    min-height: 40px;
+    margin: 0;
+    white-space: normal;
+  }
+
+  .app-shell .transformer-actions > .btn--icon {
+    flex: 0 0 44px;
+  }
+}

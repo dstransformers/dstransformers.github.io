@@ -77,4 +77,6 @@ The build script copies the generated app to the repository root. Commit and pus
 
 ## Local development
 
-Copy `frontend/.env.example` to `frontend/.env.local` and set the Firebase web configuration. Set the backend's `FIREBASE_PROJECT_ID` environment variable, and authenticate local Firebase Admin SDK verification with Application Default Credentials (`gcloud auth application-default login`). Continue to use the Vite API proxy for local calls by leaving `VITE_API_BASE_URL` unset.
+From the repository root, copy `frontend/.env.example` to `frontend/.env.local` and fill in the four Firebase Web app values from Firebase Console → Project settings → Your apps. The local file is ignored by Git. Restart Vite after changing it; local admin sign-in requires all four values.
+
+Set the backend's `FIREBASE_PROJECT_ID` environment variable, and authenticate local Firebase Admin SDK verification with Application Default Credentials (`gcloud auth application-default login`). Add `localhost` to Firebase Authentication's authorized domains. Continue to use the Vite API proxy for local calls by leaving `VITE_API_BASE_URL` unset.
