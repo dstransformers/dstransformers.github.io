@@ -1,0 +1,4 @@
+#!include:.gitignore
+.m2/
+data/
+vstsmdatabase

@@ -16,7 +16,6 @@ import java.util.HashMap;
  */
 @RestController
 @RequestMapping("/api/enquiries")
-@CrossOrigin(origins = "*")
 public class EnquiryController {
     
     @Autowired

@@ -1,8 +1,8 @@
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrWX_cP6X7vh52AHN0pqz-njTVtPJFd4V7kkpc728I2kNcnnp-Hs7TxJRDPgEfLgCV/exec';
+const API_BASE_URL = document.querySelector('meta[name="vstms-api-base-url"]')?.content.trim().replace(/\/$/, '');
 
 const appConfig = {
   businessEmail: 'ds.transformerelectrical@gmail.com',
-  businessWhatsApp: '919949396530',
+  businessWhatsApp: '918885250302',
   storageKey: 'ds_transformers_enquiries_v1'
 };
 
@@ -246,20 +246,38 @@ function configureFormInteractions() {
       storage.unshift(enquiry.originalForm);
       localStorage.setItem(appConfig.storageKey, JSON.stringify(storage));
 
-      const response = await fetch(APPS_SCRIPT_URL, {
+      if (!API_BASE_URL) {
+        throw new Error('The enquiry service is not configured. Please contact the site administrator.');
+      }
+      const originalForm = enquiry.originalForm;
+      const response = await fetch(`${API_BASE_URL}/api/enquiries`, {
         method: 'POST',
-        body: JSON.stringify(enquiry)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: originalForm.companyName,
+          contactPerson: originalForm.contactPerson,
+          customerPhone: originalForm.mobileNumber,
+          customerEmail: originalForm.emailAddress,
+          servicesRequired: originalForm.serviceRequired.join(', '),
+          transformerCapacity: originalForm.transformerCapacity,
+          transformerMake: originalForm.transformerMake,
+          transformerStatus: originalForm.transformerStatus,
+          servicePriority: originalForm.servicePriority,
+          problemDescription: originalForm.problemDescription,
+          attachments: enquiry.attachments,
+          status: 'NEW'
+        })
       });
 
       const responseData = await response.json().catch(() => ({}));
 
-      if (!response.ok || responseData.success !== true) {
+      if (!response.ok || responseData.status !== 'SUCCESS') {
         throw new Error(
           responseData.message || 'The enquiry could not be submitted.'
         );
       }
 
-      const successId = responseData.enquiryId || enquiry.enquiryId;
+      const successId = responseData.id || responseData.enquiryId || enquiry.enquiryId;
 
       const successBlock = document.getElementById('quoteSuccess');
       const successNode = document.getElementById('successEnquiryId');
@@ -288,7 +306,7 @@ function configureFormInteractions() {
       }
     } catch (error) {
       console.error('Enquiry submission failed', error);
-      showSubmissionError('The form could not be submitted because the Google Apps Script web app is rejecting the request. Please update the Web App deployment to “Anyone” and use the new deployment URL.');
+      showSubmissionError(error instanceof Error ? error.message : 'The enquiry could not be submitted. Please try again.');
     } finally {
       if (submitButton) {
         submitButton.disabled = false;
