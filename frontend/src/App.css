@@ -2907,6 +2907,28 @@ h1 {
     padding-left: 11px;
   }
 }
+
+@media (max-width: 980px) {
+  .app-shell .kpis {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(160px, 42vw);
+    grid-template-columns: none;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-shell .kpi-card {
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+}
+
 .auth-loading {
   min-height: 100vh;
   display: flex;
