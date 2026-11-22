@@ -866,6 +866,34 @@ function App() {
     setCurrentTab('transformers')
   }
 
+  const transformerKpiItems = [
+    { status: 'Recieved', label: 'Recieved', count: summary.recieve, detail: 'New inward entries', ariaLabel: 'received transformers' },
+    { status: 'Assesment', label: 'Assesment', count: summary.assesment, detail: 'Fault verification pending', ariaLabel: 'transformers awaiting assessment' },
+    { status: 'Repair In Progress', label: 'Repair In Progress', count: summary.repairInProgress, detail: 'Workshop jobs in progress', ariaLabel: 'transformers in repair' },
+    { status: 'Repaired', label: 'Repaired', count: summary.repaired, detail: 'Ready for dispatch planning', ariaLabel: 'repaired transformers' },
+    { status: 'Ready to Deliver', label: 'Ready to Deliver', count: summary.readyToDeliver, detail: 'Cleared for delivery challan', ariaLabel: 'ready-to-deliver transformers' },
+    { status: 'Delivered', label: 'Delivered', count: summary.delivered, detail: 'Customer handover completed', ariaLabel: 'delivered transformers' },
+    { status: 'Billed', label: 'Billed', count: summary.billed, detail: 'Invoice posted after delivery', ariaLabel: 'billed transformers' },
+    { status: 'Scrap', label: 'Scrap', count: summary.scrap, detail: 'Removed from active workflow', ariaLabel: 'scrapped transformers' },
+  ]
+  const renderTransformerKpis = (className = '') => (
+    <section className={`kpis ${className}`.trim()} aria-label="Transformer status counts">
+      {transformerKpiItems.map(item => (
+        <button
+          key={item.status}
+          type="button"
+          className="card kpi-card"
+          onClick={() => openTransformersByStatus(item.status)}
+          aria-label={`View ${item.count} ${item.ariaLabel}`}
+        >
+          <p>{item.label}</p>
+          <h3>{item.count}</h3>
+          <small>{item.detail}</small>
+        </button>
+      ))}
+    </section>
+  )
+
   const transformerOptions = useMemo(() => ({
     spmCenter: uniqueValues(transformers, (transformer) => transformer.spmCenter),
     dtrNo: uniqueValues(transformers, (transformer) => transformer.dtrNo),
@@ -4119,6 +4147,13 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               </div>
             )}
 
+            <section className="mobile-dashboard-status-section" aria-labelledby="dashboard-status-heading">
+              <div className="mobile-dashboard-section-heading">
+                <h3 id="dashboard-status-heading">Transformer status</h3>
+              </div>
+              {renderTransformerKpis('mobile-dashboard-status-kpis')}
+            </section>
+
             <div className="mobile-dashboard-section-heading">
               <h3>Quick actions</h3>
               <button
@@ -4246,50 +4281,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
         </section>
       )}
 
-      {currentTab !== 'quotations' && currentTab !== 'employees' && currentTab !== 'dashboard' && currentTab !== 'more' && (
-        <section className={`kpis${currentTab === 'tnotes' ? ' kpis--tnotes' : ''}`}>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Recieved')} aria-label={`View ${summary.recieve} received transformers`}>
-            <p>Recieved</p>
-            <h3>{summary.recieve}</h3>
-            <small>New inward entries</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Assesment')} aria-label={`View ${summary.assesment} transformers awaiting assessment`}>
-            <p>Assesment</p>
-            <h3>{summary.assesment}</h3>
-            <small>Fault verification pending</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repair In Progress')} aria-label={`View ${summary.repairInProgress} transformers in repair`}>
-            <p>Repair In Progress</p>
-            <h3>{summary.repairInProgress}</h3>
-            <small>Workshop jobs in progress</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Repaired')} aria-label={`View ${summary.repaired} repaired transformers`}>
-            <p>Repaired</p>
-            <h3>{summary.repaired}</h3>
-            <small>Ready for dispatch planning</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Ready to Deliver')} aria-label={`View ${summary.readyToDeliver} ready-to-deliver transformers`}>
-            <p>Ready to Deliver</p>
-            <h3>{summary.readyToDeliver}</h3>
-            <small>Cleared for delivery challan</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Delivered')} aria-label={`View ${summary.delivered} delivered transformers`}>
-            <p>Delivered</p>
-            <h3>{summary.delivered}</h3>
-            <small>Customer handover completed</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Billed')} aria-label={`View ${summary.billed} billed transformers`}>
-            <p>Billed</p>
-            <h3>{summary.billed}</h3>
-            <small>Invoice posted after delivery</small>
-          </button>
-          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Scrap')} aria-label={`View ${summary.scrap} scrapped transformers`}>
-            <p>Scrap</p>
-            <h3>{summary.scrap}</h3>
-            <small>Removed from active workflow</small>
-          </button>
-        </section>
-      )}
+      {currentTab !== 'quotations' && currentTab !== 'employees' && currentTab !== 'dashboard' && currentTab !== 'more' &&
+        renderTransformerKpis(currentTab === 'tnotes' ? 'kpis--tnotes' : '')}
 
       {currentTab === 'enquiries' && (
         <section className="panel jobs-panel">

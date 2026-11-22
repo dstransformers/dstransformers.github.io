@@ -3531,6 +3531,37 @@ h1 {
     letter-spacing: -0.02em;
   }
 
+  .mobile-dashboard-status-section {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .mobile-dashboard-status-kpis {
+    display: grid;
+    grid-auto-columns: minmax(150px, 42vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 2px 2px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-dashboard-status-kpis .kpi-card {
+    min-width: 0;
+    padding: 12px;
+    scroll-snap-align: start;
+  }
+
   .mobile-dashboard-quick-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
