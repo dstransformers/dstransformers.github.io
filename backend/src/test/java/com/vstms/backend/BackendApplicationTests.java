@@ -257,19 +257,20 @@ class BackendApplicationTests {
 		var result = mockMvc.perform(put("/api/tnotes/4")
 						.header("Authorization", "Bearer unit-test-token")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"tNoteNo\":\"QA-AUTH-FIX-20261004\",\"date\":\"2026-10-04\",\"numberOfTransformers\":1,\"attachments\":[]}"))
+						.content("{\"tNoteNo\":\"QA-AUTH-FIX-20261004\",\"date\":\"2026-10-04\",\"numberOfTransformers\":1,\"drumCount\":3,\"attachments\":[]}"))
 				.andReturn();
 
 		assertEquals(HttpStatus.OK.value(), result.getResponse().getStatus(),
 				String.valueOf(result.getResolvedException()));
 		assertTrue(result.getResponse().getContentAsString().contains("\"tNoteNo\":\"QA-AUTH-FIX-20261004\""));
+		assertTrue(result.getResponse().getContentAsString().contains("\"drumCount\":3"));
 	}
 
 	@Test
 	void transformerRequestAcceptsAnIdempotencyKey() throws Exception {
 		when(tokenVerifier.verifyAdminToken("unit-test-token"))
 				.thenReturn(Optional.of("admin@example.com"));
-		when(googleSheetsService.createTransformer(any(), any(), any(), anyInt(), any(), anyDouble(),
+		when(googleSheetsService.createTransformer(any(), any(), any(), any(), any(), anyInt(), any(), anyDouble(),
 				any(), any(), any()))
 				.thenReturn(new TransformerDTO(
 						1L, "QA", "QA-DTR", "QA-SN", 100, "Distribution", 50, "Recieved", 1L, null, null));
@@ -277,11 +278,11 @@ class BackendApplicationTests {
 		mockMvc.perform(post("/api/transformers")
 						.header("Authorization", "Bearer unit-test-token")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"spmCenter\":\"QA\",\"dtrNo\":\"QA-DTR\",\"sNo\":\"QA-SN\",\"capacity\":100,\"type\":\"Distribution\",\"oilCapacity\":50,\"tNoteId\":1,\"intakeType\":\"NEW\",\"requestId\":\"request-123\"}"))
+						.content("{\"spmCenter\":\"QA\",\"make\":\"ABC\",\"remarks\":\"Incoming inspection\",\"dtrNo\":\"QA-DTR\",\"sNo\":\"QA-SN\",\"capacity\":100,\"type\":\"Distribution\",\"oilCapacity\":50,\"tNoteId\":1,\"intakeType\":\"NEW\",\"requestId\":\"request-123\"}"))
 				.andExpect(status().isOk());
 
 		verify(googleSheetsService).createTransformer(
-				eq("QA"), eq("QA-DTR"), eq("QA-SN"), eq(100), eq("Distribution"), eq(50.0),
+				eq("QA"), eq("ABC"), eq("Incoming inspection"), eq("QA-DTR"), eq("QA-SN"), eq(100), eq("Distribution"), eq(50.0),
 				eq(1L), eq("NEW"), eq("request-123"));
 	}
 
@@ -296,10 +297,11 @@ class BackendApplicationTests {
 		mockMvc.perform(post("/api/transformers/batch")
 					.header("Authorization", "Bearer unit-test-token")
 					.contentType(MediaType.APPLICATION_JSON)
-					.content("{\"transformers\":[{\"spmCenter\":\"QA\",\"dtrNo\":\"QA-DTR\",\"sNo\":\"QA-SN\",\"capacity\":100,\"type\":\"Distribution\",\"oilCapacity\":50,\"tNoteId\":1,\"intakeType\":\"NEW\",\"requestId\":\"request-123\"}]}"))
+					.content("{\"transformers\":[{\"spmCenter\":\"QA\",\"make\":\"ABC\",\"remarks\":\"Batch notes\",\"dtrNo\":\"QA-DTR\",\"sNo\":\"QA-SN\",\"capacity\":100,\"type\":\"Distribution\",\"oilCapacity\":50,\"tNoteId\":1,\"intakeType\":\"NEW\",\"requestId\":\"request-123\"}]}"))
 				.andExpect(status().isOk());
 
-		verify(googleSheetsService).createTransformers(anyList());
+		verify(googleSheetsService).createTransformers(argThat(rows ->
+				"Batch notes".equals(rows.get(0).get("remarks"))));
 	}
 
 	@Test

@@ -127,17 +127,6 @@ export default function EmployeePage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const employeeResponse = await apiFetch('/api/employees')
-      if (!employeeResponse.ok) {
-        throw new Error(await apiErrorMessage(employeeResponse, 'Unable to load employee data'))
-      }
-      const employeeData = await employeeResponse.json()
-      setEmployees(employeeData)
-      setHolidayEmployeeId(current =>
-        current && employeeData.some(employee => String(employee.id) === current)
-          ? current
-          : employeeData.length > 0 ? String(employeeData[0].id) : '')
-
       const requestData = async (path) => {
         const response = await apiFetch(path)
         if (!response.ok) {
@@ -145,11 +134,17 @@ export default function EmployeePage() {
         }
         return response.json()
       }
-      const [attendanceData, holidayData, salaryData] = await Promise.all([
+      const [employeeData, attendanceData, holidayData, salaryData] = await Promise.all([
+        requestData('/api/employees'),
         requestData(`/api/employees/attendance?month=${selectedMonth}`),
         requestData(`/api/employees/holidays?month=${selectedMonth}`),
         requestData(`/api/employees/salaries?month=${selectedMonth}`),
       ])
+      setEmployees(employeeData)
+      setHolidayEmployeeId(current =>
+        current && employeeData.some(employee => String(employee.id) === current)
+          ? current
+          : employeeData.length > 0 ? String(employeeData[0].id) : '')
       setAttendance(attendanceData)
       setHolidays(holidayData)
       setSalaries(salaryData)

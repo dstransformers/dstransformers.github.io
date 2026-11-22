@@ -53,6 +53,12 @@ If the authorization error remains, confirm the deployed web app is configured
 to execute as the same account that granted the scopes, and that the request URL
 is the deployment whose new version was just created. Running the dropdown action
 in the editor alone does not change an existing web-app deployment.
+If a UI request reports that `SpreadsheetApp.getActiveSpreadsheet` is not
+authorized, run `authorizeVstmsAccess` from the bound spreadsheet's Apps Script
+editor as the deployment owner, approve the requested scopes, and verify that
+the `VSTMS_SPREADSHEET_ID` script property was saved. Then deploy a new web-app
+version configured to execute as that owner. Deployed requests use the saved
+spreadsheet ID; they do not have an active-spreadsheet context.
 VSTMS users authenticate to the application; they do not grant Google Sheets
 scopes. The Apps Script deployment must execute as the authorized deployment
 owner. Reauthorization is only needed if the deployment owner changes, the

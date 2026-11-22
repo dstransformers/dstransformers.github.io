@@ -21,6 +21,8 @@ const STATUS_ORDER = [
 const MAX_ATTACHMENTS = 5
 const MAX_ATTACHMENT_SIZE = 2 * 1024 * 1024
 const ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp,.bmp,.heic,.heif,.avif,.pdf'
+const DELIVERY_CHALLAN_TRANSFORMERS_PER_PAGE = 9
+const DEFAULT_TRANSFORMER_TYPES = ['CSP', 'Amorphous', 'Conventional', 'RGP']
 function uniqueValues(items, accessor) {
   return [...new Set(items.map(accessor).filter(value => value !== undefined && value !== null && value !== ''))]
     .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
@@ -395,6 +397,8 @@ function App() {
   const [filterSearchText, setFilterSearchText] = useState({})
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
+  const [selectedTransformerIds, setSelectedTransformerIds] = useState([])
+  const [bulkAdvanceLoading, setBulkAdvanceLoading] = useState(false)
   const [totalPages, setTotalPages] = useState(0)
   const [totalElements, setTotalElements] = useState(0)
   const [summary, setSummary] = useState({
@@ -425,6 +429,8 @@ function App() {
   const [newTNoteTransformerError, setNewTNoteTransformerError] = useState('')
   const [newTNoteTransformer, setNewTNoteTransformer] = useState({
     spmCenter: '',
+    make: '',
+    remarks: '',
     dtrNo: '',
     sNo: '',
     capacity: '',
@@ -502,8 +508,8 @@ function App() {
     makes: [],
     spmCenters: [],
     services: [],
-    types: [],
-    transformerTypes: [],
+    types: DEFAULT_TRANSFORMER_TYPES,
+    transformerTypes: DEFAULT_TRANSFORMER_TYPES,
     businessGstin: '',
     tgspdclGstin: '',
   })
@@ -620,9 +626,10 @@ function App() {
     tNoteNo: '',
     date: new Date().toISOString().split('T')[0],
     numberOfTransformers: 1,
+    drumCount: 0,
   })
   const [tnoteTransformers, setTnoteTransformers] = useState([
-    { spmCenter: '', dtrNo: '', sNo: '', capacity: '', type: '', oilCapacity: '' },
+    { spmCenter: '', make: '', remarks: '', dtrNo: '', sNo: '', capacity: '', type: '', oilCapacity: '' },
   ])
   const [newDC, setNewDC] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -733,12 +740,6 @@ function App() {
         tNotes: tNotesForTransformer,
       }
     }), [selectedDCTransformers, visibleDCCandidateById, transformerTNotesById, tnotes])
-
-  useEffect(() => {
-    if (!authUser || !initialPageReady) return
-    fetchTransformers()
-    fetchSummary()
-  }, [authUser, initialPageReady, currentTab, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, tNoteFilter, typeFilter, capacityFilter])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1104,6 +1105,16 @@ ${styles}
     }
   }
 
+  useEffect(() => {
+    if (!authUser || !initialPageReady || currentTab !== 'transformers') return
+    fetchTransformers()
+  }, [authUser, initialPageReady, currentTab, page, pageSize, statusFilter, spmCenterFilter, dtrNoFilter, sNoFilter, tNoteFilter, typeFilter, capacityFilter])
+
+  useEffect(() => {
+    if (!authUser || !initialPageReady || currentTab !== 'dashboard') return
+    fetchSummary()
+  }, [authUser, initialPageReady, currentTab])
+
   const fetchEnquiries = async () => {
     setEnquiriesLoading(true)
     setEnquiriesError('')
@@ -1132,17 +1143,27 @@ ${styles}
       }
       const types = Array.isArray(result.data.types) ? result.data.types : []
       const transformerTypes = Array.isArray(result.data.transformerTypes) ? result.data.transformerTypes : []
+      const typeOptions = types.length > 0
+        ? types
+        : transformerTypes.length > 0 ? transformerTypes : DEFAULT_TRANSFORMER_TYPES
       setDropdownDefaults({
         capacities: Array.isArray(result.data.capacities) ? result.data.capacities : [],
         makes: Array.isArray(result.data.makes) ? result.data.makes : [],
         spmCenters: Array.isArray(result.data.spmCenters) ? result.data.spmCenters : [],
         services: Array.isArray(result.data.services) ? result.data.services : [],
-        types: types.length ? types : transformerTypes,
-        transformerTypes: transformerTypes.length ? transformerTypes : types,
+        types: typeOptions,
+        transformerTypes: typeOptions,
         businessGstin: result.data.businessGstin || '',
         tgspdclGstin: result.data.tgspdclGstin || '',
       })
     } catch (err) {
+      setDropdownDefaults(current => ({
+        ...current,
+        types: current.types.length > 0 ? current.types : DEFAULT_TRANSFORMER_TYPES,
+        transformerTypes: current.transformerTypes.length > 0
+          ? current.transformerTypes
+          : DEFAULT_TRANSFORMER_TYPES,
+      }))
       setDropdownDefaultsError(err instanceof Error ? err.message : 'Failed to load dropdown defaults')
     }
   }
@@ -1259,22 +1280,19 @@ ${styles}
   }
 
   useEffect(() => {
+    if (!authUser || !initialPageReady || currentTab !== 'quotations') return
+    fetchQuotations()
+  }, [authUser, initialPageReady, currentTab])
+
+  useEffect(() => {
     if (authUser === undefined) return
     if (!authUser) return
 
-    let cancelled = false
-    Promise.all([
-      fetchDropdownDefaults(),
-      fetchQuotations(),
-    ]).finally(() => {
-      if (cancelled) return
+    Promise.resolve().then(() => {
       setCurrentTab(window.matchMedia('(max-width: 760px)').matches ? 'dashboard' : 'employees')
       setInitialPageLoadedFor(authUser.uid)
     })
-
-    return () => {
-      cancelled = true
-    }
+    fetchDropdownDefaults()
   }, [authUser])
 
   useEffect(() => {
@@ -1307,7 +1325,7 @@ ${styles}
       financialYear: quotationConfig.settings['Financial Year'] || '',
       outputFormat: 'PDF',
       gstApplicable: false,
-      gstRate: 19,
+      gstRate: 18,
       warrantyMonths: '',
       terms: '',
       lineItems: [],
@@ -1473,7 +1491,7 @@ ${styles}
     const quotationNo = escapeHtml(quotationNumber)
     const documentTitle = isBill ? 'BILL' : 'QUOTATION'
     const subtotal = Math.round(quotation.lineItems.reduce((total, item) => total + (isBill ? Number(item.quantity || 0) : 1) * Number(item.rate || 0), 0) * 100) / 100
-    const gstAmount = isBill && quotation.gstApplicable ? Math.round(subtotal * Number(quotation.gstRate || 19)) / 100 : 0
+    const gstAmount = isBill && quotation.gstApplicable ? Math.round(subtotal * Number(quotation.gstRate || 18)) / 100 : 0
     const totalAmount = Math.round((subtotal + gstAmount) * 100) / 100
     const billTerms = String(quotation.terms || '').trim() || [
       '1. This bill covers only the services and materials expressly listed above.',
@@ -1576,7 +1594,7 @@ ${styles}
             <thead><tr><th>#</th><th>Description of Work / Service</th>${isBill ? '<th>Qty</th><th>Unit</th><th>Rate (₹)</th><th>Amount (₹)</th>' : '<th>Rate</th>'}</tr></thead>
             <tbody>${lineRows}</tbody>
           </table>
-          ${isBill ? `<div class="totals"><p><span>Subtotal</span><b>₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>${quotation.gstApplicable ? `<p><span>GST (${Number(quotation.gstRate || 19)}%)</span><b>₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>` : ''}<p class="grand"><span>Total Amount</span><strong>₹${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p><p class="amount-words"><span>Amount in words: </span><b>${escapeHtml(indianCurrencyWords(totalAmount))}</b></p></div>` : ''}
+          ${isBill ? `<div class="totals"><p><span>Subtotal</span><b>₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>${quotation.gstApplicable ? `<p><span>GST (${Number(quotation.gstRate || 18)}%)</span><b>₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>` : ''}<p class="grand"><span>Total Amount</span><strong>₹${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p><p class="amount-words"><span>Amount in words: </span><b>${escapeHtml(indianCurrencyWords(totalAmount))}</b></p></div>` : ''}
           <div class="closing ${isBill ? 'bill-closing' : ''}">
             <div class="terms">
               <h2>WARRANTY</h2>
@@ -1809,7 +1827,7 @@ ${styles}
     }
   }
 
-  const updateTransformerStatus = async (transformerId, nextStatus, assessmentDetails = null, backward = false) => {
+  const updateTransformerStatus = async (transformerId, nextStatus, assessmentDetails = null, backward = false, refreshSummary = true) => {
     setTransformersError('')
     try {
       const response = await apiFetch(`/api/transformers/${transformerId}/status`, {
@@ -1827,8 +1845,9 @@ ${styles}
       setTransformers((prevTransformers) =>
         prevTransformers.map((transformer) => (transformer.id === updated.id ? updated : transformer)),
       )
+      setSelectedTransformerIds(current => current.filter(id => id !== updated.id))
       syncTransformerInTNotes(updated)
-      await fetchSummary()
+      if (refreshSummary) await fetchSummary()
       return updated
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Status update failed'
@@ -1876,7 +1895,7 @@ ${styles}
   }
 
   const addTransformerRow = () => {
-    setTnoteTransformers((prev) => [...prev, { spmCenter: '', dtrNo: '', sNo: '', capacity: '', type: '', oilCapacity: '' }])
+    setTnoteTransformers((prev) => [...prev, { spmCenter: '', make: '', remarks: '', dtrNo: '', sNo: '', capacity: '', type: '', oilCapacity: '' }])
   }
 
   const removeTransformerRow = (index) => {
@@ -1891,7 +1910,7 @@ ${styles}
       setTnoteError('Enter a TNote number.')
       return
     }
-    if (tnoteTransformers.some((t) => !t.spmCenter || !t.dtrNo || !t.sNo || !t.capacity || !t.type || !t.oilCapacity)) {
+    if (tnoteTransformers.some((t) => !t.spmCenter || !t.make || !t.dtrNo || !t.sNo || !t.capacity || !t.type || !t.oilCapacity)) {
       setTransformersError('Please fill all transformer fields')
       return
     }
@@ -1905,6 +1924,7 @@ ${styles}
           tNoteNo: newTNote.tNoteNo.trim(),
           date: newTNote.date,
           numberOfTransformers: tnoteTransformers.length,
+          drumCount: Number(newTNote.drumCount),
           attachments: tnoteAttachments,
         }),
       })
@@ -1940,8 +1960,8 @@ ${styles}
         throw new Error(`TNote ${createdTNote.tNoteNo || createdTNote.id} was created, but transformer registration returned an incomplete result.`)
       }
 
-      setNewTNote({ tNoteNo: '', date: new Date().toISOString().split('T')[0], numberOfTransformers: 1 })
-      setTnoteTransformers([{ spmCenter: '', dtrNo: '', sNo: '', capacity: '', type: '', oilCapacity: '' }])
+      setNewTNote({ tNoteNo: '', date: new Date().toISOString().split('T')[0], numberOfTransformers: 1, drumCount: 0 })
+      setTnoteTransformers([{ spmCenter: '', make: '', remarks: '', dtrNo: '', sNo: '', capacity: '', type: '', oilCapacity: '' }])
       setTnoteAttachments([])
       setShowTNoteModal(false)
       await fetchTNotes()
@@ -2019,7 +2039,7 @@ ${styles}
         { header: 'Sl. No.', key: 'rowNumber', width: 8, getValue: (_, index) => index + 1 },
         { header: 'DTR Code', key: 'dtrNo', width: 15, getValue: transformer => transformer.dtrNo },
         { header: 'Capacity (kVA)', key: 'capacity', width: 13, getValue: transformer => transformer.capacity },
-        { header: 'Make', key: 'make', width: 16, getValue: transformer => transformer.type },
+        { header: 'Make', key: 'make', width: 16, getValue: transformer => transformer.make },
         { header: 'Transformer S. No.', key: 'sNo', width: 17, getValue: transformer => transformer.sNo },
         { header: 'Unbilled Challan No.', key: 'unbilledChallanNo', width: 20, getValue: transformer => {
           if (String(transformer.status || '').toLowerCase() === 'billed') return ''
@@ -2198,6 +2218,8 @@ ${styles}
     setRgpManualEntry(false)
     setNewTNoteTransformer({
       spmCenter: '',
+      make: '',
+      remarks: '',
       dtrNo: '',
       sNo: '',
       capacity: '',
@@ -2262,6 +2284,8 @@ ${styles}
       setTransformers(current => [createdTransformer, ...current.filter(item => item.id !== createdTransformer.id)])
       setNewTNoteTransformer({
         spmCenter: '',
+        make: '',
+        remarks: '',
         dtrNo: '',
         sNo: '',
         capacity: '',
@@ -2731,6 +2755,8 @@ ${styles}
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spmCenter: editingTransformer.spmCenter,
+          make: editingTransformer.make || undefined,
+          remarks: editingTransformer.remarks || '',
           dtrNo: editingTransformer.dtrNo,
           sNo: editingTransformer.sNo,
           capacity: parseInt(editingTransformer.capacity, 10),
@@ -3533,6 +3559,44 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     return currentIndex >= 0 && currentIndex < STATUS_ORDER.length - 1
       ? STATUS_ORDER[currentIndex + 1]
       : 'Completed'
+  }
+
+  const canBulkAdvanceTransformer = (transformer) => {
+    const nextStatus = getNextTransformerStage(transformer)
+    return hasValidTransformerId(transformer) &&
+      !['Repaired', 'Delivered', 'Billed'].includes(transformer.status) &&
+      nextStatus !== 'Assesment' &&
+      nextStatus !== 'Completed'
+  }
+
+  const advanceSelectedTransformers = async () => {
+    const selected = transformers.filter(transformer =>
+      selectedTransformerIds.includes(transformer.id) && canBulkAdvanceTransformer(transformer)
+    )
+    if (selected.length === 0 || bulkAdvanceLoading) return
+
+    setBulkAdvanceLoading(true)
+    const advancedIds = []
+    try {
+      for (const transformer of selected) {
+        const updated = await updateTransformerStatus(
+          transformer.id,
+          getNextTransformerStage(transformer),
+          null,
+          false,
+          false,
+        )
+        if (!updated) {
+          setSelectedTransformerIds(current => current.filter(id => !advancedIds.includes(id)))
+          return
+        }
+        advancedIds.push(transformer.id)
+      }
+      setSelectedTransformerIds(current => current.filter(id => !advancedIds.includes(id)))
+      await fetchSummary()
+    } finally {
+      setBulkAdvanceLoading(false)
+    }
   }
 
   const dashboardReceivedTNotes = sortByDateDescending(
@@ -4520,11 +4584,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       : Number(item.rate || 0)
                   ), 0) * 100) / 100
                   const gstApplicable = activeQuotation.documentType === 'BILL' && activeQuotation.gstApplicable
-                  const gst = gstApplicable ? Math.round(subtotal * Number(activeQuotation.gstRate || 19)) / 100 : 0
+                  const gst = gstApplicable ? Math.round(subtotal * Number(activeQuotation.gstRate || 18)) / 100 : 0
                   return <div className="bill-total-summary">
                     <p className="bill-total-words"><span>Amount in words: </span><strong>{indianCurrencyWords(subtotal + gst)}</strong></p>
                     <p><span>Subtotal</span><strong>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                    {gstApplicable && <p><span>GST ({Number(activeQuotation.gstRate || 19)}%)</span><strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>}
+                    {gstApplicable && <p><span>GST ({Number(activeQuotation.gstRate || 18)}%)</span><strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>}
                     <p className="bill-grand-total"><span>Total Amount</span><strong>₹{(subtotal + gst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                   </div>
                 })()}
@@ -4648,17 +4712,17 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 </section>
                 {quotationDraft.documentType === 'BILL' && (() => {
                   const subtotal = Math.round(quotationDraft.lineItems.reduce((total, item) => total + Number(item.quantity || 0) * Number(item.rate || 0), 0) * 100) / 100
-                  const gst = quotationDraft.gstApplicable ? Math.round(subtotal * Number(quotationDraft.gstRate || 19)) / 100 : 0
+                  const gst = quotationDraft.gstApplicable ? Math.round(subtotal * Number(quotationDraft.gstRate || 18)) / 100 : 0
                   return <>
                     <section className="quotation-editor-section">
                       <h3>Bill Summary &amp; Warranty</h3>
                       <div className="quotation-editor-grid">
-                        <label className="bill-gst-toggle"><input type="checkbox" checked={Boolean(quotationDraft.gstApplicable)} onChange={event => updateQuotationDraft('gstApplicable', event.target.checked)} /> Apply GST at 19% to the total service amount</label>
+                        <label className="bill-gst-toggle"><input type="checkbox" checked={Boolean(quotationDraft.gstApplicable)} onChange={event => updateQuotationDraft('gstApplicable', event.target.checked)} /> Apply GST at 18% to the total service amount</label>
                         <label>Warranty period (months)<input type="number" min="0" step="1" value={quotationDraft.warrantyMonths || ''} onChange={event => updateQuotationDraft('warrantyMonths', event.target.value)} placeholder="Leave blank if not applicable" /></label>
                       </div>
                       <div className="bill-total-summary">
                         <p><span>Subtotal</span><strong>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                        {quotationDraft.gstApplicable && <p><span>GST (19%)</span><strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>}
+                        {quotationDraft.gstApplicable && <p><span>GST (18%)</span><strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>}
                         <p className="bill-grand-total"><span>Total Amount</span><strong>₹{(subtotal + gst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                       </div>
                     </section>
@@ -4722,13 +4786,39 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               >
                 Export Filtered Excel Sheet
               </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={advanceSelectedTransformers}
+                disabled={bulkAdvanceLoading || !transformers.some(transformer =>
+                  selectedTransformerIds.includes(transformer.id) && canBulkAdvanceTransformer(transformer)
+                )}
+                title="Promote selected transformers that do not require individual assessment details."
+              >
+                {bulkAdvanceLoading ? 'Promoting…' : `Promote Selected (${transformers.filter(transformer => selectedTransformerIds.includes(transformer.id) && canBulkAdvanceTransformer(transformer)).length})`}
+              </button>
             </div>
           </div>
           {transformersError && <p className="status status--error jobs-feedback">{transformersError}</p>}
+          <p className="status">Select multiple transformers to promote eligible records together. Transformers requiring assessment details must be advanced individually.</p>
           <div className="jobs-table-wrap transformers-table-wrap" role="region" aria-label="Transformer register table" tabIndex={0}>
             <table className="jobs-table transformers-table">
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all transformers eligible for bulk promotion on this page"
+                      checked={transformers.some(canBulkAdvanceTransformer) &&
+                        transformers.filter(canBulkAdvanceTransformer).every(transformer => selectedTransformerIds.includes(transformer.id))}
+                      onChange={event => {
+                        const eligibleIds = transformers.filter(canBulkAdvanceTransformer).map(transformer => transformer.id)
+                        setSelectedTransformerIds(current => event.target.checked
+                          ? [...new Set([...current, ...eligibleIds])]
+                          : current.filter(id => !eligibleIds.includes(id)))
+                      }}
+                    />
+                  </th>
                   <th>ID</th>
                   <th>
                     <FilterHeader
@@ -4770,6 +4860,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       options={transformerOptions.capacity}
                     />
                   </th>
+                  <th>Make</th>
+                  <th>Remarks</th>
                   <th>
                     <FilterHeader
                       column="Type"
@@ -4791,12 +4883,25 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
               <tbody>
                 {transformers.map((transformer, index) => (
                   <tr key={`${transformer.id}-${index}`}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select transformer ${transformer.dtrNo || transformer.id} for bulk promotion`}
+                        checked={selectedTransformerIds.includes(transformer.id)}
+                        disabled={!canBulkAdvanceTransformer(transformer) || bulkAdvanceLoading}
+                        onChange={event => setSelectedTransformerIds(current => event.target.checked
+                          ? [...new Set([...current, transformer.id])]
+                          : current.filter(id => id !== transformer.id))}
+                      />
+                    </td>
                     <td>{transformer.id}</td>
                     <td>{transformer.spmCenter}</td>
                     <td>{transformer.dtrNo}</td>
                     <td>{transformer.sNo}</td>
                     <td>{transformer.tNoteId ?? '-'}</td>
                     <td>{transformer.capacity}</td>
+                    <td>{transformer.make || '—'}</td>
+                    <td>{transformer.remarks || '—'}</td>
                     <td>{transformer.type}</td>
                     <td>
                       <span className={`tag tag--${transformer.status.toLowerCase().replace(/\s+/g, '-')}`}>
@@ -4850,7 +4955,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 ))}
                 {!transformersLoading && transformers.length === 0 && (
                   <tr>
-                    <td colSpan="9">No transformers available.</td>
+                    <td colSpan="12">No transformers available.</td>
                   </tr>
                 )}
               </tbody>
@@ -4947,6 +5052,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       resetPage={() => setTnotePage(0)}
                     />
                   </th>
+                  <th>Oil Drum Count</th>
                   <th>Attachments</th>
                   <th>Actions</th>
                 </tr>
@@ -4976,6 +5082,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         </div>
                       </div>
                     </td>
+                    <td data-label="Oil Drum Count">{tnote.drumCount ?? 0}</td>
                     <td data-label="Attachments">
                       <div className="tnote-attachment-actions">
                         {renderAttachmentViewerButton(
@@ -5802,7 +5909,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <label className="assessment-field">Breakers<input type="number" min="0" step="1" value={assessmentForm.breakers} onChange={event => setAssessmentForm(current => ({ ...current, breakers: event.target.value }))} disabled={assessmentSaving} /></label>
                 <label className="assessment-field">Oil capacity<input type="number" min="0" step="0.01" value={assessmentForm.oilCapacity} onChange={event => setAssessmentForm(current => ({ ...current, oilCapacity: event.target.value }))} disabled={assessmentSaving} /></label>
                 <label className="assessment-field">Oil less<input type="number" min="0" step="0.01" value={assessmentForm.oilLess} onChange={event => setAssessmentForm(current => ({ ...current, oilLess: event.target.value }))} disabled={assessmentSaving} /></label>
-                <label className="assessment-field assessment-field--wide">Remarks<textarea rows="3" value={assessmentForm.remarks} onChange={event => setAssessmentForm(current => ({ ...current, remarks: event.target.value }))} disabled={assessmentSaving} /></label>
+                <label className="assessment-field assessment-field--wide">Remarks (optional)<textarea rows="3" value={assessmentForm.remarks} onChange={event => setAssessmentForm(current => ({ ...current, remarks: event.target.value }))} disabled={assessmentSaving} /></label>
               </fieldset>
               </fieldset>
 
@@ -5847,12 +5954,29 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             </div>
             <form onSubmit={saveTransformerUpdate}>
               <div className="form-group">
-                <label>SPM Center</label>
+                <label>Capacity</label>
                 <DefaultSelect
-                  value={editingTransformer.spmCenter || ''}
-                  options={dropdownDefaults.spmCenters}
-                  placeholder="Select SPM Center"
-                  onChange={(e) => handleEditTransformerChange('spmCenter', e.target.value)}
+                  value={String(editingTransformer.capacity || '')}
+                  options={transformerCapacityOptions}
+                  placeholder="Select Capacity"
+                  onChange={(e) => handleEditTransformerChange('capacity', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Make</label>
+                <DefaultSelect
+                  value={editingTransformer.make || ''}
+                  options={dropdownDefaults.makes}
+                  placeholder="Select Make"
+                  onChange={(e) => handleEditTransformerChange('make', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Serial No</label>
+                <input
+                  value={editingTransformer.sNo || ''}
+                  onChange={(e) => handleEditTransformerChange('sNo', e.target.value)}
                   required
                 />
               </div>
@@ -5865,31 +5989,31 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 />
               </div>
               <div className="form-group">
-                <label>SNo</label>
-                <input
-                  value={editingTransformer.sNo || ''}
-                  onChange={(e) => handleEditTransformerChange('sNo', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Capacity</label>
-                <DefaultSelect
-                  value={String(editingTransformer.capacity || '')}
-                  options={transformerCapacityOptions}
-                  placeholder="Select Capacity"
-                  onChange={(e) => handleEditTransformerChange('capacity', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
                 <label>Type</label>
                 <DefaultSelect
                   value={editingTransformer.type || ''}
-                  options={dropdownDefaults.types}
-                  placeholder="Select Type"
+                  options={dropdownDefaults.transformerTypes}
+                  placeholder="Select Transformer Type"
                   onChange={(e) => handleEditTransformerChange('type', e.target.value)}
                   required
+                />
+              </div>
+              <div className="form-group">
+                <label>SPM Center</label>
+                <DefaultSelect
+                  value={editingTransformer.spmCenter || ''}
+                  options={dropdownDefaults.spmCenters}
+                  placeholder="Select SPM Center"
+                  onChange={(e) => handleEditTransformerChange('spmCenter', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Remarks (optional)</label>
+                <textarea
+                  rows="2"
+                  value={editingTransformer.remarks || ''}
+                  onChange={(e) => handleEditTransformerChange('remarks', e.target.value)}
                 />
               </div>
               <div className="form-group">
@@ -6440,6 +6564,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             <div className="tnote-details-summary">
               <div><span>TNote Date</span><strong>{formattedDate(activeTNote.date) || '—'}</strong></div>
               <div><span>Transformers</span><strong>{activeTNote.transformers?.length || 0}</strong></div>
+              <div><span>Oil Drum Count</span><strong>{activeTNote.drumCount ?? 0}</strong></div>
               <div><span>SPM Centers</span><strong>{getTNoteSpmCenter(activeTNote)}</strong></div>
             </div>
             {tnoteTransformerError && <p className="status status--error" role="alert">{tnoteTransformerError}</p>}
@@ -6551,21 +6676,23 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     <form className="tnote-add-transformer-form" onSubmit={addTransformerToTNote}>
                       {rgpManualEntry && <p className="tnote-rgp-manual-note">This creates a separate transformer record for this non-billable RGP visit; it will not be linked to a previous transformer record.</p>}
                   <label>
-                    SPM Center
+                    Capacity
                     <DefaultSelect
-                      value={newTNoteTransformer.spmCenter}
-                      options={dropdownDefaults.spmCenters}
-                      placeholder="Select SPM Center"
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, spmCenter: event.target.value }))}
+                      value={String(newTNoteTransformer.capacity)}
+                      options={transformerCapacityOptions}
+                      placeholder="Select Capacity"
+                      onChange={event => setNewTNoteTransformer(current => ({ ...current, capacity: event.target.value }))}
                       required
                       disabled={addingTNoteTransformer}
                     />
                   </label>
                   <label>
-                    DTR No
-                    <input
-                      value={newTNoteTransformer.dtrNo}
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, dtrNo: event.target.value }))}
+                    Make
+                    <DefaultSelect
+                      value={newTNoteTransformer.make}
+                      options={dropdownDefaults.makes}
+                      placeholder="Select Make"
+                      onChange={event => setNewTNoteTransformer(current => ({ ...current, make: event.target.value }))}
                       required
                       disabled={addingTNoteTransformer}
                     />
@@ -6580,12 +6707,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     />
                   </label>
                   <label>
-                    Capacity
-                    <DefaultSelect
-                      value={String(newTNoteTransformer.capacity)}
-                      options={transformerCapacityOptions}
-                      placeholder="Select Capacity"
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, capacity: event.target.value }))}
+                    DTR No
+                    <input
+                      value={newTNoteTransformer.dtrNo}
+                      onChange={event => setNewTNoteTransformer(current => ({ ...current, dtrNo: event.target.value }))}
                       required
                       disabled={addingTNoteTransformer}
                     />
@@ -6598,6 +6723,26 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       placeholder="Select Type"
                       onChange={event => setNewTNoteTransformer(current => ({ ...current, type: event.target.value }))}
                       required
+                      disabled={addingTNoteTransformer}
+                    />
+                  </label>
+                  <label>
+                    SPM Center
+                    <DefaultSelect
+                      value={newTNoteTransformer.spmCenter}
+                      options={dropdownDefaults.spmCenters}
+                      placeholder="Select SPM Center"
+                      onChange={event => setNewTNoteTransformer(current => ({ ...current, spmCenter: event.target.value }))}
+                      required
+                      disabled={addingTNoteTransformer}
+                    />
+                  </label>
+                  <label>
+                    Remarks (optional)
+                    <textarea
+                      rows="2"
+                      value={newTNoteTransformer.remarks}
+                      onChange={event => setNewTNoteTransformer(current => ({ ...current, remarks: event.target.value }))}
                       disabled={addingTNoteTransformer}
                     />
                   </label>
@@ -6632,11 +6777,12 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <table className="jobs-table tnote-transformers-table">
                   <thead>
                     <tr>
-                      <th>Serial No</th>
+                      <th>#</th>
                       <th>SPM Center</th>
                       <th>DTR No</th>
                       <th>Serial No</th>
                       <th>Capacity</th>
+                      <th>Make</th>
                       <th>Type</th>
                       <th>Transformer Status</th>
                       <th>Actions</th>
@@ -6650,6 +6796,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         <td>{transformer.dtrNo || '—'}</td>
                         <td>{transformer.sNo || '—'}</td>
                         <td>{transformer.capacity || '—'}</td>
+                        <td>{transformer.make || '—'}</td>
                         <td>{transformer.type || '—'}</td>
                         <td>
                           <div className="tnote-status-control">
@@ -6753,7 +6900,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       </tr>
                     ))}
                     {(activeTNote.transformers || []).length === 0 && (
-                      <tr><td colSpan="7" className="tnote-empty-state">No transformers are linked to this TNote.</td></tr>
+                      <tr><td colSpan="9" className="tnote-empty-state">No transformers are linked to this TNote.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -6774,8 +6921,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   <div><dt>DTR No</dt><dd>{activeTNoteTransformer.dtrNo || '—'}</dd></div>
                   <div><dt>Serial No</dt><dd>{activeTNoteTransformer.sNo || '—'}</dd></div>
                   <div><dt>Capacity</dt><dd>{activeTNoteTransformer.capacity || '—'}</dd></div>
+                  <div><dt>Make</dt><dd>{activeTNoteTransformer.make || '—'}</dd></div>
                   <div><dt>Type</dt><dd>{activeTNoteTransformer.type || '—'}</dd></div>
                   <div><dt>Oil Capacity</dt><dd>{activeTNoteTransformer.oilCapacity || '—'}</dd></div>
+                  <div><dt>Transformer Remarks</dt><dd>{activeTNoteTransformer.remarks || '—'}</dd></div>
                   <div><dt>Status</dt><dd>{activeTNoteTransformer.status || '—'}</dd></div>
                   {activeTNoteTransformer.intakeType === 'RGP' && (
                     <>
@@ -6856,6 +7005,19 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   required
                 />
               </div>
+              <div className="form-group">
+                <label htmlFor="tnote-drum-count">Oil Drum Count</label>
+                <input
+                  id="tnote-drum-count"
+                  name="drumCount"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={newTNote.drumCount}
+                  onChange={event => setNewTNote(current => ({ ...current, drumCount: event.target.value }))}
+                  required
+                />
+              </div>
               <AttachmentUploadField
                 id="tnote-attachments"
                 attachments={tnoteAttachments}
@@ -6870,10 +7032,23 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 {tnoteTransformers.map((transformer, index) => (
                   <div key={index} className="transformer-row">
                     <DefaultSelect
-                      value={transformer.spmCenter}
-                      options={dropdownDefaults.spmCenters}
-                      placeholder="Select SPM Center"
-                      onChange={(e) => handleTransformerInputChange(index, 'spmCenter', e.target.value)}
+                      value={String(transformer.capacity)}
+                      options={transformerCapacityOptions}
+                      placeholder="Select Capacity"
+                      onChange={(e) => handleTransformerInputChange(index, 'capacity', e.target.value)}
+                      required
+                    />
+                    <DefaultSelect
+                      value={transformer.make}
+                      options={dropdownDefaults.makes}
+                      placeholder="Select Make"
+                      onChange={(e) => handleTransformerInputChange(index, 'make', e.target.value)}
+                      required
+                    />
+                    <input
+                      placeholder="Serial No"
+                      value={transformer.sNo}
+                      onChange={(e) => handleTransformerInputChange(index, 'sNo', e.target.value)}
                       required
                     />
                     <input
@@ -6882,25 +7057,25 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       onChange={(e) => handleTransformerInputChange(index, 'dtrNo', e.target.value)}
                       required
                     />
-                    <input
-                      placeholder="SNo"
-                      value={transformer.sNo}
-                      onChange={(e) => handleTransformerInputChange(index, 'sNo', e.target.value)}
-                      required
-                    />
-                    <DefaultSelect
-                      value={String(transformer.capacity)}
-                      options={transformerCapacityOptions}
-                      placeholder="Select Capacity"
-                      onChange={(e) => handleTransformerInputChange(index, 'capacity', e.target.value)}
-                      required
-                    />
                     <DefaultSelect
                       value={transformer.type}
                       options={dropdownDefaults.types}
                       placeholder="Select Type"
                       onChange={(e) => handleTransformerInputChange(index, 'type', e.target.value)}
                       required
+                    />
+                    <DefaultSelect
+                      value={transformer.spmCenter}
+                      options={dropdownDefaults.spmCenters}
+                      placeholder="Select SPM Center"
+                      onChange={(e) => handleTransformerInputChange(index, 'spmCenter', e.target.value)}
+                      required
+                    />
+                    <textarea
+                      placeholder="Remarks (optional)"
+                      rows="2"
+                      value={transformer.remarks}
+                      onChange={(e) => handleTransformerInputChange(index, 'remarks', e.target.value)}
                     />
                     <input
                       placeholder="Oil Capacity"

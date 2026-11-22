@@ -35,23 +35,25 @@ public class TNoteController {
     }
 
     @PostMapping
-    public TNoteDTO createTNote(@RequestBody TNoteRequest request) {
+    public TNoteDTO createTNote(@Valid @RequestBody TNoteRequest request) {
         if (request.getTNoteNo() == null || request.getTNoteNo().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TNote number is required.");
         }
         TNoteDTO tNote = new TNoteDTO(null, request.getDate(), request.getNumberOfTransformers(), new ArrayList<>());
         tNote.setTNoteNo(request.getTNoteNo().trim());
+        tNote.setDrumCount(request.getDrumCount());
         tNote.setAttachments(request.getAttachments());
         return googleSheetsService.saveTNote(tNote);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<TNoteDTO> updateTNote(@PathVariable Long id, @RequestBody TNoteRequest request) {
+    public ResponseEntity<TNoteDTO> updateTNote(@PathVariable Long id, @Valid @RequestBody TNoteRequest request) {
         if (request.getTNoteNo() == null || request.getTNoteNo().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TNote number is required.");
         }
         TNoteDTO tNote = new TNoteDTO(id, request.getDate(), request.getNumberOfTransformers(), new ArrayList<>());
         tNote.setTNoteNo(request.getTNoteNo().trim());
+        tNote.setDrumCount(request.getDrumCount());
         tNote.setAttachments(request.getAttachments());
         return ResponseEntity.ok(googleSheetsService.updateTNote(tNote));
     }
@@ -115,6 +117,8 @@ public class TNoteController {
         private String tNoteNo;
         private LocalDate date;
         private int numberOfTransformers;
+        @jakarta.validation.constraints.Min(0)
+        private int drumCount;
         private List<AttachmentDTO> attachments = new ArrayList<>();
 
         @JsonProperty("tNoteNo")
@@ -141,6 +145,14 @@ public class TNoteController {
 
         public void setNumberOfTransformers(int numberOfTransformers) {
             this.numberOfTransformers = numberOfTransformers;
+        }
+
+        public int getDrumCount() {
+            return drumCount;
+        }
+
+        public void setDrumCount(int drumCount) {
+            this.drumCount = drumCount;
         }
 
         public List<AttachmentDTO> getAttachments() {

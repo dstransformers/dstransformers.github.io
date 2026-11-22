@@ -166,7 +166,7 @@ function layoutPage(quotation, rows, size, fonts) {
   }))
   const subtotal = Math.round(serviceRows.reduce((sum, row) => sum + row.amount, 0) * 100) / 100
   const gstApplicable = isBill && Boolean(quotation.gstApplicable)
-  const gstRate = gstApplicable ? Number(quotation.gstRate || 19) : 0
+  const gstRate = gstApplicable ? Number(quotation.gstRate || 18) : 0
   const gstAmount = gstApplicable ? Math.round(subtotal * gstRate) / 100 : 0
   const grandTotal = Math.round((subtotal + gstAmount) * 100) / 100
   let cursor = CONTENT_TOP

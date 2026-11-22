@@ -5,7 +5,7 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '')
 const GET_CACHE_TTL_MS = 5 * 60_000
 const GET_CACHE_MAX_ENTRIES = 50
 const PERMANENT_CACHE_PATHS = new Set(['/api/defaults', '/api/quotations/config'])
-const PERMANENT_CACHE_VERSION = 2
+const PERMANENT_CACHE_VERSION = 3
 const CACHE_DATABASE_NAME = 'vstms-browser-cache'
 const CACHE_STORE_NAME = 'responses'
 const HARD_REFRESH_MARKER = 'vstms:clear-cache-on-start'
@@ -105,10 +105,27 @@ function isPermanentCacheUrl(url) {
   return PERMANENT_CACHE_PATHS.has(new URL(url, 'http://localhost').pathname)
 }
 
-function clearMemoryCache(preservePermanent = false) {
+function clearMemoryCacheForUser(userId) {
   for (const [key, entry] of getResponseCache) {
-    if (!preservePermanent || !entry.permanent) getResponseCache.delete(key)
+    if (entry.userId === userId && !entry.permanent) getResponseCache.delete(key)
   }
+}
+
+function invalidateCachedResponsesForUser(userId) {
+  clearMemoryCacheForUser(userId)
+  cacheGeneration += 1
+  if (persistentCacheDisabled) return
+
+  const invalidation = cacheReady.then(() => clearPersistentCache(userId, true))
+  cacheReady = invalidation.catch((error) => {
+    persistentCacheDisabled = true
+    try {
+      sessionStorage.setItem(HARD_REFRESH_MARKER, '1')
+    } catch (markerError) {
+      console.warn('Unable to mark browser cache for clearing after an update.', markerError)
+    }
+    console.warn('Unable to clear browser data cache after an update.', error)
+  })
 }
 
 async function clearCachesForHardRefresh() {
@@ -186,7 +203,7 @@ async function authenticatedFetch(input, init, allowAnonymous) {
 
   const refreshedResponse = await requestWithToken(true)
   if (refreshedResponse.status === 401) {
-    throw new Error('The API did not authorize this account. Confirm the Firebase email is verified and listed in the backend ADMIN_EMAILS setting, and that the API and app use the same Firebase project. Google Sheets editor access does not grant API admin access.')
+    throw new Error('The API did not authorize this account. Confirm the signed-in account belongs to the configured Firebase project, the Firebase project ID matches the backend, and the account has a valid email address. Google Sheets editor access does not grant API admin access.')
   }
   return refreshedResponse
 }
@@ -255,24 +272,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
         }
       }
     }
-  } else if (method !== 'GET') {
-    await cacheReady
-    clearMemoryCache(true)
-    cacheGeneration += 1
-    if (!persistentCacheDisabled) {
-      try {
-        await clearPersistentCache(undefined, true)
-      } catch (error) {
-        persistentCacheDisabled = true
-        try {
-          sessionStorage.setItem(HARD_REFRESH_MARKER, '1')
-        } catch (markerError) {
-          console.warn('Unable to mark browser cache for clearing after an update.', markerError)
-        }
-        console.warn('Unable to clear browser data cache before an update.', error)
-      }
-    }
-  }
+  } else if (method !== 'GET') invalidateCachedResponsesForUser(userId)
 
   const requestGeneration = cacheGeneration
   try {
@@ -309,23 +309,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
     }
     return response
   } finally {
-    if (method !== 'GET') {
-      clearMemoryCache(true)
-      cacheGeneration += 1
-      if (!persistentCacheDisabled) {
-        try {
-          await clearPersistentCache(undefined, true)
-        } catch (error) {
-          persistentCacheDisabled = true
-          try {
-            sessionStorage.setItem(HARD_REFRESH_MARKER, '1')
-          } catch (markerError) {
-            console.warn('Unable to mark browser cache for clearing after an update.', markerError)
-          }
-          console.warn('Unable to clear browser data cache after an update.', error)
-        }
-      }
-    }
+    if (method !== 'GET') invalidateCachedResponsesForUser(userId)
   }
 }
 
