@@ -105,10 +105,27 @@ function isPermanentCacheUrl(url) {
   return PERMANENT_CACHE_PATHS.has(new URL(url, 'http://localhost').pathname)
 }
 
-function clearMemoryCache(preservePermanent = false) {
+function clearMemoryCacheForUser(userId) {
   for (const [key, entry] of getResponseCache) {
-    if (!preservePermanent || !entry.permanent) getResponseCache.delete(key)
+    if (entry.userId === userId && !entry.permanent) getResponseCache.delete(key)
   }
+}
+
+function invalidateCachedResponsesForUser(userId) {
+  clearMemoryCacheForUser(userId)
+  cacheGeneration += 1
+  if (persistentCacheDisabled) return
+
+  const invalidation = cacheReady.then(() => clearPersistentCache(userId, true))
+  cacheReady = invalidation.catch((error) => {
+    persistentCacheDisabled = true
+    try {
+      sessionStorage.setItem(HARD_REFRESH_MARKER, '1')
+    } catch (markerError) {
+      console.warn('Unable to mark browser cache for clearing after an update.', markerError)
+    }
+    console.warn('Unable to clear browser data cache after an update.', error)
+  })
 }
 
 async function clearCachesForHardRefresh() {
@@ -255,24 +272,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
         }
       }
     }
-  } else if (method !== 'GET') {
-    await cacheReady
-    clearMemoryCache(true)
-    cacheGeneration += 1
-    if (!persistentCacheDisabled) {
-      try {
-        await clearPersistentCache(undefined, true)
-      } catch (error) {
-        persistentCacheDisabled = true
-        try {
-          sessionStorage.setItem(HARD_REFRESH_MARKER, '1')
-        } catch (markerError) {
-          console.warn('Unable to mark browser cache for clearing after an update.', markerError)
-        }
-        console.warn('Unable to clear browser data cache before an update.', error)
-      }
-    }
-  }
+  } else if (method !== 'GET') invalidateCachedResponsesForUser(userId)
 
   const requestGeneration = cacheGeneration
   try {
@@ -309,23 +309,7 @@ async function fetchWithGlobalLoading(input, init, allowAnonymous) {
     }
     return response
   } finally {
-    if (method !== 'GET') {
-      clearMemoryCache(true)
-      cacheGeneration += 1
-      if (!persistentCacheDisabled) {
-        try {
-          await clearPersistentCache(undefined, true)
-        } catch (error) {
-          persistentCacheDisabled = true
-          try {
-            sessionStorage.setItem(HARD_REFRESH_MARKER, '1')
-          } catch (markerError) {
-            console.warn('Unable to mark browser cache for clearing after an update.', markerError)
-          }
-          console.warn('Unable to clear browser data cache after an update.', error)
-        }
-      }
-    }
+    if (method !== 'GET') invalidateCachedResponsesForUser(userId)
   }
 }
 
