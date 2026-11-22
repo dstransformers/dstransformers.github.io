@@ -215,15 +215,10 @@ const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired',
 
 function getSpreadsheet() {
   const spreadsheetId = PropertiesService.getScriptProperties().getProperty('VSTMS_SPREADSHEET_ID');
-  if (spreadsheetId) {
-    return SpreadsheetApp.openById(spreadsheetId);
+  if (!spreadsheetId) {
+    throw new Error('VSTMS_SPREADSHEET_ID is not configured. Open the bound spreadsheet script and run authorizeVstmsAccess() as the web app deployment owner.');
   }
-
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  if (!spreadsheet) {
-    throw new Error('VSTMS spreadsheet is not configured. Run authorizeVstmsAccess() from the bound spreadsheet project.');
-  }
-  return spreadsheet;
+  return SpreadsheetApp.openById(spreadsheetId);
 }
 
 function authorizeVstmsAccess() {
