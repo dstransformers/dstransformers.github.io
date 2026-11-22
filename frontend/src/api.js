@@ -186,7 +186,7 @@ async function authenticatedFetch(input, init, allowAnonymous) {
 
   const refreshedResponse = await requestWithToken(true)
   if (refreshedResponse.status === 401) {
-    throw new Error('The API did not authorize this account. Confirm the Firebase email is verified and listed in the backend ADMIN_EMAILS setting, and that the API and app use the same Firebase project. Google Sheets editor access does not grant API admin access.')
+    throw new Error('The API did not authorize this account. Confirm the signed-in account belongs to the configured Firebase project, the Firebase project ID matches the backend, and the account has a valid email address. Google Sheets editor access does not grant API admin access.')
   }
   return refreshedResponse
 }

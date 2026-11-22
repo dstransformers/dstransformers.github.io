@@ -76,9 +76,9 @@ function isAuthorizedBackendRequest_(providedSecret) {
   const expectedSecret = PropertiesService.getScriptProperties()
     .getProperty('VSTMS_BACKEND_SHARED_SECRET');
   return typeof expectedSecret === 'string'
-    && expectedSecret.length >= 32
+    && expectedSecret.trim().length >= 32
     && typeof providedSecret === 'string'
-    && providedSecret === expectedSecret;
+    && providedSecret.trim() === expectedSecret.trim();
 }
 
 const DEFAULT_QUOTATION_RATES = [

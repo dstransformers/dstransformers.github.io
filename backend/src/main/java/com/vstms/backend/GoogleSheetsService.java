@@ -135,13 +135,16 @@ public class GoogleSheetsService {
         String action = String.valueOf(payload.getOrDefault("action", "")).toUpperCase(Locale.ROOT);
         boolean readOnlyAction = isReadOnlyAction(action);
         if (!readOnlyAction) invalidateSheetReadSnapshots();
-        if (appsScriptSharedSecret == null || appsScriptSharedSecret.length() < 32) {
+        String normalizedSharedSecret = appsScriptSharedSecret == null
+                ? ""
+                : appsScriptSharedSecret.trim();
+        if (normalizedSharedSecret.length() < 32) {
             log.error("Google Apps Script shared secret is missing or shorter than 32 characters.");
             return errorResponse("Google Apps Script integration is not configured.");
         }
         try {
             Map<String, Object> authenticatedPayload = new HashMap<>(payload);
-            authenticatedPayload.put("integrationSecret", appsScriptSharedSecret);
+            authenticatedPayload.put("integrationSecret", normalizedSharedSecret);
             String jsonPayload = objectMapper.writeValueAsString(authenticatedPayload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(appsScriptUrl))
