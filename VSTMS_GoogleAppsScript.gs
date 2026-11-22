@@ -2240,6 +2240,7 @@ function getTransformersSummary() {
     assesment: 0,
     repairInProgress: 0,
     repaired: 0,
+    readyToDeliver: 0,
     delivered: 0,
     billed: 0,
     scrap: 0
@@ -2251,6 +2252,7 @@ function getTransformersSummary() {
     else if (s === 'assesment' || s === 'assessment') counts.assesment++;
     else if (s === 'repair in progress' || s === 'repair_in_progress') counts.repairInProgress++;
     else if (s === 'repaired') counts.repaired++;
+    else if (s === 'ready to deliver' || s === 'ready_to_deliver') counts.readyToDeliver++;
     else if (s === 'delivered') counts.delivered++;
     else if (s === 'billed') counts.billed++;
     else if (s === 'scrap') counts.scrap++;

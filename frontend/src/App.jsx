@@ -400,6 +400,9 @@ function App() {
   const [pageSize, setPageSize] = useState(10)
   const [selectedTransformerIds, setSelectedTransformerIds] = useState([])
   const [bulkAdvanceLoading, setBulkAdvanceLoading] = useState(false)
+  const [selectedTNoteStageIds, setSelectedTNoteStageIds] = useState([])
+  const [tnoteStageUpdateLoading, setTnoteStageUpdateLoading] = useState(false)
+  const [tnoteStageUpdateError, setTnoteStageUpdateError] = useState('')
   const [totalPages, setTotalPages] = useState(0)
   const [totalElements, setTotalElements] = useState(0)
   const [summary, setSummary] = useState({
@@ -407,8 +410,10 @@ function App() {
     assesment: 0,
     repairInProgress: 0,
     repaired: 0,
+    readyToDeliver: 0,
     delivered: 0,
     billed: 0,
+    scrap: 0,
   })
   const [tnotes, setTnotes] = useState([])
   const [tnoteLoading, setTnoteLoading] = useState(false)
@@ -1830,7 +1835,14 @@ ${styles}
     }
   }
 
-  const updateTransformerStatus = async (transformerId, nextStatus, assessmentDetails = null, backward = false, refreshSummary = true) => {
+  const updateTransformerStatus = async (
+    transformerId,
+    nextStatus,
+    assessmentDetails = null,
+    backward = false,
+    refreshSummary = true,
+    errorSetter = setTransformersError,
+  ) => {
     setTransformersError('')
     try {
       const response = await apiFetch(`/api/transformers/${transformerId}/status`, {
@@ -1855,6 +1867,7 @@ ${styles}
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Status update failed'
       setTransformersError(message)
+      errorSetter(message)
       if (nextStatus === 'Assesment' || nextStatus === 'Scrap') setAssessmentError(message)
       return null
     }
@@ -2211,6 +2224,8 @@ ${styles}
   const openTNoteDetails = (tnote) => {
     setActiveTNote(tnote)
     setActiveTNoteTransformer(null)
+    setSelectedTNoteStageIds([])
+    setTnoteStageUpdateError('')
     setTnoteTransformerError('')
     setNewTNoteTransformerError('')
     setShowAddTNoteTransformer(false)
@@ -2237,6 +2252,8 @@ ${styles}
     setShowTNoteDetails(false)
     setActiveTNote(null)
     setActiveTNoteTransformer(null)
+    setSelectedTNoteStageIds([])
+    setTnoteStageUpdateError('')
     setTnoteTransformerError('')
     setNewTNoteTransformerError('')
     setShowAddTNoteTransformer(false)
@@ -3598,6 +3615,43 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       : 'Completed'
   }
 
+  const canMarkTNoteTransformerReady = transformer =>
+    hasValidTransformerId(transformer) &&
+    transformer.status === 'Repaired' &&
+    Number(transformer.assessmentRound) >= 2
+
+  const markSelectedTNoteTransformersReady = async () => {
+    const selected = (activeTNote?.transformers || []).filter(transformer =>
+      selectedTNoteStageIds.includes(transformer.id) && canMarkTNoteTransformerReady(transformer)
+    )
+    if (selected.length === 0 || tnoteStageUpdateLoading) return
+
+    setTnoteStageUpdateLoading(true)
+    setTnoteStageUpdateError('')
+    const updatedIds = []
+    try {
+      for (const transformer of selected) {
+        const updated = await updateTransformerStatus(
+          transformer.id,
+          'Ready to Deliver',
+          null,
+          false,
+          false,
+          setTnoteStageUpdateError,
+        )
+        if (!updated) {
+          setSelectedTNoteStageIds(current => current.filter(id => !updatedIds.includes(id)))
+          return
+        }
+        updatedIds.push(transformer.id)
+      }
+      setSelectedTNoteStageIds(current => current.filter(id => !updatedIds.includes(id)))
+      await fetchSummary()
+    } finally {
+      setTnoteStageUpdateLoading(false)
+    }
+  }
+
   const canBulkAdvanceTransformer = (transformer) => {
     const nextStatus = getNextTransformerStage(transformer)
     return hasValidTransformerId(transformer) &&
@@ -4214,6 +4268,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             <h3>{summary.repaired}</h3>
             <small>Ready for dispatch planning</small>
           </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Ready to Deliver')} aria-label={`View ${summary.readyToDeliver} ready-to-deliver transformers`}>
+            <p>Ready to Deliver</p>
+            <h3>{summary.readyToDeliver}</h3>
+            <small>Cleared for delivery challan</small>
+          </button>
           <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Delivered')} aria-label={`View ${summary.delivered} delivered transformers`}>
             <p>Delivered</p>
             <h3>{summary.delivered}</h3>
@@ -4223,6 +4282,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             <p>Billed</p>
             <h3>{summary.billed}</h3>
             <small>Invoice posted after delivery</small>
+          </button>
+          <button type="button" className="card kpi-card" onClick={() => openTransformersByStatus('Scrap')} aria-label={`View ${summary.scrap} scrapped transformers`}>
+            <p>Scrap</p>
+            <h3>{summary.scrap}</h3>
+            <small>Removed from active workflow</small>
           </button>
         </section>
       )}
@@ -6782,16 +6846,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         />
                       </label>
                       <label>
-                        Remarks (optional)
-                        <textarea
-                          rows="2"
-                          placeholder="Add remarks (optional)"
-                          value={newTNoteTransformer.remarks}
-                          onChange={event => setNewTNoteTransformer(current => ({ ...current, remarks: event.target.value }))}
-                          disabled={addingTNoteTransformer}
-                        />
-                      </label>
-                      <label>
                         Oil Capacity (optional)
                         <input
                           type="number"
@@ -6800,6 +6854,16 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                           placeholder="Enter oil capacity"
                           value={newTNoteTransformer.oilCapacity}
                           onChange={event => setNewTNoteTransformer(current => ({ ...current, oilCapacity: event.target.value }))}
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Remarks (optional)
+                        <textarea
+                          rows="2"
+                          placeholder="Add remarks (optional)"
+                          value={newTNoteTransformer.remarks}
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, remarks: event.target.value }))}
                           disabled={addingTNoteTransformer}
                         />
                       </label>
@@ -6818,10 +6882,49 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   )}
                 </div>
               )}
+              {tnoteStageUpdateError && <p className="status status--error jobs-feedback" role="alert">{tnoteStageUpdateError}</p>}
+              <div className="panel-controls tnote-stage-bulk-controls">
+                <p className="status">
+                  Select Repaired transformers from the second assessment to mark them Ready to Deliver.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={markSelectedTNoteTransformersReady}
+                  disabled={tnoteStageUpdateLoading || !(activeTNote?.transformers || []).some(transformer =>
+                    selectedTNoteStageIds.includes(transformer.id) && canMarkTNoteTransformerReady(transformer)
+                  )}
+                >
+                  {tnoteStageUpdateLoading
+                    ? 'Updating…'
+                    : `Mark Selected Ready to Deliver (${(activeTNote?.transformers || []).filter(transformer =>
+                      selectedTNoteStageIds.includes(transformer.id) && canMarkTNoteTransformerReady(transformer)
+                    ).length})`}
+                </button>
+              </div>
               <div className="jobs-table-wrap">
                 <table className="jobs-table tnote-transformers-table">
                   <thead>
                     <tr>
+                      <th>
+                        <input
+                          type="checkbox"
+                          aria-label="Select all eligible transformers in this TNote"
+                          checked={(activeTNote.transformers || []).some(canMarkTNoteTransformerReady) &&
+                            (activeTNote.transformers || [])
+                              .filter(canMarkTNoteTransformerReady)
+                              .every(transformer => selectedTNoteStageIds.includes(transformer.id))}
+                          onChange={event => {
+                            const eligibleIds = (activeTNote.transformers || [])
+                              .filter(canMarkTNoteTransformerReady)
+                              .map(transformer => transformer.id)
+                            setSelectedTNoteStageIds(current => event.target.checked
+                              ? [...new Set([...current, ...eligibleIds])]
+                              : current.filter(id => !eligibleIds.includes(id)))
+                          }}
+                          disabled={tnoteStageUpdateLoading || !(activeTNote.transformers || []).some(canMarkTNoteTransformerReady)}
+                        />
+                      </th>
                       <th>#</th>
                       <th>SPM Center</th>
                       <th>DTR No</th>
@@ -6836,6 +6939,17 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   <tbody>
                     {(activeTNote.transformers || []).map((transformer, index) => (
                       <tr key={transformer.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select transformer ${transformer.dtrNo || transformer.id} to mark Ready to Deliver`}
+                            checked={selectedTNoteStageIds.includes(transformer.id)}
+                            onChange={event => setSelectedTNoteStageIds(current => event.target.checked
+                              ? [...new Set([...current, transformer.id])]
+                              : current.filter(id => id !== transformer.id))}
+                            disabled={!canMarkTNoteTransformerReady(transformer) || tnoteStageUpdateLoading}
+                          />
+                        </td>
                         <td>{index + 1}</td>
                         <td>{transformer.spmCenter || '—'}</td>
                         <td>{transformer.dtrNo || '—'}</td>
@@ -6946,7 +7060,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       </tr>
                     ))}
                     {(activeTNote.transformers || []).length === 0 && (
-                      <tr><td colSpan="9" className="tnote-empty-state">No transformers are linked to this TNote.</td></tr>
+                      <tr><td colSpan="10" className="tnote-empty-state">No transformers are linked to this TNote.</td></tr>
                     )}
                   </tbody>
                 </table>

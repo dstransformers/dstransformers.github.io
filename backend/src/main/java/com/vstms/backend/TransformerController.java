@@ -216,5 +216,13 @@ public class TransformerController {
 
     public record PagedResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}
 
-    public record SummaryResponse(long recieve, long assesment, long repairInProgress, long repaired, long delivered, long billed, long scrap) {}
+    public record SummaryResponse(
+            long recieve,
+            long assesment,
+            long repairInProgress,
+            long repaired,
+            long readyToDeliver,
+            long delivered,
+            long billed,
+            long scrap) {}
 }

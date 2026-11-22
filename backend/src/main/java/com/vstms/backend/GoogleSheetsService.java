@@ -683,7 +683,8 @@ public class GoogleSheetsService {
 
     public TransformerController.SummaryResponse getSummary() {
         List<TransformerDTO> all = fetchAllTransformersFromSheets();
-        long recieve = 0, assesment = 0, repairInProgress = 0, repaired = 0, delivered = 0, billed = 0, scrap = 0;
+        long recieve = 0, assesment = 0, repairInProgress = 0, repaired = 0;
+        long readyToDeliver = 0, delivered = 0, billed = 0, scrap = 0;
 
         for (TransformerDTO t : all) {
             String s = t.getStatus() != null ? t.getStatus().trim().toLowerCase() : "";
@@ -691,11 +692,13 @@ public class GoogleSheetsService {
             else if (s.equals("assesment") || s.equals("assessment")) assesment++;
             else if (s.equals("repair in progress") || s.equals("repair_in_progress")) repairInProgress++;
             else if (s.equals("repaired")) repaired++;
+            else if (s.equals("ready to deliver") || s.equals("ready_to_deliver")) readyToDeliver++;
             else if (s.equals("delivered")) delivered++;
             else if (s.equals("billed")) billed++;
             else if (s.equals("scrap")) scrap++;
         }
-        return new TransformerController.SummaryResponse(recieve, assesment, repairInProgress, repaired, delivered, billed, scrap);
+        return new TransformerController.SummaryResponse(
+                recieve, assesment, repairInProgress, repaired, readyToDeliver, delivered, billed, scrap);
     }
 
     public Optional<TransformerDTO> getTransformerById(Long id) {

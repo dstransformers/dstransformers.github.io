@@ -1939,6 +1939,18 @@ h1 {
   min-width: 900px;
 }
 
+.tnote-stage-bulk-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.tnote-stage-bulk-controls .status {
+  margin: 0;
+}
+
 .tnote-transformer-actions {
   display: flex;
   flex-wrap: wrap;
@@ -6187,6 +6199,15 @@ h1 {
     gap: 3px;
     padding-top: 5px;
     padding-bottom: 6px;
+  }
+
+  .tnote-stage-bulk-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tnote-stage-bulk-controls .btn {
+    width: 100%;
   }
 
   .tnote-attachment-actions,
