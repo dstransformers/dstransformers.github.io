@@ -7185,6 +7185,13 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 {tnoteTransformers.map((transformer, index) => (
                   <div key={index} className="transformer-row">
                     <DefaultSelect
+                      value={transformer.spmCenter}
+                      options={dropdownDefaults.spmCenters}
+                      placeholder="Select SPM Center"
+                      onChange={(e) => handleTransformerInputChange(index, 'spmCenter', e.target.value)}
+                      required
+                    />
+                    <DefaultSelect
                       value={String(transformer.capacity)}
                       options={transformerCapacityOptions}
                       placeholder="Select Capacity"
@@ -7217,19 +7224,6 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       onChange={(e) => handleTransformerInputChange(index, 'type', e.target.value)}
                       required
                     />
-                    <DefaultSelect
-                      value={transformer.spmCenter}
-                      options={dropdownDefaults.spmCenters}
-                      placeholder="Select SPM Center"
-                      onChange={(e) => handleTransformerInputChange(index, 'spmCenter', e.target.value)}
-                      required
-                    />
-                    <textarea
-                      placeholder="Remarks (optional)"
-                      rows="2"
-                      value={transformer.remarks}
-                      onChange={(e) => handleTransformerInputChange(index, 'remarks', e.target.value)}
-                    />
                     <input
                       placeholder="Oil Capacity (optional)"
                       type="number"
@@ -7237,6 +7231,12 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       step="0.1"
                       value={transformer.oilCapacity}
                       onChange={(e) => handleTransformerInputChange(index, 'oilCapacity', e.target.value)}
+                    />
+                    <textarea
+                      placeholder="Remarks (optional)"
+                      rows="2"
+                      value={transformer.remarks}
+                      onChange={(e) => handleTransformerInputChange(index, 'remarks', e.target.value)}
                     />
                     {tnoteTransformers.length > 1 && (
                       <button
