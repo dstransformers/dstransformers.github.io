@@ -236,6 +236,8 @@ class BackendApplicationTests {
 		GoogleSheetsService.validateStatusTransition("Repair In Progress", "Assesment", 1, true);
 		GoogleSheetsService.validateStatusTransition("Assesment", "Repair In Progress", 2, true);
 		GoogleSheetsService.validateStatusTransition("Repaired", "Assesment", 2, true);
+		GoogleSheetsService.validateStatusTransition("Repaired", "Ready to Deliver", 2, false);
+		GoogleSheetsService.validateStatusTransition("Ready to Deliver", "Repaired", 2, true);
 
 		assertThrows(ResponseStatusException.class,
 				() -> GoogleSheetsService.validateStatusTransition("Delivered", "Repaired", 2, true));
@@ -245,6 +247,10 @@ class BackendApplicationTests {
 				() -> GoogleSheetsService.validateStatusTransition("Repaired", "Delivered", 2, false));
 		assertThrows(ResponseStatusException.class,
 				() -> GoogleSheetsService.validateStatusTransition("Repair In Progress", "Recieved", 1, true));
+		assertThrows(ResponseStatusException.class,
+				() -> GoogleSheetsService.validateStatusTransition("Repaired", "Ready to Deliver", 1, false));
+		assertThrows(ResponseStatusException.class,
+				() -> GoogleSheetsService.validateStatusTransition("Ready to Deliver", "Repaired", 1, true));
 	}
 
 	@Test
@@ -301,7 +307,31 @@ class BackendApplicationTests {
 				.andExpect(status().isOk());
 
 		verify(googleSheetsService).createTransformers(argThat(rows ->
-				"Batch notes".equals(rows.get(0).get("remarks"))));
+				"ABC".equals(rows.get(0).get("make"))
+						&& "Batch notes".equals(rows.get(0).get("remarks"))));
+	}
+
+	@Test
+	void transformerUpdatePassesMakeToPersistenceService() throws Exception {
+		when(tokenVerifier.verifyAdminToken("unit-test-token"))
+				.thenReturn(Optional.of("admin@example.com"));
+		TransformerDTO updated = new TransformerDTO(
+				7L, "QA", "QA-DTR", "QA-SN", 100, "Distribution", 0, "Recieved", null, null, null);
+		updated.setMake("ABC");
+		when(googleSheetsService.updateTransformer(
+				eq(7L), eq("QA"), eq("QA-DTR"), eq("QA-SN"), eq(100), eq("Distribution"),
+				eq(0.0), eq("ABC"), eq("")))
+				.thenReturn(updated);
+
+		mockMvc.perform(put("/api/transformers/7")
+					.header("Authorization", "Bearer unit-test-token")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"spmCenter\":\"QA\",\"make\":\"ABC\",\"remarks\":\"\",\"dtrNo\":\"QA-DTR\",\"sNo\":\"QA-SN\",\"capacity\":100,\"type\":\"Distribution\",\"oilCapacity\":0}"))
+				.andExpect(status().isOk());
+
+		verify(googleSheetsService).updateTransformer(
+				eq(7L), eq("QA"), eq("QA-DTR"), eq("QA-SN"), eq(100), eq("Distribution"),
+				eq(0.0), eq("ABC"), eq(""));
 	}
 
 	@Test

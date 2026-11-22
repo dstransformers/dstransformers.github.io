@@ -14,6 +14,7 @@ const STATUS_ORDER = [
   'Assesment',
   'Repair In Progress',
   'Repaired',
+  'Ready to Deliver',
   'Delivered',
   'Billed',
 ]
@@ -652,7 +653,8 @@ function App() {
   const visibleDCCandidates = useMemo(() => dcCandidates.filter(transformer => {
     const isInSelectedTNote = dcTnoteTransformerIds === null || dcTnoteTransformerIds.has(String(transformer.id))
     return Boolean(newDC.spmCenter) &&
-      transformer.status === 'Repaired' &&
+      ['Repaired', 'Ready to Deliver'].includes(transformer.status) &&
+      !transformer.dcNo &&
       String(transformer.spmCenter || '').trim() === newDC.spmCenter.trim() &&
       isInSelectedTNote
   }), [dcCandidates, dcTnoteTransformerIds, newDC.spmCenter])
@@ -665,7 +667,8 @@ function App() {
     [dcDetailTransformers],
   )
   const availableDCTransformerCandidates = useMemo(() => dcCandidates.filter(transformer =>
-    transformer.status === 'Repaired' &&
+    ['Repaired', 'Ready to Deliver'].includes(transformer.status) &&
+    !transformer.dcNo &&
     !dcDetailTransformerIds.has(String(transformer.id))
   ), [dcCandidates, dcDetailTransformerIds])
   const visibleDCCandidateById = useMemo(
@@ -1910,8 +1913,8 @@ ${styles}
       setTnoteError('Enter a TNote number.')
       return
     }
-    if (tnoteTransformers.some((t) => !t.spmCenter || !t.make || !t.dtrNo || !t.sNo || !t.capacity || !t.type || !t.oilCapacity)) {
-      setTransformersError('Please fill all transformer fields')
+    if (tnoteTransformers.some((t) => !t.spmCenter || !t.make || !t.dtrNo || !t.sNo || !t.capacity || !t.type)) {
+      setTnoteError('Please fill all required transformer fields.')
       return
     }
 
@@ -1941,7 +1944,7 @@ ${styles}
           transformers: tnoteTransformers.map(transformer => ({
             ...transformer,
             capacity: parseInt(transformer.capacity),
-            oilCapacity: parseFloat(transformer.oilCapacity),
+            oilCapacity: parseFloat(transformer.oilCapacity) || 0,
             tNoteId: createdTNote.id,
             requestId: crypto.randomUUID(),
           })),
@@ -2258,7 +2261,7 @@ ${styles}
         body: JSON.stringify({
           ...newTNoteTransformer,
           capacity: parseInt(newTNoteTransformer.capacity, 10),
-          oilCapacity: parseFloat(newTNoteTransformer.oilCapacity),
+          oilCapacity: parseFloat(newTNoteTransformer.oilCapacity) || 0,
           tNoteId: activeTNote.id,
           intakeType: tNoteIntakeMode,
           requestId,
@@ -2509,25 +2512,28 @@ ${styles}
 
   const loadDCCandidates = async () => {
     try {
-      const response = await apiFetch('/api/transformers?status=Repaired&page=0&size=50')
-      if (!response.ok) throw new Error('Failed to load repaired transformers')
-      const firstPage = await response.json()
-      const candidates = [...(firstPage.content ?? [])]
-      const remainingPages = await Promise.all(
-        Array.from({ length: Math.max(0, (firstPage.totalPages ?? 0) - 1) }, async (_, index) => {
-          const pageNumber = index + 1
-        const pageResponse = await apiFetch(`/api/transformers?status=Repaired&page=${pageNumber}&size=50`)
-        if (!pageResponse.ok) throw new Error(`Failed to load repaired transformers (page ${pageNumber + 1})`)
-          return pageResponse.json()
-        }),
-      )
-      for (const pageData of remainingPages) {
-        candidates.push(...(pageData.content ?? []))
-      }
+      const candidatesByStatus = await Promise.all(['Repaired', 'Ready to Deliver'].map(async status => {
+        const firstResponse = await apiFetch(`/api/transformers?status=${encodeURIComponent(status)}&page=0&size=50`)
+        if (!firstResponse.ok) throw new Error(`Failed to load ${status.toLowerCase()} transformers`)
+        const firstPage = await firstResponse.json()
+        const remainingPages = await Promise.all(
+          Array.from({ length: Math.max(0, (firstPage.totalPages ?? 0) - 1) }, async (_, index) => {
+            const pageNumber = index + 1
+            const pageResponse = await apiFetch(`/api/transformers?status=${encodeURIComponent(status)}&page=${pageNumber}&size=50`)
+            if (!pageResponse.ok) throw new Error(`Failed to load ${status.toLowerCase()} transformers (page ${pageNumber + 1})`)
+            return pageResponse.json()
+          }),
+        )
+        return [
+          ...(firstPage.content ?? []),
+          ...remainingPages.flatMap(pageData => pageData.content ?? []),
+        ]
+      }))
+      const candidates = [...new Map(candidatesByStatus.flat().map(transformer => [String(transformer.id), transformer])).values()]
       setDcCandidates(candidates)
       return candidates
     } catch (err) {
-      setDcFormError(err instanceof Error ? err.message : 'Failed to load repaired transformers')
+      setDcFormError(err instanceof Error ? err.message : 'Failed to load delivery transformers')
       return null
     }
   }
@@ -2566,7 +2572,7 @@ ${styles}
     const spmCenter = tnoteSpmCenters.length === 1 ? tnoteSpmCenters[0] : ''
     const selectedTNoteTransformerIds = tnote
       ? new Set((tnote.transformers || [])
-        .filter(transformer => String(transformer.spmCenter || '').trim() === spmCenter)
+        .filter(transformer => !spmCenter || String(transformer.spmCenter || '').trim() === spmCenter)
         .map(transformer => String(transformer.id)))
       : null
     setDcTnoteTransformerIds(selectedTNoteTransformerIds)
@@ -2600,9 +2606,23 @@ ${styles}
     try {
       const [loadedTnotes, loadedCandidates] = await Promise.all([fetchTNotes(), loadDCCandidates()])
       if (!loadedTnotes || !loadedCandidates) {
-        setDcFormError('Unable to load TNote references or repaired transformers. Close and reopen the form to retry.')
+        setDcFormError('Unable to load TNote references or delivery transformers. Close and reopen the form to retry.')
         return
       }
+      const hasValidLinkedTNote = transformerId => {
+        const linkedTNotes = loadedTnotes.filter(tnote =>
+          (tnote.transformers || []).some(transformer => String(transformer.id) === String(transformerId))
+        )
+        return linkedTNotes.length > 0 &&
+          linkedTNotes.every(tnote => tnote.tNoteNo && tnote.date)
+      }
+      const defaultReadySelection = loadedCandidates
+        .filter(transformer => transformer.status === 'Ready to Deliver' && !transformer.dcNo)
+        .filter(transformer => Boolean(spmCenter) && String(transformer.spmCenter || '').trim() === spmCenter.trim())
+        .filter(transformer => selectedTNoteTransformerIds === null || selectedTNoteTransformerIds.has(String(transformer.id)))
+        .filter(transformer => hasValidLinkedTNote(transformer.id))
+        .map(transformer => transformer.id)
+      setSelectedDCTransformers(defaultReadySelection)
     } finally {
       setDcTnoteLoading(false)
     }
@@ -2755,16 +2775,16 @@ ${styles}
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           spmCenter: editingTransformer.spmCenter,
-          make: editingTransformer.make || undefined,
+          make: editingTransformer.make ?? '',
           remarks: editingTransformer.remarks || '',
           dtrNo: editingTransformer.dtrNo,
           sNo: editingTransformer.sNo,
           capacity: parseInt(editingTransformer.capacity, 10),
           type: editingTransformer.type,
-          oilCapacity: parseFloat(editingTransformer.oilCapacity),
+          oilCapacity: parseFloat(editingTransformer.oilCapacity) || 0,
         }),
       })
-      if (!response.ok) throw new Error('Failed to update transformer')
+      if (!response.ok) throw new Error(await apiErrorMessage(response, 'Failed to update transformer'))
       const updated = await response.json()
       setDcDetailTransformers((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
       setBillDetailTransformers((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
@@ -3226,6 +3246,17 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       customerAddress: current.sentToTgspdcl ? 'TGSPDCL' : current.customerAddress,
       customerGstin: current.sentToTgspdcl ? dropdownDefaults.tgspdclGstin : current.customerGstin,
     }))
+    if (selectedDCTransformers.length === 0) {
+      setSelectedDCTransformers(dcCandidates
+        .filter(transformer => transformer.status === 'Ready to Deliver' && !transformer.dcNo)
+        .filter(transformer => String(transformer.spmCenter || '').trim() === spmCenter.trim())
+        .filter(transformer => dcTnoteTransformerIds === null || dcTnoteTransformerIds.has(String(transformer.id)))
+        .filter(transformer => {
+          const notes = getTransformerTNoteDetails(transformer)
+          return notes.length > 0 && notes.every(note => note.tNoteNo && note.date)
+        })
+        .map(transformer => transformer.id))
+    }
     setDcFormError('')
   }
   const toggleBillSelection = (id) => {
@@ -3298,7 +3329,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
       return
     }
     if (selectedDCTransformers.length === 0) {
-      setDcFormError('Select at least one repaired transformer.')
+      setDcFormError('Select at least one repaired or ready-to-deliver transformer.')
       return
     }
     if (selectedDCTransformerDetails.some(detail => detail.tNotes.length === 0 || detail.tNotes.some(note => !note.date))) {
@@ -3497,8 +3528,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   }
 
   const moveToNextStage = (transformer) => {
-    if (['Repaired', 'Delivered', 'Billed'].includes(transformer.status)) return
+    if (['Ready to Deliver', 'Delivered', 'Billed'].includes(transformer.status)) return
     const nextStatus = getNextTransformerStage(transformer)
+    if (nextStatus === 'Completed' || nextStatus === 'Delivery Challan') return
     if (nextStatus === 'Assesment') {
       openAssessmentForm(transformer, 'stage')
       return
@@ -3513,6 +3545,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
     if (status === 'repair in progress' && assessmentRound === 1) return 'Assesment'
     if (status === 'assesment' && assessmentRound === 2) return 'Repair In Progress'
     if (status === 'repaired' && assessmentRound === 2) return 'Assesment'
+    if (status === 'ready to deliver' && !transformer.dcNo) return 'Repaired'
     return null
   }
 
@@ -3555,6 +3588,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   const getNextTransformerStage = (transformer) => {
     if (transformer.status === 'Repair In Progress') return 'Assesment'
     if (transformer.status === 'Assesment' && Number(transformer.assessmentRound) >= 2) return 'Repaired'
+    if (transformer.status === 'Repaired') {
+      return Number(transformer.assessmentRound) >= 2 ? 'Ready to Deliver' : 'Completed'
+    }
+    if (transformer.status === 'Ready to Deliver') return 'Delivery Challan'
     const currentIndex = STATUS_ORDER.indexOf(transformer.status)
     return currentIndex >= 0 && currentIndex < STATUS_ORDER.length - 1
       ? STATUS_ORDER[currentIndex + 1]
@@ -3564,9 +3601,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
   const canBulkAdvanceTransformer = (transformer) => {
     const nextStatus = getNextTransformerStage(transformer)
     return hasValidTransformerId(transformer) &&
-      !['Repaired', 'Delivered', 'Billed'].includes(transformer.status) &&
+      !['Ready to Deliver', 'Delivered', 'Billed'].includes(transformer.status) &&
       nextStatus !== 'Assesment' &&
-      nextStatus !== 'Completed'
+      nextStatus !== 'Completed' &&
+      nextStatus !== 'Delivery Challan'
   }
 
   const advanceSelectedTransformers = async () => {
@@ -3767,7 +3805,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   className="filter-date-input"
                   aria-label="Filter by date"
                   value={value[0] || ''}
-                  onChange={(event) => handleFilterChange(event.target.value ? [event.target.value] : [], false)}
+                  onChange={(event) => handleFilterChange(event.target.value ? [event.target.value] : [])}
                 />
                 <button
                   className="btn btn--small btn--ghost"
@@ -3803,7 +3841,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         const newValue = e.target.checked
                           ? [...value, status]
                           : value.filter(s => s !== status)
-                        handleFilterChange(newValue, false)
+                        handleFilterChange(newValue)
                       }}
                     />
                     <span>{status}</span>
@@ -3828,7 +3866,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                           const newValue = e.target.checked
                             ? [...value, option]
                             : value.filter(o => o !== option)
-                          handleFilterChange(newValue, false)
+                          handleFilterChange(newValue)
                         }}
                       />
                       <span>{option}</span>
@@ -4066,7 +4104,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <span className="mobile-dashboard-action-icon mobile-dashboard-action-icon--green">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h13l3 3v12H5zM18 5v4h3" /></svg>
                 </span>
-                <span className="mobile-dashboard-quick-copy"><strong>Delivery challan</strong><small>Pick repaired units · create PDF</small></span>
+                <span className="mobile-dashboard-quick-copy"><strong>Delivery challan</strong><small>Pick repaired or ready units · create PDF</small></span>
                 <b className="mobile-dashboard-action-label mobile-dashboard-action-label--green">Create DC</b>
               </button>
             </div>
@@ -4800,7 +4838,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
             </div>
           </div>
           {transformersError && <p className="status status--error jobs-feedback">{transformersError}</p>}
-          <p className="status">Select multiple transformers to promote eligible records together. Transformers requiring assessment details must be advanced individually.</p>
+          <p className="status">Select multiple transformers to advance eligible stages together. Second-assessment transformers can be marked Ready to Deliver individually or in bulk.</p>
           <div className="jobs-table-wrap transformers-table-wrap" role="region" aria-label="Transformer register table" tabIndex={0}>
             <table className="jobs-table transformers-table">
               <thead>
@@ -4940,10 +4978,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                         <button
                           className="btn btn--ghost btn--small"
                           onClick={() => moveToNextStage(transformer)}
-                          disabled={!hasValidTransformerId(transformer) || ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)}
+                          disabled={!hasValidTransformerId(transformer) || ['Ready to Deliver', 'Delivered', 'Billed'].includes(transformer.status) || ['Completed', 'Delivery Challan'].includes(getNextTransformerStage(transformer))}
                           title={!hasValidTransformerId(transformer)
                             ? 'This record has no valid transformer ID.'
-                            : ['Repaired', 'Delivered', 'Billed'].includes(transformer.status)
+                            : ['Ready to Deliver', 'Delivered', 'Billed'].includes(transformer.status)
                               ? 'This stage is handled through delivery challan or billing actions.'
                               : `Move to ${getNextTransformerStage(transformer)}`}
                         >
@@ -5112,11 +5150,11 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                           type="button"
                           className="btn btn--ghost btn--small btn--icon"
                           aria-label={`Generate delivery challan for TNote ${tnote.tNoteNo || tnote.id}`}
-                          title={tnote.transformers?.some(transformer => transformer.status === 'Repaired')
+                          title={tnote.transformers?.some(transformer => ['Repaired', 'Ready to Deliver'].includes(transformer.status))
                             ? 'Generate delivery challan from this TNote'
-                            : 'No transformers in this TNote have a Repaired status'}
+                            : 'No transformers in this TNote are repaired or ready to deliver'}
                           onClick={() => openDCModal(tnote)}
-                          disabled={!tnote.transformers?.some(transformer => transformer.status === 'Repaired')}
+                          disabled={!tnote.transformers?.some(transformer => ['Repaired', 'Ready to Deliver'].includes(transformer.status))}
                         >
                           <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M3 6h11l4 4v9H3z" />
@@ -5460,20 +5498,21 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   />
                 </div>
               )}
-              <h3>Select delivered transformers</h3>
+              <h3>Select transformers for delivery</h3>
               <p className="status">
                 {dcTnoteTransformerIds === null
-                  ? 'Select one or more repaired transformers from the selected SPM Center. Linked TNote numbers and dates are shown automatically and saved with the challan.'
-                  : 'Select unselected repaired transformers from this TNote. Linked TNote numbers and dates are shown automatically and saved with the challan.'}
+                  ? 'Select repaired or ready-to-deliver transformers from the selected SPM Center. Ready-to-deliver transformers are selected by default.'
+                  : 'Select repaired or ready-to-deliver transformers from this TNote. Ready-to-deliver transformers are selected by default.'}
               </p>
               {dcFormError && <p className="status status--error" role="alert">{dcFormError}</p>}
-              <p className="status">{visibleDCCandidates.length} unselected repaired transformer(s) available.</p>
+              <p className="status">{visibleDCCandidates.length} repaired or ready-to-deliver transformer(s) available.</p>
               <div className="jobs-table-wrap">
                 <table className="jobs-table">
                   <thead>
                     <tr>
                       <th></th>
                       <th>Transformer</th>
+                      <th>Status</th>
                       <th>TNote No.</th>
                       <th>TNote Date</th>
                       <th>SPM Center</th>
@@ -5497,6 +5536,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                           transformer.type,
                           `#${transformer.id}`,
                         ].filter(Boolean).join(' · ')}{getTransformerTNoteDetails(transformer).some(note => note.intakeType === 'RGP') ? ' (RGP)' : ''}</td>
+                        <td><span className={`tag tag--${transformer.status.toLowerCase().replace(/\s+/g, '-')}`}>{transformer.status}</span></td>
                         <td>{getTransformerTNoteDetails(transformer).map(note => note.tNoteNo).join(', ') || '—'}</td>
                         <td>{getTransformerTNoteDetails(transformer).map(note => formattedDate(note.date) || '—').join(', ') || '—'}</td>
                         <td>{transformer.spmCenter || '—'}</td>
@@ -5504,9 +5544,9 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                     ))}
                     {visibleDCCandidates.length === 0 && (
                       <tr>
-                        <td colSpan="5">{newDC.spmCenter
-                          ? `No repaired transformers are available for ${newDC.spmCenter}.`
-                          : 'Select an SPM Center to view repaired transformers.'}</td>
+                        <td colSpan="6">{newDC.spmCenter
+                          ? `No repaired or ready-to-deliver transformers are available for ${newDC.spmCenter}.`
+                          : 'Select an SPM Center to view delivery candidates.'}</td>
                       </tr>
                     )}
                   </tbody>
@@ -5728,7 +5768,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                             <button
                               className="btn btn--danger btn--small"
                               onClick={() => {
-                                if (confirm(`Remove transformer ${transformer.id} from ${activeDC.dcNo}? It will return to Repaired, and its original TNote history will be preserved.`)) {
+                                if (confirm(`Remove transformer ${transformer.id} from ${activeDC.dcNo}? Its pre-challan status and original TNote history will be preserved.`)) {
                                   updateDCTransformer(transformer.id, false)
                                 }
                               }}
@@ -5755,14 +5795,15 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 </tbody>
               </table>
             </div>
-            {!activeDC?.delivered && <h3>Add Repaired Transformers</h3>}
-            {!activeDC?.delivered && <p className="status">Adding a transformer assigns it to this challan and updates the transformer count and linked TNote numbers. Removing it returns it to Repaired without deleting TNote history.</p>}
+            {!activeDC?.delivered && <h3>Add Transformers for Delivery</h3>}
+            {!activeDC?.delivered && <p className="status">Add repaired or ready-to-deliver transformers to this challan. Removing a transformer restores its pre-challan status without deleting TNote history.</p>}
             {!activeDC?.delivered && (
             <div className="jobs-table-wrap">
               <table className="jobs-table">
                 <thead>
                   <tr>
                     <th>Transformer</th>
+                    <th>Status</th>
                     <th>TNote No.</th>
                     <th>TNote Date</th>
                     <th>SPM Center</th>
@@ -5785,7 +5826,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                             candidate.type,
                             `#${candidate.id}`,
                           ].filter(Boolean).join(' · ')}{notes.some(note => note.intakeType === 'RGP') ? ' (RGP)' : ''}</td>
-                          <td>{notes.map(note => note.tNoteNo).join(', ') || '—'}</td>
+                            <td><span className={`tag tag--${candidate.status.toLowerCase().replace(/\s+/g, '-')}`}>{candidate.status}</span></td>
+                            <td>{notes.map(note => note.tNoteNo).join(', ') || '—'}</td>
                           <td>{notes.map(note => formattedDate(note.date) || '—').join(', ') || '—'}</td>
                           <td>{candidate.spmCenter || '—'}</td>
                           <td>
@@ -5810,7 +5852,7 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       )
                     })}
                   {availableDCTransformerCandidates.length === 0 && (
-                    <tr><td colSpan="5">No other repaired transformers are available.</td></tr>
+                    <tr><td colSpan="6">No other repaired or ready-to-deliver transformers are available.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -6020,10 +6062,10 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                 <label>Oil Capacity</label>
                 <input
                   type="number"
+                  min="0"
                   step="0.1"
                   value={editingTransformer.oilCapacity || ''}
                   onChange={(e) => handleEditTransformerChange('oilCapacity', e.target.value)}
-                  required
                 />
               </div>
               <div className="modal-actions">
@@ -6675,100 +6717,103 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                   {(tNoteIntakeMode === 'NEW' || rgpManualEntry) && (
                     <form className="tnote-add-transformer-form" onSubmit={addTransformerToTNote}>
                       {rgpManualEntry && <p className="tnote-rgp-manual-note">This creates a separate transformer record for this non-billable RGP visit; it will not be linked to a previous transformer record.</p>}
-                  <label>
-                    Capacity
-                    <DefaultSelect
-                      value={String(newTNoteTransformer.capacity)}
-                      options={transformerCapacityOptions}
-                      placeholder="Select Capacity"
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, capacity: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    Make
-                    <DefaultSelect
-                      value={newTNoteTransformer.make}
-                      options={dropdownDefaults.makes}
-                      placeholder="Select Make"
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, make: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    Serial No
-                    <input
-                      value={newTNoteTransformer.sNo}
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, sNo: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    DTR No
-                    <input
-                      value={newTNoteTransformer.dtrNo}
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, dtrNo: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    Type
-                    <DefaultSelect
-                      value={newTNoteTransformer.type}
-                      options={dropdownDefaults.types}
-                      placeholder="Select Type"
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, type: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    SPM Center
-                    <DefaultSelect
-                      value={newTNoteTransformer.spmCenter}
-                      options={dropdownDefaults.spmCenters}
-                      placeholder="Select SPM Center"
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, spmCenter: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    Remarks (optional)
-                    <textarea
-                      rows="2"
-                      value={newTNoteTransformer.remarks}
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, remarks: event.target.value }))}
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <label>
-                    Oil Capacity
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={newTNoteTransformer.oilCapacity}
-                      onChange={event => setNewTNoteTransformer(current => ({ ...current, oilCapacity: event.target.value }))}
-                      required
-                      disabled={addingTNoteTransformer}
-                    />
-                  </label>
-                  <div className="tnote-add-transformer-actions">
-                    <button type="submit" className="btn btn--primary" disabled={addingTNoteTransformer}>
-                      {rgpManualEntry ? 'Register RGP Transformer' : 'Save Transformer'}
-                    </button>
-                    <button type="button" className="btn btn--ghost" onClick={() => {
-                      if (rgpManualEntry) setRgpManualEntry(false)
-                      else setShowAddTNoteTransformer(false)
-                    }} disabled={addingTNoteTransformer}>
-                      {rgpManualEntry ? 'Back to Search' : 'Cancel'}
-                    </button>
-                  </div>
+                      <label>
+                        SPM Center
+                        <DefaultSelect
+                          value={newTNoteTransformer.spmCenter}
+                          options={dropdownDefaults.spmCenters}
+                          placeholder="Select SPM Center"
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, spmCenter: event.target.value }))}
+                          required
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Capacity
+                        <DefaultSelect
+                          value={String(newTNoteTransformer.capacity)}
+                          options={transformerCapacityOptions}
+                          placeholder="Select Capacity"
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, capacity: event.target.value }))}
+                          required
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Make
+                        <DefaultSelect
+                          value={newTNoteTransformer.make}
+                          options={dropdownDefaults.makes}
+                          placeholder="Select Make"
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, make: event.target.value }))}
+                          required
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Serial No
+                        <input
+                          placeholder="Enter serial number"
+                          value={newTNoteTransformer.sNo}
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, sNo: event.target.value }))}
+                          required
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        DTR No
+                        <input
+                          placeholder="Enter DTR number"
+                          value={newTNoteTransformer.dtrNo}
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, dtrNo: event.target.value }))}
+                          required
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Type
+                        <DefaultSelect
+                          value={newTNoteTransformer.type}
+                          options={dropdownDefaults.types}
+                          placeholder="Select Type"
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, type: event.target.value }))}
+                          required
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Remarks (optional)
+                        <textarea
+                          rows="2"
+                          placeholder="Add remarks (optional)"
+                          value={newTNoteTransformer.remarks}
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, remarks: event.target.value }))}
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <label>
+                        Oil Capacity (optional)
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          placeholder="Enter oil capacity"
+                          value={newTNoteTransformer.oilCapacity}
+                          onChange={event => setNewTNoteTransformer(current => ({ ...current, oilCapacity: event.target.value }))}
+                          disabled={addingTNoteTransformer}
+                        />
+                      </label>
+                      <div className="tnote-add-transformer-actions">
+                        <button type="submit" className="btn btn--primary" disabled={addingTNoteTransformer}>
+                          {rgpManualEntry ? 'Register RGP Transformer' : 'Save Transformer'}
+                        </button>
+                        <button type="button" className="btn btn--ghost" onClick={() => {
+                          if (rgpManualEntry) setRgpManualEntry(false)
+                          else setShowAddTNoteTransformer(false)
+                        }} disabled={addingTNoteTransformer}>
+                          {rgpManualEntry ? 'Back to Search' : 'Cancel'}
+                        </button>
+                      </div>
                     </form>
                   )}
                 </div>
@@ -6818,7 +6863,8 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                                   <strong>{getPreviousTransformerStage(transformer)}</strong>
                                 </button>
                               )}
-                              {['Recieved', 'Assesment', 'Repair In Progress'].includes(transformer.status) && (
+                              {(['Recieved', 'Assesment', 'Repair In Progress'].includes(transformer.status) ||
+                                (transformer.status === 'Repaired' && Number(transformer.assessmentRound) >= 2)) && (
                                 <button
                                   type="button"
                                   className="btn btn--ghost btn--small tnote-status-button"
@@ -7078,12 +7124,12 @@ ${worksheet('Transformers', transformerSheetRows, [45, 110, 95, 130, 110, 110, 9
                       onChange={(e) => handleTransformerInputChange(index, 'remarks', e.target.value)}
                     />
                     <input
-                      placeholder="Oil Capacity"
+                      placeholder="Oil Capacity (optional)"
                       type="number"
+                      min="0"
                       step="0.1"
                       value={transformer.oilCapacity}
                       onChange={(e) => handleTransformerInputChange(index, 'oilCapacity', e.target.value)}
-                      required
                     />
                     {tnoteTransformers.length > 1 && (
                       <button

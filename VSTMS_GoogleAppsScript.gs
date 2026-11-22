@@ -209,7 +209,7 @@ const DEFAULT_DROPDOWN_VALUES = {
 
 const QUOTATION_CAPACITIES = DEFAULT_DROPDOWN_VALUES.Capacity;
 
-const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Delivered', 'Billed'];
+const STATUS_ORDER = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Ready to Deliver', 'Delivered', 'Billed'];
 
 // ============ UTILITY FUNCTIONS ============
 
@@ -1355,7 +1355,7 @@ function transformerRowToObj(row) {
   const assessmentRound = Number.isInteger(savedAssessmentRound) && savedAssessmentRound >= 0
     ? savedAssessmentRound
     : ['Assesment', 'Repair In Progress'].includes(status) ? 1
-      : ['Repaired', 'Delivered', 'Billed'].includes(status) ? 2 : 0;
+      : ['Repaired', 'Ready to Deliver', 'Delivered', 'Billed'].includes(status) ? 2 : 0;
   return {
     id: Number(row.ID),
     spmCenter: String(row.SpmCenter || ''),
@@ -1710,7 +1710,14 @@ function updateTransformer(id, data) {
   if (data.oilCapacity !== undefined) setCol('OilCapacity', data.oilCapacity);
   setCol('UpdatedAt', getTimestamp());
 
-  return getTransformerById(id);
+  const updated = getTransformerById(id);
+  if (updated.status !== 'SUCCESS' || !updated.data) {
+    throw new Error('Transformer update could not be verified after saving.');
+  }
+  if (data.make !== undefined && String(updated.data.make || '') !== String(data.make || '')) {
+    throw new Error('Transformer Make could not be verified after saving. Check the Transformers sheet Make column.');
+  }
+  return updated;
 }
 
 function deleteTransformer(id) {
@@ -1796,12 +1803,22 @@ function updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backwa
   const assessmentRound = Number.isInteger(storedAssessmentRound) && storedAssessmentRound >= 0
     ? storedAssessmentRound
     : ['Assesment', 'Repair In Progress'].includes(currentStatus) ? 1
-      : ['Repaired', 'Delivered', 'Billed'].includes(currentStatus) ? 2 : 0;
+      : ['Repaired', 'Ready to Deliver', 'Delivered', 'Billed'].includes(currentStatus) ? 2 : 0;
   let nextAssessmentRound = assessmentRound;
   const isBackward = backward === true || String(backward).toLowerCase() === 'true';
+  if (isBackward && currentStatus.toLowerCase() === 'ready to deliver') {
+    const dcNoIndex = found.headers.indexOf('DcNo');
+    if (dcNoIndex >= 0 && String(found.data[dcNoIndex] || '').trim()) {
+      throw new Error('Remove the transformer from its delivery challan before moving it back to Repaired.');
+    }
+  }
   if (String(newStatus).toLowerCase() === 'scrap') {
     if (isBackward) throw new Error('Scrap status cannot be moved backward.');
-    if (!['Recieved', 'Assesment', 'Repair In Progress', 'Repaired'].some(status => status.toLowerCase() === currentStatus.toLowerCase())) {
+    const dcNoIdx = found.headers.indexOf('DcNo');
+    if (dcNoIdx >= 0 && String(found.data[dcNoIdx] || '').trim()) {
+      throw new Error('Remove the transformer from its delivery challan before marking it as Scrap.');
+    }
+    if (!['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Ready to Deliver'].some(status => status.toLowerCase() === currentStatus.toLowerCase())) {
       throw new Error('Only transformers not yet delivered can be marked as Scrap.');
     }
     newStatus = 'Scrap';
@@ -1812,11 +1829,13 @@ function updateTransformerStatusLocked_(id, newStatus, assessmentDetails, backwa
       ? (current === 'assesment' && next === 'recieved' && assessmentRound === 1) ||
         (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
         (current === 'assesment' && next === 'repair in progress' && assessmentRound === 2) ||
-        (current === 'repaired' && next === 'assesment' && assessmentRound === 2)
+        (current === 'repaired' && next === 'assesment' && assessmentRound === 2) ||
+        (current === 'ready to deliver' && next === 'repaired' && assessmentRound === 2)
       : (current === 'recieved' && next === 'assesment' && assessmentRound === 0) ||
         (current === 'assesment' && next === 'repair in progress' && assessmentRound === 1) ||
         (current === 'repair in progress' && next === 'assesment' && assessmentRound === 1) ||
-        (current === 'assesment' && next === 'repaired' && assessmentRound === 2);
+        (current === 'assesment' && next === 'repaired' && assessmentRound === 2) ||
+        (current === 'repaired' && next === 'ready to deliver' && assessmentRound === 2);
     if (!validTransition) {
       throw new Error(`Invalid status transition from ${currentStatus} to ${newStatus}.`);
     }
@@ -1962,8 +1981,13 @@ function deliverTransformer(id, dcNo) {
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
   const currentStatus = String(found.data[found.headers.indexOf('Status')] || '');
   const currentDcNo = String(found.data[found.headers.indexOf('DcNo')] || '');
-  if (currentStatus.toLowerCase() !== 'repaired' || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
-    throw new Error('Only repaired, non-scrapped transformers can be delivered.');
+  if (currentStatus.toLowerCase() === 'delivered'
+      && currentDcNo.toLowerCase() === String(dcNo).toLowerCase()) {
+    return getTransformerById(id);
+  }
+  if (!['repaired', 'ready to deliver'].includes(currentStatus.toLowerCase())
+      || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
+    throw new Error('Only repaired or ready-to-deliver, non-scrapped transformers can be delivered.');
   }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
@@ -2003,8 +2027,14 @@ function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
     }
 
     if (shouldAssign) {
-      if (currentStatus.toLowerCase() !== 'repaired' || currentDcNo) {
-        throw new Error('Only an unassigned repaired transformer can be added to a challan.');
+      const savedRound = Number(transformer.data[transformerHeaders.indexOf('AssessmentRound')]);
+      const assessmentRound = Number.isInteger(savedRound) && savedRound >= 0
+        ? savedRound
+        : currentStatus.toLowerCase() === 'ready to deliver' ? 2 : 0;
+      if (!['repaired', 'ready to deliver'].includes(currentStatus.toLowerCase())
+          || (currentStatus.toLowerCase() === 'ready to deliver' && assessmentRound !== 2)
+          || currentDcNo) {
+        throw new Error('Only an unassigned repaired or round-two ready-to-deliver transformer can be added to a challan.');
       }
       const tNote = getAllTNotes().data
         .find(note => (note.transformers || []).some(link => Number(link.id) === Number(transformerId)));
@@ -2020,12 +2050,14 @@ function updateDCTransformerAssignment_(dcNo, transformerId, shouldAssign) {
       const updatedColumn = transformerHeaders.indexOf('UpdatedAt');
       if (updatedColumn >= 0) transformerSheet.getRange(transformer.rowIndex, updatedColumn + 1).setValue(getTimestamp());
     } else {
-      if (!['repaired', 'delivered'].includes(currentStatus.toLowerCase())
+      if (!['repaired', 'ready to deliver', 'delivered'].includes(currentStatus.toLowerCase())
           || currentDcNo.toLowerCase() !== String(dcNo).toLowerCase()) {
         throw new Error('Only a transformer assigned to this challan can be removed.');
       }
       const transformerSheet = getOrCreateSheet(SHEET_NAMES.TRANSFORMERS);
-      transformerSheet.getRange(transformer.rowIndex, statusColumn + 1).setValue('Repaired');
+      if (currentStatus.toLowerCase() !== 'ready to deliver') {
+        transformerSheet.getRange(transformer.rowIndex, statusColumn + 1).setValue('Repaired');
+      }
       transformerSheet.getRange(transformer.rowIndex, dcColumn + 1).clearContent();
       const updatedColumn = transformerHeaders.indexOf('UpdatedAt');
       if (updatedColumn >= 0) transformerSheet.getRange(transformer.rowIndex, updatedColumn + 1).setValue(getTimestamp());
@@ -2534,9 +2566,16 @@ function addDC(data) {
     if (transformers.some(transformer => {
       const status = String(transformer.data[transformer.headers.indexOf('Status')] || '');
       const dcNoValue = String(transformer.data[transformer.headers.indexOf('DcNo')] || '');
-      return status.toLowerCase() !== 'repaired' || dcNoValue !== '';
+      const roundIndex = transformer.headers.indexOf('AssessmentRound');
+      const savedRound = Number(transformer.data[roundIndex]);
+      const round = Number.isInteger(savedRound) && savedRound >= 0
+        ? savedRound
+        : status.toLowerCase() === 'ready to deliver' ? 2 : 0;
+      return !['repaired', 'ready to deliver'].includes(status.toLowerCase())
+        || (status.toLowerCase() === 'ready to deliver' && round !== 2)
+        || dcNoValue !== '';
     })) {
-      throw new Error('Only unassigned repaired transformers can be added to a challan.');
+      throw new Error('Only unassigned repaired or round-two ready-to-deliver transformers can be added to a challan.');
     }
 
     const dcNo = nextDeliveryChallanNumber_(sheet);
@@ -2676,8 +2715,8 @@ function markDCDelivered_(dcNo, attachments) {
       const dcIndex = transformer.headers.indexOf('DcNo');
       if (statusIndex < 0 || dcIndex < 0
           || String(transformer.data[dcIndex] || '').toLowerCase() !== String(dcNo).toLowerCase()
-          || String(transformer.data[statusIndex] || '').toLowerCase() !== 'repaired') {
-        throw new Error(`Transformer ${item.ID} must be repaired and assigned to this challan before delivery.`);
+          || !['repaired', 'ready to deliver'].includes(String(transformer.data[statusIndex] || '').toLowerCase())) {
+            throw new Error(`Transformer ${item.ID} must be repaired or ready to deliver and assigned to this challan before delivery.`);
       }
       return {
         row: transformer,
@@ -4392,7 +4431,7 @@ function initializeSampleData() {
   if (transSheet.getLastRow() <= 1) {
     const spmCenters = ['Warangal', 'Salem', 'Rajahmundry', 'Mysuru', 'Karimnagar'];
     const types = ['Distribution', 'Power', 'Step-up', 'Step-down'];
-    const statuses = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Delivered', 'Billed'];
+    const statuses = ['Recieved', 'Assesment', 'Repair In Progress', 'Repaired', 'Ready to Deliver', 'Delivered', 'Billed'];
 
     let count = 0;
     const tNoteIds = [1, 2, 3];

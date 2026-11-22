@@ -1101,6 +1101,9 @@ h1 {
   position: absolute;
   top: 100%;
   left: 0;
+  max-height: min(70vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -1153,6 +1156,7 @@ h1 {
 .filter-options {
   max-height: 250px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1302,6 +1306,11 @@ h1 {
 .tag--repaired {
   background: rgba(20, 184, 166, 0.16);
   color: #0f766e;
+}
+
+.tag--ready-to-deliver {
+  background: rgba(34, 197, 94, 0.16);
+  color: #15803d;
 }
 
 .tag--delivered {
@@ -1770,14 +1779,16 @@ h1 {
 
 .tnote-intake-panel {
   margin: 0 0 18px;
-  padding: 16px;
-  border: 1px solid #dbeafe;
-  border-radius: 14px;
-  background: linear-gradient(140deg, #f8fbff, #fff);
+  padding: 18px;
+  border: 1px solid #d7e5f5;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f5f9ff, #fff 68%);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .tnote-intake-modes {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 14px;
 }
@@ -1853,43 +1864,62 @@ h1 {
 
 .tnote-add-transformer-form {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 0 0 18px;
-  padding: 18px;
-  border: 1px solid #dbeafe;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
   border-radius: 14px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .tnote-add-transformer-form > label {
   display: grid;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  color: #334155;
-  font-size: 0.8rem;
+  color: #1e293b;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
 .tnote-add-transformer-form input,
-.tnote-add-transformer-form select {
+.tnote-add-transformer-form select,
+.tnote-add-transformer-form textarea {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 46px;
+  padding: 10px 12px;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
   color: #0f172a;
   font: inherit;
   font-weight: 400;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .tnote-add-transformer-form input:focus,
-.tnote-add-transformer-form select:focus {
+.tnote-add-transformer-form select:focus,
+.tnote-add-transformer-form textarea:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.tnote-add-transformer-form input::placeholder,
+.tnote-add-transformer-form textarea::placeholder {
+  color: #94a3b8;
+}
+
+.tnote-add-transformer-form textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
+.tnote-add-transformer-form > .tnote-rgp-manual-note {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .tnote-add-transformer-error {
@@ -1901,6 +1931,7 @@ h1 {
   display: flex;
   grid-column: 1 / -1;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -2761,6 +2792,7 @@ h1 {
   .tnote-add-transformer-form {
     grid-template-columns: minmax(0, 1fr);
     padding: 14px;
+    gap: 12px;
   }
 
   .tnote-rgp-search-form {
@@ -2779,6 +2811,15 @@ h1 {
 
   .tnote-add-transformer-actions {
     flex-direction: column;
+  }
+
+  .tnote-add-transformer-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .tnote-intake-modes .btn {
+    min-height: 42px;
   }
 
   .tnote-transformer-detail {

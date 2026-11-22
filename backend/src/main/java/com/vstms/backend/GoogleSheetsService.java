@@ -57,6 +57,7 @@ public class GoogleSheetsService {
             "Assesment",
             "Repair In Progress",
             "Repaired",
+            "Ready to Deliver",
             "Delivered",
             "Billed"
     );
@@ -749,6 +750,10 @@ public class GoogleSheetsService {
             if (created != null && created.getId() != null && created.getId() > 0
                     && Objects.equals(dtrNo, created.getDtrNo())
                     && Objects.equals(sNo, created.getSNo())) {
+                if (!Objects.equals(Objects.toString(make, ""), Objects.toString(created.getMake(), ""))) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Apps Script did not persist the requested transformer Make. Verify the Make column and deployed Apps Script version.");
+                }
                 if (tNoteId != null && !Objects.equals(tNoteId, created.getTNoteId())) {
                     throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                             "Transformer was created without the requested TNote association. Verify the Apps Script deployment before retrying.");
@@ -796,6 +801,11 @@ public class GoogleSheetsService {
                 if (transformer == null || transformer.getId() == null || transformer.getId() <= 0) {
                     throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                             "Apps Script returned a transformer without a valid ID.");
+                }
+                String requestedMake = Objects.toString(transformers.get(created.size()).get("make"), "");
+                if (!Objects.equals(requestedMake, Objects.toString(transformer.getMake(), ""))) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Apps Script did not persist the requested transformer Make. Verify the Make column and deployed Apps Script version.");
                 }
                 created.add(transformer);
                 transformerCache.put(transformer.getId(), transformer);
@@ -914,22 +924,8 @@ public class GoogleSheetsService {
     }
 
     public TransformerDTO updateTransformer(Long id, String spmCenter, String dtrNo, String sNo, int capacity, String type, double oilCapacity, String make, String remarks) {
-        TransformerDTO dto = getTransformerById(id)
+        getTransformerById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
-
-        dto.setSpmCenter(spmCenter);
-        if (make != null) {
-            dto.setMake(make);
-        }
-        if (remarks != null) {
-            dto.setRemarks(remarks);
-        }
-        dto.setDtrNo(dtrNo);
-        dto.setSNo(sNo);
-        dto.setCapacity(capacity);
-        dto.setType(type);
-        dto.setOilCapacity(oilCapacity);
-        transformerCache.put(id, dto);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "UPDATE_TRANSFORMER");
@@ -948,9 +944,20 @@ public class GoogleSheetsService {
         params.put("type", type);
         params.put("oilCapacity", oilCapacity);
         payload.put("payload", params);
-        postToAppsScript(payload);
+        Map<String, Object> response = postToAppsScript(payload);
+        if (!"SUCCESS".equals(response.get("status")) || response.get("data") == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    String.valueOf(response.getOrDefault("message", "Failed to update transformer.")));
+        }
+        TransformerDTO updated = objectMapper.convertValue(response.get("data"), TransformerDTO.class);
+        if (updated == null || !Objects.equals(id, updated.getId())
+                || (make != null && !Objects.equals(make, Objects.toString(updated.getMake(), "")))) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Apps Script did not persist the requested transformer Make. Verify the Make column and deployed Apps Script version.");
+        }
+        transformerCache.put(id, updated);
 
-        return dto;
+        return updated;
     }
 
     public void deleteTransformer(Long id) {
@@ -987,6 +994,15 @@ public class GoogleSheetsService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
 
         validateStatusTransition(dto.getStatus(), newStatus, dto.getAssessmentRound(), backward);
+        if ("Scrap".equalsIgnoreCase(newStatus) && dto.getDcNo() != null && !dto.getDcNo().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Remove the transformer from its delivery challan before marking it as Scrap.");
+        }
+        if (backward && "Ready to Deliver".equalsIgnoreCase(dto.getStatus())
+                && dto.getDcNo() != null && !dto.getDcNo().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Remove the transformer from its delivery challan before moving it back to Repaired.");
+        }
         if ("Assesment".equalsIgnoreCase(newStatus)
                 && !backward
                 && (assessmentDetails == null || assessmentDetails.getWindingMaterial() == null
@@ -1102,8 +1118,10 @@ public class GoogleSheetsService {
                     "The transformer must be assigned to the delivered challan.");
         }
         if ("Delivered".equalsIgnoreCase(dto.getStatus())) return dto;
-        if (!"Repaired".equalsIgnoreCase(dto.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only repaired transformers can be delivered");
+        if (!List.of("Repaired", "Ready to Deliver").stream()
+                .anyMatch(status -> status.equalsIgnoreCase(dto.getStatus()))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only repaired or ready-to-deliver transformers can be delivered");
         }
 
         Map<String, Object> payload = new HashMap<>();
@@ -1227,7 +1245,9 @@ public class GoogleSheetsService {
         TransformerDTO transformer = transformerCache.get(transformerId);
         if (transformer != null) {
             transformer.setDcNo(assign ? dcNo : null);
-            if (!assign) transformer.setStatus("Repaired");
+            if (!assign && !"Ready to Deliver".equalsIgnoreCase(transformer.getStatus())) {
+                transformer.setStatus("Repaired");
+            }
         }
         return updated;
     }
@@ -1341,7 +1361,7 @@ public class GoogleSheetsService {
             if (backward) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Scrap status cannot be moved backward.");
             }
-            if (List.of("Recieved", "Assesment", "Repair In Progress", "Repaired").stream()
+            if (List.of("Recieved", "Assesment", "Repair In Progress", "Repaired", "Ready to Deliver").stream()
                     .anyMatch(status -> status.equalsIgnoreCase(current))) {
                 return;
             }
@@ -1352,7 +1372,8 @@ public class GoogleSheetsService {
                     ("Assesment".equalsIgnoreCase(current) && "Recieved".equalsIgnoreCase(next) && assessmentRound == 1)
                     || ("Repair In Progress".equalsIgnoreCase(current) && "Assesment".equalsIgnoreCase(next) && assessmentRound == 1)
                     || ("Assesment".equalsIgnoreCase(current) && "Repair In Progress".equalsIgnoreCase(next) && assessmentRound == 2)
-                    || ("Repaired".equalsIgnoreCase(current) && "Assesment".equalsIgnoreCase(next) && assessmentRound == 2);
+                    || ("Repaired".equalsIgnoreCase(current) && "Assesment".equalsIgnoreCase(next) && assessmentRound == 2)
+                    || ("Ready to Deliver".equalsIgnoreCase(current) && "Repaired".equalsIgnoreCase(next) && assessmentRound == 2);
             if (!validBackwardTransition) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Invalid backward status transition from " + current + " to " + next);
@@ -1366,7 +1387,9 @@ public class GoogleSheetsService {
                 || ("Repair In Progress".equalsIgnoreCase(current)
                     && "Assesment".equalsIgnoreCase(next) && assessmentRound == 1)
                 || ("Assesment".equalsIgnoreCase(current)
-                    && "Repaired".equalsIgnoreCase(next) && assessmentRound == 2);
+                    && "Repaired".equalsIgnoreCase(next) && assessmentRound == 2)
+                || ("Repaired".equalsIgnoreCase(current)
+                    && "Ready to Deliver".equalsIgnoreCase(next) && assessmentRound == 2);
         if (!validTransition) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status transition from " + current + " to " + next);
         }
@@ -1909,7 +1932,7 @@ public class GoogleSheetsService {
                 );
                 transformer.setAssessmentRound(switch (status) {
                     case "Assesment", "Repair In Progress" -> 1;
-                    case "Repaired", "Delivered", "Billed" -> 2;
+                    case "Repaired", "Ready to Deliver", "Delivered", "Billed" -> 2;
                     default -> 0;
                 });
                 transformerCache.put(transformer.getId(), transformer);
