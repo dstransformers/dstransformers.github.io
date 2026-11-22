@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class TransformerDTO {
     private Long id;
     private String spmCenter;
+    private String make;
+    private String remarks;
     private String dtrNo;
     private String sNo;
     private int capacity;
@@ -57,6 +59,22 @@ public class TransformerDTO {
 
     public String getDtrNo() {
         return dtrNo;
+    }
+
+    public String getMake() {
+        return make;
+    }
+
+    public void setMake(String make) {
+        this.make = make;
+    }
+
+    public String getRemarks() {
+        return remarks;
+    }
+
+    public void setRemarks(String remarks) {
+        this.remarks = remarks;
     }
 
     public void setDtrNo(String dtrNo) {

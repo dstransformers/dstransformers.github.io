@@ -10,6 +10,7 @@ public class TNoteDTO {
     private String tNoteNo;
     private LocalDate date;
     private int numberOfTransformers;
+    private int drumCount;
     private List<TransformerDTO> transformers = new ArrayList<>();
     private List<AttachmentDTO> attachments = new ArrayList<>();
 
@@ -55,6 +56,14 @@ public class TNoteDTO {
 
     public void setNumberOfTransformers(int numberOfTransformers) {
         this.numberOfTransformers = numberOfTransformers;
+    }
+
+    public int getDrumCount() {
+        return drumCount;
+    }
+
+    public void setDrumCount(int drumCount) {
+        this.drumCount = drumCount;
     }
 
     public List<TransformerDTO> getTransformers() {

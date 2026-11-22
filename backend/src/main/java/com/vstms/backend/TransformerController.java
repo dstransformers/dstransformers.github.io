@@ -60,6 +60,8 @@ public class TransformerController {
     public TransformerDTO createTransformer(@Valid @RequestBody CreateTransformerRequest request) {
         return googleSheetsService.createTransformer(
                 request.spmCenter(),
+                request.make(),
+                request.remarks(),
                 request.dtrNo(),
                 request.sNo(),
                 request.capacity(),
@@ -76,6 +78,8 @@ public class TransformerController {
         List<Map<String, Object>> transformers = request.transformers().stream().map(transformer -> {
             Map<String, Object> values = new HashMap<>();
             values.put("spmCenter", transformer.spmCenter());
+            values.put("make", transformer.make());
+            values.put("remarks", transformer.remarks());
             values.put("dtrNo", transformer.dtrNo());
             values.put("sNo", transformer.sNo());
             values.put("capacity", transformer.capacity());
@@ -138,7 +142,9 @@ public class TransformerController {
                 request.sNo(),
                 request.capacity(),
                 request.type(),
-                request.oilCapacity()
+                request.oilCapacity(),
+                request.make(),
+                request.remarks()
         );
     }
 
@@ -169,6 +175,8 @@ public class TransformerController {
 
     public record CreateTransformerRequest(
             @NotBlank String spmCenter,
+            String make,
+            String remarks,
             @NotBlank String dtrNo,
             @NotBlank String sNo,
             int capacity,
@@ -184,6 +192,8 @@ public class TransformerController {
 
     public record UpdateTransformerRequest(
             @NotBlank String spmCenter,
+            String make,
+            String remarks,
             @NotBlank String dtrNo,
             @NotBlank String sNo,
             int capacity,

@@ -44,8 +44,8 @@ const SHEET_HEADERS = {
   Enquiries: ['ID', 'Date', 'CustomerName', 'CustomerPhone', 'CustomerEmail', 'ServicesRequired', 'TransformerLocation', 'LeakageLocation', 'BreakdownTiming', 'SiteLocation', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt', 'ContactPerson', 'TransformerCapacity', 'TransformerMake', 'TransformerStatus', 'ServicePriority', 'ProblemDescription', 'PhotoLinks'],
   Services: ['ServiceID', 'ServiceName', 'Description', 'Icon'],
   Jobs: ['JobID', 'EnquiryID', 'TransformerID', 'Status', 'StartDate', 'EndDate', 'Technician', 'Description', 'Cost', 'CreatedAt', 'UpdatedAt'],
-  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID', 'AssessmentDetails', 'AssessmentRound'],
-  TNotes: ['ID', 'TNoteNo', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt', 'Attachments'],
+  Transformers: ['ID', 'SpmCenter', 'DtrNo', 'SNo', 'Capacity', 'Type', 'OilCapacity', 'Status', 'TNoteID', 'DcNo', 'SapNo', 'CreatedAt', 'UpdatedAt', 'RequestID', 'AssessmentDetails', 'AssessmentRound', 'Make', 'Remarks'],
+  TNotes: ['ID', 'TNoteNo', 'Date', 'NumberOfTransformers', 'CreatedAt', 'UpdatedAt', 'Attachments', 'DrumCount'],
   'TNote Transformers': ['LinkID', 'TNoteID', 'TransformerID', 'IntakeType', 'VisitStatus', 'Billable', 'CreatedAt', 'UpdatedAt'],
   DCs: ['DcNo', 'Date', 'SpmCenter', 'TotalTransformers', 'CustomerName', 'CustomerAddress', 'CustomerGSTIN', 'CompanyGSTIN', 'TNoteNo', 'EmptyDrumsAvailable', 'EmptyDrumCount', 'SentToTGSPDCL', 'TransformerDetails', 'Delivered', 'DeliveryAttachments', 'DeliveredAt', 'CreatedAt', 'UpdatedAt', 'GeneratedChallanUrl', 'GeneratedChallanFileId', 'RequestId'],
   Bills: ['SapNo', 'Date', 'SpmCenter', 'TotalTransformers', 'BillAmount', 'CreatedAt', 'UpdatedAt', 'Attachments', 'AgreementNo', 'GSTAmount', 'Status', 'AmountCredited', 'CreditedDate', 'GSTFilingMonth', 'InvoiceNo'],
@@ -1357,6 +1357,8 @@ function transformerRowToObj(row) {
   return {
     id: Number(row.ID),
     spmCenter: String(row.SpmCenter || ''),
+    make: String(row.Make || ''),
+    remarks: String(row.Remarks || ''),
     dtrNo: String(row.DtrNo || ''),
     sNo: String(row.SNo || ''),
     capacity: Number(row.Capacity || 0),
@@ -1609,11 +1611,13 @@ function addTransformerLocked_(data) {
     if (existing) {
       const existingRow = Object.fromEntries(existing.headers.map((header, index) => [header, existing.data[index]]));
       const matchesRequest = String(existingRow.SpmCenter || '') === String(data.spmCenter || '') &&
+        String(existingRow.Make || '') === String(data.make || '') &&
         String(existingRow.DtrNo || '') === String(data.dtrNo || '') &&
         String(existingRow.SNo || '') === String(data.sNo || '') &&
         Number(existingRow.Capacity || 0) === Number(data.capacity || 0) &&
         String(existingRow.Type || '') === String(data.type || 'Distribution') &&
         Number(existingRow.OilCapacity || 0) === Number(data.oilCapacity || 0) &&
+        String(existingRow.Remarks || '') === String(data.remarks || '') &&
         Number(existingRow.TNoteID || 0) === Number(tNoteId || 0);
       if (!matchesRequest) throw new Error('Request ID was already used for a different transformer.');
       const created = transformerRowToObj(existingRow);
@@ -1644,6 +1648,8 @@ function addTransformerLocked_(data) {
   const rowValues = {
     ID: id,
     SpmCenter: data.spmCenter || '',
+    Make: data.make || '',
+    Remarks: data.remarks || '',
     DtrNo: data.dtrNo || '',
     SNo: data.sNo || '',
     Capacity: data.capacity || 0,
@@ -1680,6 +1686,7 @@ function addTransformerLocked_(data) {
 }
 
 function updateTransformer(id, data) {
+  initializeSheet(SHEET_NAMES.TRANSFORMERS, SHEET_HEADERS.Transformers);
   const found = findRowByValue(SHEET_NAMES.TRANSFORMERS, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'Transformer not found' };
 
@@ -1692,6 +1699,8 @@ function updateTransformer(id, data) {
   };
 
   if (data.spmCenter !== undefined) setCol('SpmCenter', data.spmCenter);
+  if (data.make !== undefined) setCol('Make', data.make);
+  if (data.remarks !== undefined) setCol('Remarks', data.remarks);
   if (data.dtrNo !== undefined) setCol('DtrNo', data.dtrNo);
   if (data.sNo !== undefined) setCol('SNo', data.sNo);
   if (data.capacity !== undefined) setCol('Capacity', data.capacity);
@@ -2230,6 +2239,7 @@ function getAllTNotes() {
       tNoteNo: String(tnote.TNoteNo || id),
       date: dateOnly_(tnote.Date),
       numberOfTransformers: attachedTransformers.length,
+      drumCount: Number(tnote.DrumCount || 0),
       attachments: parseRecordAttachments_(tnote.Attachments),
       transformers: attachedTransformers
     };
@@ -2254,6 +2264,7 @@ function getTNoteById(id) {
       tNoteNo: String(obj.TNoteNo || obj.ID),
       date: dateOnly_(obj.Date),
       numberOfTransformers: transformers.length,
+      drumCount: Number(obj.DrumCount || 0),
       attachments: parseRecordAttachments_(obj.Attachments),
       transformers: transformers
     }
@@ -2277,6 +2288,7 @@ function addTNote(data) {
     TNoteNo: tNoteNo,
     Date: data.date || new Date().toISOString().split('T')[0],
     NumberOfTransformers: data.numberOfTransformers || 0,
+    DrumCount: Number(data.drumCount || 0),
     CreatedAt: now,
     UpdatedAt: now,
     Attachments: JSON.stringify(attachments)
@@ -2290,6 +2302,7 @@ function addTNote(data) {
 }
 
 function updateTNote(id, data) {
+  initializeSheet(SHEET_NAMES.TNOTES, SHEET_HEADERS.TNotes);
   const found = findRowByValue(SHEET_NAMES.TNOTES, 'ID', id);
   if (!found) return { status: 'NOT_FOUND', message: 'TNote not found' };
 
@@ -2299,6 +2312,7 @@ function updateTNote(id, data) {
   const dateIdx = headers.indexOf('Date') + 1;
   const tNoteNoIdx = headers.indexOf('TNoteNo') + 1;
   const countIdx = headers.indexOf('NumberOfTransformers') + 1;
+  const drumCountIdx = headers.indexOf('DrumCount') + 1;
   const updatedIdx = headers.indexOf('UpdatedAt') + 1;
 
   if (data.tNoteNo !== undefined) {
@@ -2313,6 +2327,7 @@ function updateTNote(id, data) {
   }
   if (dateIdx > 0 && data.date) sheet.getRange(found.rowIndex, dateIdx).setValue(data.date);
   if (countIdx > 0 && data.numberOfTransformers !== undefined) sheet.getRange(found.rowIndex, countIdx).setValue(data.numberOfTransformers);
+  if (drumCountIdx > 0 && data.drumCount !== undefined) sheet.getRange(found.rowIndex, drumCountIdx).setValue(Number(data.drumCount || 0));
   if (updatedIdx > 0) sheet.getRange(found.rowIndex, updatedIdx).setValue(getTimestamp());
 
   return getTNoteById(id);
@@ -3014,23 +3029,41 @@ function deleteBill(sapNo) {
 
 // ============ QUOTATION FUNCTIONS ============
 
-function initializeQuotationSheets() {
-  initializeDropdownDefaults_();
-  const dropdownDefaults = getDropdownDefaults_();
-  const settingsSheet = initializeSheet(SHEET_NAMES.QUOTATION_SETTINGS, SHEET_HEADERS['Quotation Settings']);
+function getQuotationSettings_() {
+  const sheet = initializeSheet(SHEET_NAMES.QUOTATION_SETTINGS, SHEET_HEADERS['Quotation Settings']);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const settingIndex = headers.indexOf('Setting');
+  const valueIndex = headers.indexOf('Value');
   const configuredSettings = {};
-  getSheetData(SHEET_NAMES.QUOTATION_SETTINGS).forEach(row => {
-    configuredSettings[String(row.Setting || '')] = row;
-  });
+  const rowIndexes = {};
+  for (let index = 1; index < values.length; index++) {
+    const setting = String(values[index][settingIndex] || '');
+    if (!setting) continue;
+    configuredSettings[setting] = values[index][valueIndex];
+    rowIndexes[setting] = index + 1;
+  }
+
   DEFAULT_QUOTATION_SETTINGS.forEach(([setting, value]) => {
-    const current = configuredSettings[setting];
-    if (!current) {
-      settingsSheet.appendRow([setting, value]);
-    } else if (String(current.Value || '') === '') {
-      const rowIndex = findRowByValue(SHEET_NAMES.QUOTATION_SETTINGS, 'Setting', setting).rowIndex;
-      settingsSheet.getRange(rowIndex, 2).setValue(value);
+    if (!rowIndexes[setting]) {
+      sheet.appendRow([setting, value]);
+      configuredSettings[setting] = value;
+      rowIndexes[setting] = sheet.getLastRow();
+    } else if (String(configuredSettings[setting] || '') === '') {
+      sheet.getRange(rowIndexes[setting], valueIndex + 1).setValue(value);
+      configuredSettings[setting] = value;
     }
   });
+
+  Object.keys(configuredSettings).forEach(setting => {
+    configuredSettings[setting] = String(configuredSettings[setting] || '');
+  });
+  return configuredSettings;
+}
+
+function initializeQuotationSheets() {
+  const dropdownDefaults = getDropdownDefaults_();
+  const settings = getQuotationSettings_();
 
   const ratesSheet = initializeSheet(SHEET_NAMES.QUOTATION_RATES, SHEET_HEADERS['Quotation Rates']);
   if (ratesSheet.getLastRow() === 1) {
@@ -3053,15 +3086,11 @@ function initializeQuotationSheets() {
 
   initializeSheet(SHEET_NAMES.QUOTATIONS, SHEET_HEADERS.Quotations);
   initializeSheet(SHEET_NAMES.QUOTATION_FORM, SHEET_HEADERS.Quotation_Form);
+  return { dropdownDefaults, settings };
 }
 
 function getQuotationConfig() {
-  initializeQuotationSheets();
-  const dropdownDefaults = getDropdownDefaults_();
-  const settings = {};
-  getSheetData(SHEET_NAMES.QUOTATION_SETTINGS).forEach(row => {
-    if (row.Setting) settings[String(row.Setting)] = String(row.Value || '');
-  });
+  const { dropdownDefaults, settings } = initializeQuotationSheets();
 
   const rates = {};
   getSheetData(SHEET_NAMES.QUOTATION_RATES).forEach(row => {
@@ -3117,7 +3146,7 @@ function getAllQuotations() {
       lineItems,
       subtotal: Number(row.Subtotal || 0),
       gstApplicable: String(row.GSTApplicable || '').toLowerCase() === 'true',
-      gstRate: Number(row.GSTRate || 19),
+      gstRate: Number(row.GSTRate || 18),
       gstAmount: Number(row.GSTAmount || 0),
       grandTotal: Number(row.GrandTotal || 0),
       warrantyMonths: String(row.WarrantyMonths || ''),
@@ -3543,7 +3572,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
   });
 
   const subtotal = Math.round(quotation.lineItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.rate || 0), 0) * 100) / 100;
-  const gstAmount = isBill && quotation.gstApplicable ? Math.round(subtotal * Number(quotation.gstRate || 19) * 100) / 100 : 0;
+  const gstAmount = isBill && quotation.gstApplicable ? Math.round(subtotal * Number(quotation.gstRate || 18) * 100) / 100 : 0;
   const grandTotal = Math.round((subtotal + gstAmount) * 100) / 100;
   quotation.lineItems.forEach((item, index) => {
     const row = index + 1;
@@ -3584,7 +3613,7 @@ function addQuotationSlideContent_(slide, presentation, quotation, settings) {
     belowTableObjectIds.push(totalsPanel.getObjectId());
     const totals = [
       `Subtotal: ₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      ...(quotation.gstApplicable ? [`GST (${Number(quotation.gstRate || 19)}%): ₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`] : []),
+      ...(quotation.gstApplicable ? [`GST (${Number(quotation.gstRate || 18)}%): ₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`] : []),
       `TOTAL AMOUNT: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     ].join('\n');
     const totalsShape = setQuotationText_(
@@ -3795,8 +3824,7 @@ function quotationNumberSequence_(quotationNo, documentType) {
   return match ? Number(match[1]) : 0;
 }
 
-function allocateQuotationNumbersLocked_(documentType, financialYear, quotationDate, count) {
-  const settings = getQuotationConfig().data.settings;
+function allocateQuotationNumbersLocked_(documentType, financialYear, quotationDate, count, settings = getQuotationSettings_()) {
   const startingNumber = Number(settings['Starting Quotation Number'] || 1);
   const matchingRows = getSheetData(SHEET_NAMES.QUOTATIONS)
     .filter(row => String(row.FinancialYear || '') === financialYear
@@ -3844,11 +3872,12 @@ function reserveQuotationNumbers(data) {
   const ownsLock = !lock.hasLock();
   if (ownsLock) lock.waitLock(30000);
   try {
-    initializeQuotationSheets();
+    const settings = getQuotationSettings_();
+    initializeSheet(SHEET_NAMES.QUOTATIONS, SHEET_HEADERS.Quotations);
     return {
       status: 'SUCCESS',
       data: {
-        numbers: allocateQuotationNumbersLocked_(documentType, financialYear, quotationDate, count),
+        numbers: allocateQuotationNumbersLocked_(documentType, financialYear, quotationDate, count, settings),
       },
     };
   } finally {
@@ -3901,7 +3930,7 @@ function generatedQuotationRecord_(input, outputFormat, now, groupId, groupPosit
   ) * 100) / 100;
   const gstApplicable = documentType === 'BILL'
     && (input.gstApplicable === true || String(input.gstApplicable).toLowerCase() === 'true');
-  const gstRate = gstApplicable ? Number(input.gstRate || 19) : 0;
+  const gstRate = gstApplicable ? Number(input.gstRate || 18) : 0;
   const gstAmount = gstApplicable ? Math.round(subtotal * gstRate) / 100 : 0;
   const grandTotal = Math.round((subtotal + gstAmount) * 100) / 100;
   const warrantyMonths = documentType === 'BILL' && input.warrantyMonths !== '' && input.warrantyMonths != null
@@ -3943,7 +3972,6 @@ function generatedQuotationRecord_(input, outputFormat, now, groupId, groupPosit
 }
 
 function saveGeneratedQuotationGroup(data) {
-  initializeQuotationSheets();
   if (!data || !Array.isArray(data.records) || data.records.length < 1 || data.records.length > 2) {
     throw new Error('A generated quotation or bill must contain one or two numbered documents.');
   }
@@ -3982,9 +4010,21 @@ function saveGeneratedQuotationGroup(data) {
   const appendedRows = [];
   const deletedRows = [];
   try {
-    const settings = getQuotationConfig().data.settings;
+    const settings = getQuotationSettings_();
     const sheet = initializeSheet(SHEET_NAMES.QUOTATIONS, SHEET_HEADERS.Quotations);
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    const quotationRows = getSheetData(SHEET_NAMES.QUOTATIONS);
+    const rowsByNumber = new Map();
+    quotationRows.forEach((row, index) => {
+      const number = String(row.QuotationNo || '');
+      if (number && !rowsByNumber.has(number)) {
+        rowsByNumber.set(number, {
+          rowIndex: index + 2,
+          data: headers.map(header => row[header]),
+          headers,
+        });
+      }
+    });
     const recordsInput = data.records;
     const now = getTimestamp();
     const records = recordsInput.map((record, index) => generatedQuotationRecord_(
@@ -4013,15 +4053,13 @@ function saveGeneratedQuotationGroup(data) {
     const replaceNumbers = Array.isArray(data.replaceQuotationNumbers)
       ? data.replaceQuotationNumbers.map(String)
       : [];
-    const oldRows = replaceNumbers
-      .map(number => findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', number))
-      .filter(Boolean);
+    const oldRows = replaceNumbers.map(number => rowsByNumber.get(number)).filter(Boolean);
     if (replaceNumbers.length !== oldRows.length) {
       throw new Error('One or more existing documents could not be found for regeneration.');
     }
     const replacingNumbers = new Set(replaceNumbers);
     records.forEach(record => {
-      const conflict = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', record.quotationNo);
+      const conflict = rowsByNumber.get(record.quotationNo);
       if (conflict && !replacingNumbers.has(record.quotationNo)) {
         throw new Error(`Document number ${record.quotationNo} is already in use.`);
       }
@@ -4033,7 +4071,7 @@ function saveGeneratedQuotationGroup(data) {
     if (storedGroupIds.length > 1) throw new Error('The selected documents belong to different linked groups.');
     const existingGroupId = storedGroupIds[0] || '';
     const expectedNumbers = existingGroupId
-      ? getSheetData(SHEET_NAMES.QUOTATIONS)
+      ? quotationRows
         .filter(row => String(row.DocumentGroupId || '') === existingGroupId)
         .map(row => String(row.QuotationNo || ''))
       : replaceNumbers;
@@ -4095,14 +4133,28 @@ function saveGeneratedQuotationGroup(data) {
       .filter(row => !recordNumbers.has(String(row.data[row.headers.indexOf('QuotationNo')] || '')))
       .sort((left, right) => right.rowIndex - left.rowIndex)
       .forEach(row => {
-        const values = sheet.getRange(row.rowIndex, 1, 1, headers.length).getValues()[0];
+        const values = row.data;
         sheet.deleteRow(row.rowIndex);
         deletedRows.push({ rowIndex: row.rowIndex, values });
       });
+    if (deletedRows.length > 0) {
+      const rowsAfterDeletion = getSheetData(SHEET_NAMES.QUOTATIONS);
+      rowsByNumber.clear();
+      rowsAfterDeletion.forEach((row, index) => {
+        const number = String(row.QuotationNo || '');
+        if (number && !rowsByNumber.has(number)) {
+          rowsByNumber.set(number, {
+            rowIndex: index + 2,
+            data: headers.map(header => row[header] === undefined ? '' : row[header]),
+            headers,
+          });
+        }
+      });
+    }
     recordsByNumber.forEach((record, number) => {
-      const existing = findRowByValue(SHEET_NAMES.QUOTATIONS, 'QuotationNo', number);
+      const existing = rowsByNumber.get(number);
       if (existing) {
-        const previousValues = sheet.getRange(existing.rowIndex, 1, 1, headers.length).getValues()[0];
+        const previousValues = existing.data;
         changedRows.push({ quotationNo: number, values: previousValues });
         sheet.getRange(existing.rowIndex, 1, 1, headers.length).setValues([rowFor(record)]);
       } else if (oldRows.length === 0 || records.length > oldRows.length) {
@@ -4196,7 +4248,7 @@ function saveQuotation(data) {
   });
   const subtotal = Math.round(lineItems.reduce((sum, item) => sum + (documentType === 'BILL' ? item.quantity : 1) * item.rate, 0) * 100) / 100;
   const gstApplicable = documentType === 'BILL' && (data.gstApplicable === true || String(data.gstApplicable).toLowerCase() === 'true');
-  const gstRate = gstApplicable ? 19 : 0;
+  const gstRate = gstApplicable ? 18 : 0;
   const gstAmount = gstApplicable ? Math.round(subtotal * gstRate) / 100 : 0;
   const grandTotal = Math.round((subtotal + gstAmount) * 100) / 100;
   const warrantyMonths = documentType === 'BILL' && data.warrantyMonths !== '' && data.warrantyMonths != null

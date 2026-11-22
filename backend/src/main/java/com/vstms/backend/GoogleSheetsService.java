@@ -717,8 +717,20 @@ public class GoogleSheetsService {
 
     public TransformerDTO createTransformer(String spmCenter, String dtrNo, String sNo, int capacity, String type,
             double oilCapacity, Long tNoteId, String intakeType, String requestId) {
+        return createTransformer(spmCenter, "", dtrNo, sNo, capacity, type, oilCapacity, tNoteId, intakeType, requestId);
+    }
+
+    public TransformerDTO createTransformer(String spmCenter, String make, String dtrNo, String sNo, int capacity, String type,
+            double oilCapacity, Long tNoteId, String intakeType, String requestId) {
+        return createTransformer(spmCenter, make, null, dtrNo, sNo, capacity, type, oilCapacity, tNoteId, intakeType, requestId);
+    }
+
+    public TransformerDTO createTransformer(String spmCenter, String make, String remarks, String dtrNo, String sNo, int capacity, String type,
+            double oilCapacity, Long tNoteId, String intakeType, String requestId) {
         Long nextId = transformerCache.keySet().stream().max(Long::compareTo).orElse(0L) + 1;
         TransformerDTO dto = new TransformerDTO(nextId, spmCenter, dtrNo, sNo, capacity, type, oilCapacity, "Recieved", tNoteId, null, null);
+        dto.setMake(make);
+        dto.setRemarks(remarks);
         dto.setAssessmentRound(0);
         dto.setIntakeType(intakeType);
         if (tNoteId != null) {
@@ -894,10 +906,24 @@ public class GoogleSheetsService {
     }
 
     public TransformerDTO updateTransformer(Long id, String spmCenter, String dtrNo, String sNo, int capacity, String type, double oilCapacity) {
+        return updateTransformer(id, spmCenter, dtrNo, sNo, capacity, type, oilCapacity, null, null);
+    }
+
+    public TransformerDTO updateTransformer(Long id, String spmCenter, String dtrNo, String sNo, int capacity, String type, double oilCapacity, String make) {
+        return updateTransformer(id, spmCenter, dtrNo, sNo, capacity, type, oilCapacity, make, null);
+    }
+
+    public TransformerDTO updateTransformer(Long id, String spmCenter, String dtrNo, String sNo, int capacity, String type, double oilCapacity, String make, String remarks) {
         TransformerDTO dto = getTransformerById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transformer not found"));
 
         dto.setSpmCenter(spmCenter);
+        if (make != null) {
+            dto.setMake(make);
+        }
+        if (remarks != null) {
+            dto.setRemarks(remarks);
+        }
         dto.setDtrNo(dtrNo);
         dto.setSNo(sNo);
         dto.setCapacity(capacity);
@@ -910,6 +936,12 @@ public class GoogleSheetsService {
         Map<String, Object> params = new HashMap<>();
         params.put("id", id);
         params.put("spmCenter", spmCenter);
+        if (make != null) {
+            params.put("make", make);
+        }
+        if (remarks != null) {
+            params.put("remarks", remarks);
+        }
         params.put("dtrNo", dtrNo);
         params.put("sNo", sNo);
         params.put("capacity", capacity);
@@ -1820,7 +1852,7 @@ public class GoogleSheetsService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("action", "SAVE_GENERATED_QUOTATION_GROUP");
         payload.put("payload", request);
-        return postToAppsScript(payload, Duration.ofSeconds(90));
+        return postToAppsScript(payload, Duration.ofSeconds(180));
     }
 
     public Map<String, Object> deleteQuotation(String quotationNo) {
