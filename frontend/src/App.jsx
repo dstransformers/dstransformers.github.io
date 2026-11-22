@@ -884,10 +884,12 @@ function App() {
           type="button"
           className="card kpi-card"
           onClick={() => openTransformersByStatus(item.status)}
-          aria-label={`View ${item.count} ${item.ariaLabel}`}
+          aria-label={item.count === null
+            ? `${item.ariaLabel} count unavailable`
+            : `View ${item.count} ${item.ariaLabel}`}
         >
           <p>{item.label}</p>
-          <h3>{item.count}</h3>
+          <h3>{item.count === null ? '—' : item.count}</h3>
           <small>{item.detail}</small>
         </button>
       ))}
@@ -1135,7 +1137,42 @@ ${styles}
         throw new Error(`Failed to fetch summary (${response.status})`)
       }
       const data = await response.json()
-      setSummary(data)
+      setTransformersError('')
+      const summaryFields = [
+        'recieve',
+        'assesment',
+        'repairInProgress',
+        'repaired',
+        'readyToDeliver',
+        'delivered',
+        'billed',
+        'scrap',
+      ]
+      const normalizedSummary = Object.fromEntries(summaryFields.map(field => {
+        const count = Number(data[field])
+        return [field, Number.isFinite(count) ? count : 0]
+      }))
+      const readyToDeliverCount = Number(data.readyToDeliver)
+      if (!Number.isFinite(readyToDeliverCount)) {
+        normalizedSummary.readyToDeliver = null
+      }
+      setSummary(previous => ({ ...previous, ...normalizedSummary }))
+
+      if (!Number.isFinite(readyToDeliverCount)) {
+        const params = new URLSearchParams({ page: '0', size: '1' })
+        params.append('status', 'Ready to Deliver')
+        params.append('status', 'ready_to_deliver')
+        const readyResponse = await apiFetch(`/api/transformers?${params}`)
+        if (!readyResponse.ok) {
+          throw new Error(`Failed to fetch Ready to Deliver count (${readyResponse.status})`)
+        }
+        const readyData = await readyResponse.json()
+        const count = Number(readyData.totalElements)
+        if (!Number.isFinite(count)) {
+          throw new Error('The Ready to Deliver count response was invalid.')
+        }
+        setSummary(previous => ({ ...previous, readyToDeliver: count }))
+      }
     } catch (err) {
       setTransformersError(err instanceof Error ? err.message : 'Failed to fetch summary')
     }
