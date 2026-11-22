@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class TransformerDTO {
     private Long id;
     private String spmCenter;
+    private String make;
+    private String remarks;
     private String dtrNo;
     private String sNo;
     private int capacity;
@@ -14,6 +16,12 @@ public class TransformerDTO {
     private Long tNoteId;
     private String dcNo;
     private String sapNo;
+    private String createdAt;
+    private String intakeType;
+    private String visitStatus;
+    private Boolean billable;
+    private AssessmentDetailsDTO assessmentDetails;
+    private int assessmentRound;
 
     public TransformerDTO() {
     }
@@ -51,6 +59,22 @@ public class TransformerDTO {
 
     public String getDtrNo() {
         return dtrNo;
+    }
+
+    public String getMake() {
+        return make;
+    }
+
+    public void setMake(String make) {
+        this.make = make;
+    }
+
+    public String getRemarks() {
+        return remarks;
+    }
+
+    public void setRemarks(String remarks) {
+        this.remarks = remarks;
     }
 
     public void setDtrNo(String dtrNo) {
@@ -123,5 +147,53 @@ public class TransformerDTO {
 
     public void setSapNo(String sapNo) {
         this.sapNo = sapNo;
+    }
+
+    public String getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(String createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getIntakeType() {
+        return intakeType;
+    }
+
+    public void setIntakeType(String intakeType) {
+        this.intakeType = intakeType;
+    }
+
+    public String getVisitStatus() {
+        return visitStatus;
+    }
+
+    public void setVisitStatus(String visitStatus) {
+        this.visitStatus = visitStatus;
+    }
+
+    public Boolean getBillable() {
+        return billable;
+    }
+
+    public void setBillable(Boolean billable) {
+        this.billable = billable;
+    }
+
+    public AssessmentDetailsDTO getAssessmentDetails() {
+        return assessmentDetails;
+    }
+
+    public void setAssessmentDetails(AssessmentDetailsDTO assessmentDetails) {
+        this.assessmentDetails = assessmentDetails;
+    }
+
+    public int getAssessmentRound() {
+        return assessmentRound;
+    }
+
+    public void setAssessmentRound(int assessmentRound) {
+        this.assessmentRound = assessmentRound;
     }
 }

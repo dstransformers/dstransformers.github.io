@@ -1,7 +1,7 @@
 # VSTMS Implementation Summary
 
 ## Project Overview
-VSTMS (Vendor Service Transformer Management System) - A full-stack application for managing transformer repair services with:
+VSTMS (D.S Transformer Management System) - A full-stack application for managing transformer repair services with:
 - **Frontend:** React 19.2.4 with Vite 8.0.4
 - **Backend:** Spring Boot 3.5.13 with Java 17 and Maven
 - **Database:** Google Sheets with Google Apps Script
@@ -292,7 +292,9 @@ curl -X POST http://localhost:8082/api/enquiries \
 1. **Deploy Google Apps Script**
    - Open Google Sheet for VSTMS
    - Copy VSTMS_GoogleAppsScript.gs content to Apps Script editor
-   - Deploy as Web App (Anyone can access)
+   - Configure the backend shared secret in Script Properties and the backend
+     environment before deploying the new Apps Script version
+   - Deploy as Web App; unauthenticated direct requests are rejected
    - Verify URL matches application.properties
 
 2. **Test Backend APIs**
@@ -424,6 +426,7 @@ Repository Root:
 spring.application.name=backend
 server.port=8082
 google.apps.script.url=https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec
+google.apps.script.shared-secret=${GOOGLE_APPS_SCRIPT_SHARED_SECRET}
 ```
 
 ### Google Sheets Columns:

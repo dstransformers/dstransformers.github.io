@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="V S Transformers logo">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#ef4444"/>
+    </linearGradient>
+  </defs>
+  <circle cx="100" cy="100" r="94" fill="url(#bgGrad)" stroke="#ffffff" stroke-width="8"/>
+  <path d="M56 46h20v108L91 120h10l-15 34h22l20-56H86l22-56H56z" fill="#ffffff"/>
+  <path d="M115 60l27 52H125l25 40-42-14 16-53H115z" fill="url(#boltGrad)"/>
+  <text x="100" y="176" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff">DS</text>
+</svg>

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="932" viewBox="0 0 430 932" role="img" aria-labelledby="title desc">
+  <title id="title">VSTMS mobile home screen</title>
+  <desc id="desc">Mobile-first workshop home with new enquiry count, quick quotation, bill and DC actions, plus up to five received TGSPDCL TNotes ready for transformer-level assessment.</desc>
+  <defs>
+    <linearGradient id="top" x2="1" y2="1"><stop stop-color="#172f44"/><stop offset="1" stop-color="#102338"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#132b3d" flood-opacity=".08"/></filter>
+    <style>text{font-family:Inter,"Segoe UI",Arial,sans-serif}.ink{fill:#172e40}.muted{fill:#71808b}.white{fill:#fff}.tiny{font-size:10px}.sm{font-size:12px}.label{font-size:10px;font-weight:700;letter-spacing:.8px}.bold{font-weight:700}.med{font-weight:600}</style>
+  </defs>
+  <rect width="430" height="932" fill="#f3f5f2"/>
+  <rect x="0" y="0" width="430" height="112" fill="url(#top)"/>
+  <text x="22" y="23" class="tiny bold white">9:41</text>
+  <text x="22" y="64" font-size="17" class="bold white">D.S. TRANSFORMERS</text>
+  <text x="22" y="85" class="tiny" fill="#d0dbe0">Workshop operations</text>
+  <circle cx="365" cy="64" r="19" fill="#fff" opacity=".13"/>
+  <path d="M359 66v-5a6 6 0 0 1 12 0v5l3 4h-18z" fill="none" stroke="#fff" stroke-width="1.5"/>
+  <circle cx="378" cy="49" r="10" fill="#b65343"/><text x="378" y="53" text-anchor="middle" class="tiny bold white">3</text>
+  <circle cx="410" cy="64" r="17" fill="#e8eee9"/><text x="410" y="68" text-anchor="middle" class="tiny bold ink">DS</text>
+  <text x="22" y="145" font-size="23" class="bold ink">Good morning</text>
+  <text x="22" y="167" class="sm muted">What would you like to do?</text>
+  <rect x="20" y="183" width="390" height="43" rx="12" fill="#fff" stroke="#e3e8e3"/>
+  <circle cx="40" cy="204" r="6" fill="none" stroke="#71808b" stroke-width="1.5"/><path d="m44 208 5 5" stroke="#71808b" stroke-width="1.5"/>
+  <text x="60" y="208" class="sm muted">Find customer, TNote, DTR or SAP no.</text>
+  <text x="22" y="253" class="label muted">QUICK ACTIONS</text>
+  <g filter="url(#shadow)">
+    <rect x="20" y="267" width="188" height="76" rx="14" fill="#fff"/>
+    <rect x="222" y="267" width="188" height="76" rx="14" fill="#fff"/>
+    <rect x="20" y="353" width="188" height="76" rx="14" fill="#fff"/>
+    <rect x="222" y="353" width="188" height="76" rx="14" fill="#fff"/>
+  </g>
+  <rect x="34" y="281" width="34" height="34" rx="10" fill="#f5e8df"/><path d="M43 288h16v19H43zM47 285h8v5h-8zM46 296h10m-10 5h8" fill="none" stroke="#a45e39" stroke-width="1.5"/>
+  <text x="78" y="293" class="sm bold ink">Quotation</text><text x="78" y="311" class="tiny muted">Private orders</text><text x="34" y="331" class="tiny bold" fill="#a45e39">CREATE / AD-HOC</text>
+  <rect x="236" y="281" width="34" height="34" rx="10" fill="#e8eff4"/><path d="M245 287h16v20h-16zM248 294h10m-10 5h10m-10 5h7" fill="none" stroke="#31566e" stroke-width="1.5"/>
+  <text x="280" y="293" class="sm bold ink">Service bill</text><text x="280" y="311" class="tiny muted">Private work</text><text x="236" y="331" class="tiny bold" fill="#31566e">CREATE BILL</text>
+  <rect x="34" y="367" width="34" height="34" rx="10" fill="#e5efe9"/><path d="M42 376h18l4 4v15H42zM60 376v5h4" fill="none" stroke="#47785e" stroke-width="1.5"/>
+  <text x="78" y="379" class="sm bold ink">Delivery DC</text><text x="78" y="397" class="tiny muted">TGSPDCL repaired units</text><text x="34" y="417" class="tiny bold" fill="#47785e">GENERATE CHALLAN</text>
+  <rect x="236" y="367" width="34" height="34" rx="10" fill="#e8eee9"/><path d="M244 375h17v20h-17zM247 381h11m-11 5h11m-11 5h8" fill="none" stroke="#47785e" stroke-width="1.5"/>
+  <text x="280" y="379" class="sm bold ink">Enquiries</text><text x="280" y="397" class="tiny muted">3 new to review</text><text x="236" y="417" class="tiny bold" fill="#b65343">OPEN INBOX  →</text>
+  <rect x="20" y="445" width="390" height="417" rx="16" fill="#fff" stroke="#e3e8e3"/>
+  <text x="38" y="477" font-size="16" class="bold ink">Assessment due</text>
+  <text x="38" y="496" class="tiny muted">TGSPDCL · up to 5 open TNotes with Received units</text>
+  <rect x="282" y="462" width="109" height="23" rx="11" fill="#fbf1df"/>
+  <circle cx="296" cy="474" r="4" fill="#d0934e"/><text x="345" y="478" text-anchor="middle" class="tiny bold" fill="#805721">5 OPEN TNOTES</text>
+
+  <rect x="34" y="512" width="362" height="67" rx="11" fill="#fcf7f2"/>
+  <rect x="34" y="512" width="5" height="67" rx="3" fill="#b8754f"/>
+  <text x="52" y="536" class="sm bold ink">TN-146 · Warangal</text>
+  <text x="52" y="554" class="tiny muted">8 / 10 units · 2 Received · 2 Assessing</text>
+  <text x="52" y="570" class="tiny bold" fill="#98631f">1 SPM Center · up to 10 transformers</text>
+  <rect x="323" y="531" width="58" height="30" rx="9" fill="#142b40"/>
+  <text x="352" y="550" text-anchor="middle" class="tiny bold white">Assess 2</text>
+
+  <rect x="34" y="587" width="362" height="60" rx="11" fill="#f8f9f6"/>
+  <text x="52" y="610" class="sm bold ink">TN-145 · Karimnagar</text>
+  <text x="52" y="630" class="tiny muted">10 / 10 units · 1 Received · 3 Assessing</text>
+  <rect x="323" y="602" width="58" height="28" rx="9" fill="#b8754f"/><text x="352" y="620" text-anchor="middle" class="tiny bold white">Assess 1</text>
+
+  <rect x="34" y="655" width="362" height="60" rx="11" fill="#f8f9f6"/>
+  <text x="52" y="678" class="sm bold ink">TN-144 · Khammam</text>
+  <text x="52" y="698" class="tiny muted">6 / 10 units · 1 Received · 2 in Repair</text>
+  <rect x="323" y="670" width="58" height="28" rx="9" fill="#b8754f"/><text x="352" y="688" text-anchor="middle" class="tiny bold white">Assess 1</text>
+
+  <rect x="34" y="723" width="362" height="60" rx="11" fill="#f8f9f6"/>
+  <text x="52" y="746" class="sm bold ink">TN-143 · Nalgonda</text>
+  <text x="52" y="766" class="tiny muted">9 / 10 units · 1 Received · 4 Repaired</text>
+  <rect x="323" y="738" width="58" height="28" rx="9" fill="#b8754f"/><text x="352" y="756" text-anchor="middle" class="tiny bold white">Assess 1</text>
+
+  <text x="38" y="813" class="tiny bold" fill="#a45e39">VIEW ALL TNOTES WITH RECEIVED UNITS  →</text>
+  <text x="38" y="838" class="tiny muted">A TNote belongs to one SPM Center. Each transformer moves independently.</text>
+  <rect x="0" y="877" width="430" height="55" fill="#fff"/>
+  <line x1="0" y1="877" x2="430" y2="877" stroke="#e3e8e3"/>
+  <rect x="20" y="886" width="84" height="38" rx="10" fill="#eaf0eb"/>
+  <text x="62" y="910" text-anchor="middle" class="tiny bold" fill="#315e48">⌂  Home</text>
+  <text x="166" y="910" text-anchor="middle" class="tiny muted">Orders</text>
+  <text x="270" y="910" text-anchor="middle" class="tiny muted">People</text>
+  <text x="378" y="910" text-anchor="middle" class="tiny muted">More</text>
+</svg>

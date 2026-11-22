@@ -55,7 +55,13 @@ mvn clean install
 ```properties
 # Should already contain:
 google.apps.script.url=https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec
+google.apps.script.shared-secret=${GOOGLE_APPS_SCRIPT_SHARED_SECRET}
 ```
+
+Set `GOOGLE_APPS_SCRIPT_SHARED_SECRET` in the backend environment and set the
+same randomly generated value (at least 32 characters) as the Apps Script
+project's `VSTMS_BACKEND_SHARED_SECRET` Script Property. Do not expose it to
+browser code or commit it.
 
 ### Run Backend Server:
 ```bash
@@ -278,10 +284,10 @@ logging.level.com.vstms=DEBUG
 logging.level.root=INFO
 ```
 
-**Test Google Apps Script:**
+**Test the backend API (do not call the Apps Script URL directly):**
 ```bash
-# Check if URL is accessible
-curl https://script.google.com/macros/s/AKfycbwmKqM-u7oaj-GlYY-y709_3AbzbQshadqsCS95MuiPkWNbkhPkE1sTyeLbk_Fvml5Qmw/exec
+# The health check is public; Apps Script requests are backend-only.
+curl http://localhost:8082/api/health
 ```
 
 ### Frontend Debugging:

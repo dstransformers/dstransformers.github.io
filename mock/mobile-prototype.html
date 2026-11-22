@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172f44">
+  <title>VSTMS · Clickable mobile workflow prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #172f44;
+      --ink: #172e40;
+      --muted: #71808b;
+      --copper: #b8754f;
+      --paper: #f3f5f2;
+      --line: #e3e8e3;
+      --green: #47785e;
+      --amber: #98631f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: radial-gradient(ellipse at 50% 0%, #e9eee9, #f2f4f1 42rem);
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+    }
+    .intro { max-width: 900px; margin: 0 auto; padding: 24px 20px 14px; }
+    .eyebrow { margin: 0 0 8px; color: var(--copper); font-size: 11px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(24px, 5vw, 34px); letter-spacing: -.03em; }
+    .intro p:last-child { margin: 9px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .device {
+      width: min(100%, 470px);
+      min-height: calc(100dvh - 125px);
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid #dce2dc;
+      border-radius: 28px 28px 0 0;
+      background: var(--paper);
+      box-shadow: 0 18px 55px rgba(19, 43, 61, .12);
+    }
+    .statusbar { display: flex; justify-content: space-between; padding: 9px 20px 6px; color: #fff; background: var(--navy); font-size: 10px; font-weight: 700; }
+    .topbar { display: flex; min-height: 65px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px 13px; color: white; background: linear-gradient(115deg, #172f44, #102338); }
+    .topbar h2 { margin: 0; font-size: 18px; }
+    .topbar p { margin: 4px 0 0; color: #cbd7dd; font-size: 11px; }
+    .icon-btn { position: relative; width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid #ffffff2b; border-radius: 13px; color: #fff; background: #ffffff12; font-size: 17px; }
+    .badge { position: absolute; top: -5px; right: -5px; display: grid; width: 19px; height: 19px; place-items: center; border: 2px solid var(--navy); border-radius: 50%; color: #fff; background: #b65343; font-size: 9px; font-weight: 800; }
+    main { min-height: 650px; padding: 18px 16px 90px; }
+    .bottomnav { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); padding: 8px 10px max(8px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: #fffffff2; backdrop-filter: blur(12px); }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .navbtn { min-height: 43px; border: 0; border-radius: 11px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 700; }
+    .navbtn.active { color: #315e48; background: #eaf0eb; }
+    .heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 13px; }
+    .heading h3 { margin: 0; font-size: 17px; }
+    .heading p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .section-label { margin: 20px 2px 9px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+    .card { margin: 0 0 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 4px 14px #132b3d08; }
+    .card.attention { border-color: #eadbce; }
+    .card h4 { margin: 0; font-size: 13px; }
+    .card p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .row + .row { margin-top: 9px; }
+    .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 3px 8px; border-radius: 20px; color: #31566e; background: #e9eff2; font-size: 9px; font-weight: 800; white-space: nowrap; }
+    .pill.amber { color: var(--amber); background: #fbefdc; }
+    .pill.green { color: var(--green); background: #e7f1eb; }
+    .pill.copper { color: #965a3b; background: #f5e8df; }
+    .btn { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border: 1px solid transparent; border-radius: 10px; color: var(--ink); background: #eef1ed; font-size: 11px; font-weight: 800; text-decoration: none; }
+    .btn.primary { color: #fff; background: var(--navy); }
+    .btn.copper { color: #fff; background: var(--copper); }
+    .btn.outline { border-color: var(--line); background: #fff; }
+    .btn.green { color: #315e48; background: #e7f1eb; }
+    .btn.danger { color: #9a463b; background: #f8e9e6; }
+    .btn:disabled { cursor: not-allowed; opacity: .45; }
+    .btn.full { width: 100%; }
+    .actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .actions .btn { flex: 1 1 auto; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .quick { min-height: 89px; padding: 13px; border: 1px solid var(--line); border-radius: 14px; text-align: left; background: #fff; }
+    .quick strong { display: block; margin: 7px 0 3px; font-size: 12px; }
+    .quick span { color: var(--muted); font-size: 10px; }
+    .field { margin: 0 0 11px; }
+    .field label { display: block; margin: 0 0 5px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .05em; }
+    .field input, .field select, .field textarea, .search {
+      width: 100%; min-height: 42px; padding: 10px 11px; border: 1px solid #dfe5df; border-radius: 9px; outline: none; color: var(--ink); background: #fff; font-size: 12px;
+    }
+    .field textarea { min-height: 68px; resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus, .search:focus { border-color: #b8754f; box-shadow: 0 0 0 3px #b8754f22; }
+    .hint { margin: -3px 0 11px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .tabs { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 4px; margin-bottom: 14px; padding: 4px; border-radius: 12px; background: #e8ebe7; }
+    .tab { min-height: 34px; border: 0; border-radius: 9px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 800; }
+    .tab.active { color: var(--ink); background: #fff; box-shadow: 0 1px 4px #132b3d12; }
+    .checkrow { display: flex; align-items: flex-start; gap: 9px; padding: 11px 0; border-bottom: 1px solid #edf0ed; }
+    .checkrow:last-child { border: 0; }
+    .checkrow input { width: 18px; height: 18px; accent-color: var(--copper); }
+    .checkrow strong { display: block; font-size: 11px; }
+    .checkrow small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .notice { margin: 0 0 12px; padding: 12px; border: 1px solid #e7dfd2; border-radius: 12px; color: #625a4b; background: #fbf8f2; font-size: 11px; line-height: 1.5; }
+    .notice strong { color: var(--ink); }
+    .metric { padding: 13px; border-radius: 13px; background: #f8f6f1; }
+    .metric strong { display: block; font-size: 22px; }
+    .metric span { color: var(--muted); font-size: 10px; }
+    .empty { padding: 25px 14px; text-align: center; color: var(--muted); font-size: 12px; }
+    .small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .text-action { padding: 0; border: 0; color: #a45e39; background: transparent; font-size: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+    .toast { position: fixed; z-index: 5; right: 16px; bottom: 78px; left: 16px; max-width: 430px; margin: auto; padding: 12px 15px; border-radius: 12px; color: #fff; background: #203d32; box-shadow: 0 8px 22px #132b3d33; font-size: 12px; }
+    .back { min-height: 34px; margin: -4px 0 10px; padding: 0 9px; border: 0; border-radius: 8px; color: #31566e; background: #e8eff4; font-size: 11px; font-weight: 800; }
+    @media (max-width: 520px) {
+      .intro { padding: 18px 16px 12px; }
+      .intro p:last-child { font-size: 12px; }
+      .device { width: 100%; min-height: calc(100dvh - 104px); border-right: 0; border-left: 0; border-radius: 20px 20px 0 0; }
+      main { padding-right: 14px; padding-left: 14px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <header class="intro">
+    <p class="eyebrow">D.S. Transformers · interactive concept</p>
+    <h1>Mobile workflow prototype</h1>
+    <p>Tap through the sample flows for private orders, TGSPDCL TNotes, transformer assessment, delivery, billing and employee management. This is a design-only prototype; it does not connect to or modify the business application.</p>
+  </header>
+  <section class="device" aria-label="Clickable mobile application concept">
+    <div class="statusbar"><span>9:41</span><span>● ● ●  ◖</span></div>
+    <header class="topbar"><div><h2 id="screen-title">Workshop</h2><p id="screen-subtitle">Operations overview</p></div><button class="icon-btn" data-go="alerts" aria-label="Notifications">♧<span class="badge">3</span></button></header>
+    <main id="screen" aria-live="polite"></main>
+    <nav class="bottomnav" aria-label="Main navigation">
+      <button class="navbtn" data-go="home">⌂ &nbsp;Home</button>
+      <button class="navbtn" data-go="orders">▤ &nbsp;Orders</button>
+      <button class="navbtn" data-go="people">♙ &nbsp;People</button>
+      <button class="navbtn" data-go="more">••• &nbsp;More</button>
+    </nav>
+  </section>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script>
+    const app = {
+      view: "home",
+      enquiryTab: "Enquiries",
+      documentType: "Quotation",
+      selectedEnquiry: 0,
+      selectedTnote: 0,
+      selectedTransformer: 0,
+      selectedDc: 0,
+      selectedBill: 0,
+      selectedEmployee: 0,
+      selectedCenter: "Warangal",
+      directoryPage: 0,
+      selectedUnits: new Set(),
+      selectedBillUnits: new Set(),
+      dcProof: "",
+      attachedFile: "",
+      extraLines: [],
+      editingDocument: -1,
+      editingBill: false,
+      documentSource: "adhoc",
+      isNewEmployee: false,
+      toastTimer: null,
+      enquiries: [
+        { customer: "Sree Lakshmi Industries", contact: "S. Ramesh", phone: "98480 12345", service: "Oil leakage · 250 kVA", status: "New", files: 2 },
+        { customer: "Metro Power Systems", contact: "K. Mahesh", phone: "98480 22556", service: "Oil filtration · 500 kVA", status: "Contacted", files: 1 },
+        { customer: "Vijaya Electricals", contact: "A. Vijay", phone: "98480 33114", service: "Transformer repair · 100 kVA", status: "New", files: 1 }
+      ],
+      documents: [],
+      tnotes: [
+        { id: "TN-146", center: "Warangal", date: "15 Oct 2026", files: ["TNote_146.pdf"], transformers: [
+          { id: "DTR-4102", serial: "SN-88214", capacity: "250 kVA", status: "Received", rounds: 0 },
+          { id: "DTR-4103", serial: "SN-88215", capacity: "100 kVA", status: "Received", rounds: 0 },
+          { id: "DTR-4104", serial: "SN-88216", capacity: "500 kVA", status: "Assessment", rounds: 1 },
+          { id: "DTR-4105", serial: "SN-88217", capacity: "250 kVA", status: "Repair In Progress", rounds: 1 },
+          { id: "DTR-4106", serial: "SN-88218", capacity: "100 kVA", status: "Repaired", rounds: 2 },
+          { id: "DTR-4107", serial: "SN-88219", capacity: "250 kVA", status: "Delivered", rounds: 2, billed: false },
+          { id: "DTR-4108", serial: "SN-88220", capacity: "63 kVA", status: "Scrap", rounds: 1 },
+          { id: "DTR-4109", serial: "SN-88221", capacity: "100 kVA", status: "Repaired", rounds: 2 }
+        ]},
+        { id: "TN-145", center: "Karimnagar", date: "14 Oct 2026", files: ["Joint_inspection.xlsx"], transformers: [
+          { id: "DTR-4038", serial: "SN-88081", capacity: "250 kVA", status: "Received", rounds: 0 },
+          { id: "DTR-4039", serial: "SN-88082", capacity: "100 kVA", status: "Assessment", rounds: 1 },
+          { id: "DTR-4040", serial: "SN-88083", capacity: "500 kVA", status: "Repair In Progress", rounds: 1 },
+          { id: "DTR-4041", serial: "SN-88084", capacity: "250 kVA", status: "Repaired", rounds: 2 },
+          { id: "DTR-4042", serial: "SN-88085", capacity: "100 kVA", status: "Billed", rounds: 2, billed: true }
+        ]},
+        { id: "TN-144", center: "Khammam", date: "13 Oct 2026", files: [], transformers: [
+          { id: "DTR-3901", serial: "SN-87911", capacity: "100 kVA", status: "Repair In Progress", rounds: 1 },
+          { id: "DTR-3902", serial: "SN-87912", capacity: "250 kVA", status: "Repaired", rounds: 2 },
+          { id: "DTR-3903", serial: "SN-87913", capacity: "100 kVA", status: "Billed", rounds: 2, billed: true }
+        ]},
+        { id: "TN-143", center: "Nalgonda", date: "12 Oct 2026", files: [], transformers: [
+          { id: "DTR-3801", serial: "SN-87801", capacity: "250 kVA", status: "Billed", rounds: 2, billed: true }
+        ]},
+        { id: "TN-142", center: "Mahabubnagar", date: "10 Oct 2026", files: [], transformers: [
+          { id: "DTR-3701", serial: "SN-87701", capacity: "100 kVA", status: "Received", rounds: 0 }
+        ]}
+      ],
+      dcs: [],
+      rgpVisits: [
+        { tnote: "TN-144", center: "Khammam", date: "2026-10-11", purpose: "Joint inspection", notes: "Oil sample collected and transformer tagged." }
+      ],
+      bills: [
+        { sap: "SAP-2618", center: "Karimnagar", agreement: "AGR-2026-18", amount: 182000, gst: 32760, status: "PENDING", units: ["DTR-4042"], date: "15 Oct 2026" },
+        { sap: "SAP-2612", center: "Khammam", agreement: "AGR-2026-12", amount: 98000, gst: 17640, status: "RECEIVED", units: ["DTR-3903"], date: "12 Oct 2026", credited: 115640, creditedDate: "12 Oct 2026" },
+        { sap: "SAP-2604", center: "Nalgonda", agreement: "AGR-2026-04", amount: 245000, gst: 44100, status: "GST_FILED", units: ["DTR-3801"], date: "08 Oct 2026", credited: 289100, creditedDate: "10 Oct 2026", filingMonth: "Oct 2026", invoice: "INV-8820" }
+      ],
+      employees: [
+        { name: "Ramesh Kumar", code: "DS/26-27/001", role: "Workshop technician", phone: "98480 11223", salary: 45000, status: "Active", attendance: "Present", in: "08:47", out: "", overtime: "1.5", files: [] },
+        { name: "Suresh Kumar", code: "DS/26-27/002", role: "Technician", phone: "98480 22445", salary: 38000, status: "Active", attendance: "Present", in: "08:55", out: "17:32", overtime: "0", files: [] },
+        { name: "Anil Rao", code: "DS/26-27/003", role: "Helper", phone: "98480 33667", salary: 26000, status: "Active", attendance: "Not recorded", in: "", out: "", overtime: "0", files: [] }
+      ],
+      payrollStatus: ["GENERATED", "NOT GENERATED", "NOT GENERATED"],
+      holidays: ["2026-10-14"]
+    };
+
+    const screen = document.querySelector("#screen");
+    const title = document.querySelector("#screen-title");
+    const subtitle = document.querySelector("#screen-subtitle");
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const btn = (label, action, cls = "outline", extra = "") => `<button class="btn ${cls}" data-action="${action}" ${extra}>${label}</button>`;
+    const go = (label, view, cls = "outline") => `<button class="btn ${cls}" data-go="${view}">${label}</button>`;
+    const field = (label, name, value = "", type = "text", placeholder = "") => `<div class="field"><label>${label}</label><input data-field="${name}" type="${type}" value="${escapeHtml(value)}" placeholder="${placeholder}" /></div>`;
+    const selectField = (label, name, options, selected) => `<div class="field"><label>${label}</label><select data-field="${name}">${options.map((option) => `<option ${option === selected ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select></div>`;
+    const statusPill = (status) => {
+      const cls = ["Repaired", "Delivered", "Billed", "GST_FILED", "RECEIVED"].includes(status) ? "green" : ["Received", "Assessment", "Repair In Progress", "PENDING"].includes(status) ? "amber" : "";
+      return `<span class="pill ${cls}">${escapeHtml(status.replaceAll("_", " "))}</span>`;
+    };
+    const allTransformers = () => app.tnotes.flatMap((tnote) => tnote.transformers.map((transformer) => ({ ...transformer, tnote: tnote.id, center: tnote.center })));
+    const reservedDcUnits = () => app.dcs.filter((dc) => !dc.delivered).flatMap((dc) => dc.units);
+    const selectedTnote = () => app.tnotes[app.selectedTnote] || app.tnotes[0];
+    const selectedTransformer = () => selectedTnote().transformers[app.selectedTransformer] || selectedTnote().transformers[0];
+    const selectedBill = () => app.bills[app.selectedBill] || app.bills[0];
+    const selectedEmployee = () => app.employees[app.selectedEmployee] || app.employees[0];
+    const waitingCount = (tnote) => tnote.transformers.filter((transformer) => transformer.status === "Received").length;
+    const dateForInput = (value) => {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+    };
+    const attachmentLine = (files, fileType) => `<p>Attachments: ${files.length ? escapeHtml(files.join(" · ")) : "none"} · <button class="text-action" data-action="upload-attachment">add file</button><input hidden type="file" data-file="${fileType}" multiple></p>`;
+    const pageHeading = (heading, description = "") => `<div class="heading"><div><h3>${heading}</h3>${description ? `<p>${description}</p>` : ""}</div></div>`;
+    const sectionLabel = (text) => `<div class="section-label">${text}</div>`;
+    const topActions = (back = "home") => `<button class="back" data-go="${back}">‹ &nbsp; Back</button>`;
+
+    function renderHome() {
+      const receivedNotes = app.tnotes.filter((tnote) => waitingCount(tnote) > 0);
+      return `${pageHeading("Good morning", "Workshop operations · 15 October 2026")}
+        <input class="search" data-action="search" placeholder="Find customer, TNote, DTR or SAP no." aria-label="Search records" />
+        ${sectionLabel("QUICK ACTIONS")}
+        <div class="grid2">
+          <button class="quick" data-go="document" data-source="adhoc"><strong>✦ &nbsp;Quotation</strong><span>Private orders · ad-hoc</span></button>
+          <button class="quick" data-go="document" data-type="Service bill" data-source="adhoc"><strong>▤ &nbsp;Service bill</strong><span>Private customer work</span></button>
+          <button class="quick" data-go="dc-form"><strong>⇥ &nbsp;Delivery DC</strong><span>Repaired TGSPDCL units</span></button>
+          <button class="quick" data-go="orders"><strong>✉ &nbsp;Enquiries <span class="pill copper">${app.enquiries.filter((enquiry) => enquiry.status === "New").length} new</span></strong><span>Review and follow up</span></button>
+        </div>
+        ${sectionLabel(`ASSESSMENT DUE · ${receivedNotes.length} OPEN TNOTES`)}
+        <p class="small">One SPM Center per note · up to 10 transformers per TNote · statuses belong to each transformer.</p>
+        ${receivedNotes.slice(0, 5).map((tnote, index) => `<article class="card ${index === 0 ? "attention" : ""}" data-action="open-tnote" data-index="${app.tnotes.indexOf(tnote)}">
+          <div class="row"><h4>${escapeHtml(tnote.id)} · ${escapeHtml(tnote.center)}</h4>${statusPill(`${waitingCount(tnote)} Received`)}</div>
+          <p>${tnote.transformers.length} / 10 transformers · ${tnote.transformers.filter((transformer) => transformer.status === "Repair In Progress").length} Repair · ${tnote.transformers.filter((transformer) => transformer.status === "Repaired").length} Repaired</p>
+          <div class="actions">${go("Open TNote", "tnote", "primary")} ${go(`Assess ${waitingCount(tnote)} received`, "tnote", "copper")}</div>
+        </article>`).join("")}
+        <div class="card"><div class="row"><div><h4>Today's attendance</h4><p>${app.employees.filter((employee) => employee.attendance === "Present").length} of ${app.employees.length} employees recorded</p></div>${go("Open team", "people", "outline")}</div></div>
+        <div class="notice"><strong>At a glance:</strong> only Repaired transformers can be put on a DC; only Delivered transformers can be billed.</div>`;
+    }
+
+    function renderOrders() {
+      const tab = app.enquiryTab;
+      const documents = app.documents.map((document, index) => ({ document, index })).filter(({ document }) => tab === "Quotations" ? document.type === "Quotation" : document.type === "Service bill");
+      const enquiryCards = app.enquiries.map((enquiry, index) => `<article class="card ${enquiry.status === "New" ? "attention" : ""}">
+        <div class="row"><h4>${escapeHtml(enquiry.customer)}</h4>${statusPill(enquiry.status)}</div>
+        <p>${escapeHtml(enquiry.contact)} · ${escapeHtml(enquiry.phone)}</p><p>${escapeHtml(enquiry.service)} · ${enquiry.files} attachment${enquiry.files === 1 ? "" : "s"}</p>
+        <div class="actions">${`<button class="btn primary" data-action="open-enquiry" data-index="${index}">Review enquiry</button>`}${btn("Mark contacted", `contact-${index}`, "outline")}</div></article>`).join("");
+      return `${pageHeading("Private orders", "Customer enquiries → quotation or ad-hoc bill")}
+        <div class="tabs">${["Enquiries", "Quotations", "Service bills"].map((item) => `<button class="tab ${tab === item ? "active" : ""}" data-action="orders-tab" data-value="${item}">${item}${item === "Enquiries" ? ` · ${app.enquiries.filter((e) => e.status === "New").length}` : ""}</button>`).join("")}</div>
+        ${tab === "Enquiries" ? `<div class="row"><input class="search" data-filter-cards placeholder="Filter customer / phone / service" /><button class="btn primary" data-go="enquiry-form">+ Add</button></div>${sectionLabel("ENQUIRY INBOX")}${enquiryCards}` : `<div class="row"><p class="small">Generated documents · preview, edit, regenerate or share</p><button class="btn primary" data-go="document" data-source="adhoc" ${tab === "Service bills" ? 'data-type="Service bill"' : ""}>+ Create</button></div>${documents.length ? documents.map(({ document, index }) => `<article class="card"><div class="row"><h4>${escapeHtml(document.customer)}</h4>${statusPill(document.type)}</div><p>${escapeHtml(document.number)} · ${escapeHtml(document.date)}</p><p>${escapeHtml(document.type)} · ₹${Number(document.total || 0).toLocaleString("en-IN")}</p><div class="actions"><button class="btn outline" data-action="preview-document" data-index="${index}">Open document</button></div></article>`).join("") : `<div class="card empty">No generated ${tab.toLowerCase()} yet. Create one to preview this workflow.</div>`}`}`;
+    }
+
+    function renderEnquiry() {
+      const enquiry = app.enquiries[app.selectedEnquiry];
+      return `${topActions("orders")}${pageHeading("Enquiry details", "Review the request and its attached files")}
+        <article class="card"><div class="row"><h4>${escapeHtml(enquiry.customer)}</h4>${statusPill(enquiry.status)}</div>
+        <p>${escapeHtml(enquiry.contact)} · ${escapeHtml(enquiry.phone)}</p><p>${escapeHtml(enquiry.service)}</p><p>Email: service@example.com</p>
+        <div class="notice">Customer request: inspect the transformer, replace damaged parts and provide a repair quotation.</div>
+        <p>Attachments: ${enquiry.files ? "transformer-photo.jpg · enquiry-note.pdf" : "none"}</p>
+        <div class="actions"><button class="btn primary" data-go="document">Create quotation</button><button class="btn outline" data-action="contact-${app.selectedEnquiry}">Mark contacted</button></div>
+        </article><div class="actions"><button class="btn copper" data-go="document" data-source="adhoc">Create ad-hoc quotation</button><button class="btn outline" data-go="document" data-type="Service bill" data-source="adhoc">Create service bill</button></div>`;
+    }
+
+    function renderEnquiryForm() {
+      return `${topActions("orders")}${pageHeading("New enquiry", "Add a private customer request")}
+        ${field("CUSTOMER NAME", "enqCustomer", "", "text", "Business / customer")}
+        ${field("CONTACT PERSON", "enqContact", "", "text", "Name")}
+        ${field("PHONE", "enqPhone", "", "tel", "Mobile number")}
+        ${field("EMAIL", "enqEmail", "", "email", "Email address")}
+        ${field("TRANSFORMER / SERVICE REQUEST", "enqRequest", "", "text", "Capacity, make and requested work")}
+        <div class="field"><label>PHOTOS OR DOCUMENTS</label><input type="file" data-file="enquiry" multiple /></div>
+        ${btn("Save enquiry", "save-enquiry", "primary full")}`;
+    }
+
+    function renderDocument() {
+      return `${topActions(app.view === "document" && app.documents.length ? "orders" : "enquiry")}${pageHeading("Document studio", "Private customer · quotation, ad-hoc quote or service bill")}
+        <div class="tabs"><button class="tab ${app.documentType === "Quotation" ? "active" : ""}" data-action="document-type" data-value="Quotation">Quotation</button><button class="tab ${app.documentType === "Service bill" ? "active" : ""}" data-action="document-type" data-value="Service bill">Service bill</button></div>
+        <div class="notice">${app.documentSource === "enquiry" ? `Started from enquiry: <strong>${escapeHtml(app.enquiries[app.selectedEnquiry]?.customer || "")}</strong> · fields can be edited.` : "Ad-hoc document · enter customer and service details."}</div>
+        ${field("CUSTOMER NAME", "docCustomer", currentField("docCustomer", app.documentSource === "enquiry" ? app.enquiries[app.selectedEnquiry]?.customer : ""), "text", "Customer / business")}
+        <div class="grid2">${field("CONTACT / MOBILE", "docPhone", currentField("docPhone", app.documentSource === "enquiry" ? app.enquiries[app.selectedEnquiry]?.phone : ""), "tel", "Phone")}${field("DOCUMENT DATE", "docDate", currentField("docDate", "2026-10-15"), "date")}</div>
+        <div class="grid2">${selectField("CAPACITY", "docCapacity", ["63 kVA", "100 kVA", "250 kVA", "500 kVA", "Other"], currentField("docCapacity", "250 kVA"))}${field("MAKE / SERIAL", "docSerial", currentField("docSerial", "Kirloskar · SN-8845"), "text", "Equipment details")}</div>
+        ${field("SERVICE / LINE ITEM", "docService", currentField("docService", app.documentSource === "enquiry" ? app.enquiries[app.selectedEnquiry]?.service.split(" · ")[0] : ""), "text", "Description")}
+        <div class="grid2">${field("QUANTITY", "docQty", currentField("docQty", "1"), "number")}${field("RATE (₹)", "docRate", currentField("docRate", "15000"), "number")}</div>
+        ${app.extraLines.map((line, index) => `<div class="card"><div class="row"><h4>Additional service ${index + 1}</h4><button class="text-action" data-action="remove-line" data-index="${index}">Remove</button></div>${field("DESCRIPTION", `line${index}Description`, currentField(`line${index}Description`, line.description), "text", "Service") }<div class="grid2">${field("QUANTITY", `line${index}Qty`, currentField(`line${index}Qty`, String(line.quantity)), "number")}${field("RATE (₹)", `line${index}Rate`, currentField(`line${index}Rate`, String(line.rate)), "number")}</div></div>`).join("")}
+        <div class="actions">${btn("+ Add service line", "add-line", "outline")}${selectField("GST RATE", "gst", ["0", "5", "12", "18"], currentField("gst", "18"))}</div>
+        ${field("WARRANTY / TERMS", "docTerms", currentField("docTerms", "Workmanship warranty as agreed · payment due on completion"), "text")}
+        <div class="card"><div class="row"><span class="small">Financial year · 2026–27</span><span class="pill">Number reserved on generate</span></div><div class="row"><strong>Estimated total</strong><strong id="doc-total">₹0</strong></div><p>Quotation and bill sequences are linked to the selected document type.</p></div>
+        <div class="field"><label>OUTPUT FORMAT</label><select data-field="docFormat"><option>PDF</option><option>PNG</option></select></div>
+        ${btn("Generate document", "generate-document", "primary full")}`;
+    }
+
+    function renderPreview() {
+      const document = app.documents[app.selectedBill] || app.documents[app.documents.length - 1];
+      if (!document) return `${topActions("orders")}${pageHeading("Document preview")}<div class="card empty">Create a quotation or service bill first.</div>${go("Create document", "document", "primary")}`;
+      return `${topActions("orders")}${pageHeading("Document preview", "Review before sharing or download")}
+        <div class="card"><div class="row"><h4>${escapeHtml(document.type)} · ${escapeHtml(document.number)}</h4>${statusPill("READY")}</div>
+        <p>${escapeHtml(document.customer)} · ${escapeHtml(document.date)}</p><p>${escapeHtml(document.description)}</p>
+        <div class="notice"><strong>Amount due: ₹${Number(document.total).toLocaleString("en-IN")}</strong><br>Preview is a mock document surface. Real files are generated by the application.</div>
+        <div class="actions">${btn("Open / download PDF", "mock-open", "primary")}${btn("Regenerate", "regenerate-document", "outline")}${btn("Edit", "edit-document", "outline")}${btn("WhatsApp share", "share-document", "green")}${btn("Delete", "delete-document", "danger")}</div></div>`;
+    }
+
+    function renderTnotes() {
+      return `${pageHeading("TGSPDCL · TNotes", "Received queue is prioritized for quick assessment")}
+        <div class="notice"><strong>One SPM Center per TNote.</strong> Each TNote can contain up to 10 transformers. Up to 5 received TNotes are shown on Home.</div>
+        <div class="row"><input class="search" data-filter-cards placeholder="Search TNote / DTR / serial no." /><button class="btn primary" data-go="tnote-form">+ Create</button></div>
+        ${sectionLabel("TNOTE REGISTER")}
+        ${app.tnotes.map((tnote, index) => `<article class="card ${waitingCount(tnote) ? "attention" : ""}"><div class="row"><h4>${escapeHtml(tnote.id)} · ${escapeHtml(tnote.center)}</h4>${waitingCount(tnote) ? statusPill(`${waitingCount(tnote)} Received`) : statusPill("In progress")}</div>
+        <p>${escapeHtml(tnote.date)} · ${tnote.transformers.length} / 10 transformers</p>
+        <p>${tnote.transformers.map((item) => `${item.status}: ${tnote.transformers.filter((other) => other.status === item.status).length}`).filter((value, idx, values) => values.indexOf(value) === idx).join(" · ")}</p>
+        <div class="actions"><button class="btn primary" data-action="open-tnote" data-index="${index}">Open TNote</button><button class="btn outline" data-action="export-tnote" data-index="${index}">Assessment Excel</button></div></article>`).join("")}
+        <p class="small">Use filters to find by SPM Center, TNote, transformer state or date. RGP visit history and file management are available from each TNote.</p>`;
+    }
+
+    function renderTnote() {
+      const tnote = selectedTnote();
+      const canDelete = !tnote.transformers.some((transformer) => ["Delivered", "Billed"].includes(transformer.status));
+      return `${topActions("tnotes")}${pageHeading(`${escapeHtml(tnote.id)} · ${escapeHtml(tnote.center)}`, `${escapeHtml(tnote.date)} · ${tnote.transformers.length} of 10 transformers`)}
+        <div class="card"><div class="row"><strong>SPM Center</strong>${statusPill(tnote.center)}</div><p>Government orders are received from TGSPDCL. This TNote belongs to one SPM Center.</p>
+        <div class="actions">${btn("Edit TNote", "edit-tnote", "outline")}${btn("Add transformer", "add-transformer", "outline", tnote.transformers.length >= 10 ? "disabled" : "")}${btn("Export assessment Excel", "export-current-tnote", "outline")}</div>
+        ${attachmentLine(tnote.files, "tnote")}<p><button class="btn outline" data-go="rgp">RGP visit / service history</button></p>
+        </div>
+        ${sectionLabel("TRANSFORMERS · EACH STATUS IS INDEPENDENT")}
+        ${tnote.transformers.map((transformer, index) => `<article class="card"><div class="row"><h4>${escapeHtml(transformer.id)} · ${escapeHtml(transformer.capacity)}</h4>${statusPill(transformer.status)}</div>
+          <p>${escapeHtml(transformer.serial)} · assessment rounds: ${transformer.rounds}</p>
+          <div class="actions"><button class="btn outline" data-action="open-transformer" data-index="${index}">Details / assessment</button>${transformer.status === "Repaired" ? `<button class="btn green" data-go="dc-form">DC eligible</button>` : ""}</div></article>`).join("")}
+        ${thisMayDelete(canDelete)}`;
+    }
+    function thisMayDelete(canDelete) {
+      return `<div class="card"><p class="small">A TNote with delivered or billed transformers is protected from deletion.</p>${btn("Delete TNote", "delete-tnote", "danger", canDelete ? "" : "disabled")}</div>`;
+    }
+
+    function renderTnoteForm() {
+      const editing = app.view === "tnote-edit";
+      const tnote = selectedTnote();
+      const centers = ["Warangal", "Karimnagar", "Khammam", "Nalgonda", "Mahabubnagar"];
+      const openReceived = app.tnotes.filter((item) => waitingCount(item) > 0).length;
+      return `${topActions(editing ? "tnote" : "tnotes")}${pageHeading(editing ? "Edit TNote" : "Receive a TNote", "TGSPDCL · one selected SPM Center per note")}
+        ${field("TNOTE NUMBER", "tnoteId", editing ? tnote.id : "", "text", "Enter TNote number")}
+        ${selectField("SPM CENTER", "tnoteCenter", centers, editing ? tnote.center : app.selectedCenter)}
+        ${field("DATE RECEIVED", "tnoteDate", editing ? dateForInput(tnote.date) : "2026-10-15", "date")}
+        <div class="notice">Select one SPM Center for this note. Add up to 10 transformers; each receives its own workflow state. The Home received queue is capped at five open TNotes (${openReceived}/5 now).</div>
+        <div class="card"><div class="row"><h4>Transformers</h4><span class="pill">${editing ? tnote.transformers.length : 1} / 10</span></div>
+        ${field("DTR / TRANSFORMER ID", "newDtrId", editing ? "" : "DTR-4110", "text", "DTR number")}
+        ${field("SERIAL NUMBER", "newDtrSerial", "", "text", "Serial / make")}
+        ${selectField("CAPACITY", "newDtrCapacity", ["63 kVA", "100 kVA", "250 kVA", "500 kVA", "Other"], "250 kVA")}
+        ${editing ? `<p class="small">Use Add transformer on the TNote details screen to add more units without exceeding the 10-unit limit.</p>` : ""}</div>
+        <div class="field"><label>TNOTE / INTAKE DOCUMENT</label><input type="file" data-file="tnote" multiple /></div>
+        <div class="actions">${btn(editing ? "Save TNote changes" : "Save received TNote", "save-tnote", "primary full", editing || openReceived < 5 ? "" : "disabled")}</div>`;
+    }
+
+    function renderTransformerForm() {
+      return `${topActions("tnote")}${pageHeading("Add transformer", `${escapeHtml(selectedTnote().id)} · ${escapeHtml(selectedTnote().center)}`)}
+        ${field("DTR / TRANSFORMER ID", "newDtrId", "", "text", "Unique DTR ID")}
+        ${field("SERIAL NUMBER", "newDtrSerial", "", "text", "Serial number")}
+        ${selectField("CAPACITY", "newDtrCapacity", ["63 kVA", "100 kVA", "250 kVA", "500 kVA", "Other"], "250 kVA")}
+        <div class="notice">New transformers enter as Received. A TNote can contain no more than 10 transformers.</div>
+        ${btn("Save transformer", "save-transformer", "primary full")}`;
+    }
+
+    function renderRgp() {
+      const tnote = selectedTnote();
+      const visits = app.rgpVisits.filter((visit) => visit.tnote === tnote.id);
+      return `${topActions("tnote")}${pageHeading("RGP / service visits", `${escapeHtml(tnote.id)} · ${escapeHtml(tnote.center)}`)}
+        ${visits.length ? visits.map((visit) => `<article class="card"><div class="row"><h4>${escapeHtml(visit.purpose)}</h4>${statusPill("Recorded")}</div><p>${escapeHtml(visit.date)} · ${escapeHtml(visit.notes)}</p></article>`).join("") : `<div class="card empty">No RGP/service visits recorded for this TNote.</div>`}
+        <div class="card"><h4>Record visit</h4>${field("VISIT DATE", "rgpDate", "2026-10-15", "date")}${field("PURPOSE", "rgpPurpose", "", "text", "Inspection / service visit")}${field("VISIT NOTES", "rgpNotes", "", "text", "Work performed / finding")}${btn("Save visit", "save-rgp", "primary full")}</div>`;
+    }
+
+    function renderAssessmentHistory() {
+      const transformer = selectedTransformer();
+      return `${topActions("transformer")}${pageHeading("Assessment history", `${escapeHtml(transformer.id)} · ${escapeHtml(selectedTnote().id)}`)}
+        ${transformer.rounds ? Array.from({ length: transformer.rounds }, (_, index) => `<article class="card"><div class="row"><h4>Assessment round ${index + 1}</h4>${statusPill(index + 1 === transformer.rounds ? "Latest" : "Previous")}</div><p>${index === 0 ? "Initial inspection · winding material · HV/LV coils and weights" : "Repair-stage inspection · updated parts, oil and remarks"}</p><p>Saved against this transformer · ${escapeHtml(selectedTnote().center)}</p></article>`).join("") : `<div class="card empty">No assessment rounds have been saved yet.</div>`}
+        ${go("Back to transformer", "transformer", "primary full")}`;
+    }
+
+    function renderTransformer() {
+      const transformer = selectedTransformer();
+      const canRepaired = transformer.status === "Assessment" && transformer.rounds >= 2;
+      return `${topActions("tnote")}${pageHeading("Transformer details", `${escapeHtml(selectedTnote().id)} · ${escapeHtml(selectedTnote().center)}`)}
+        <div class="card"><div class="row"><h4>${escapeHtml(transformer.id)} · ${escapeHtml(transformer.capacity)}</h4>${statusPill(transformer.status)}</div><p>${escapeHtml(transformer.serial)} · assessment round ${Math.max(1, transformer.rounds + (transformer.status === "Received" ? 1 : 0))}</p></div>
+        ${sectionLabel("ASSESSMENT DETAILS")}
+        ${selectField("WINDING MATERIAL", "winding", ["Al", "CU"], "CU")}
+        ${field("FIRST INSPECTION DATE", "inspectionDate", "2026-10-15", "date")}
+        <div class="card"><h4>HV damaged coils</h4><div class="grid2">${field("COIL COUNT", "hvCount", "2", "number")}${field("OLD / NEW WEIGHT (KG)", "hvWeight", "18.4 / 19.2")}</div></div>
+        <div class="card"><h4>LV reinsulated coils</h4><div class="grid2">${field("COIL COUNT", "lvCount", "3", "number")}${field("OLD / NEW WEIGHT (KG)", "lvWeight", "12.1 / 12.8")}</div></div>
+        <div class="card"><h4>Bushings &amp; rods</h4><div class="grid2">${field("LV / HV BUSHINGS", "bushings", "2 / 3")}${field("LV / HV RODS", "rods", "1 / 2")}</div></div>
+        <div class="card"><h4>Metal parts, breakers &amp; oil</h4><div class="grid2">${field("HV / LV METAL PARTS", "metalParts", "1 / 2")}${field("BREAKERS", "breakers", "0", "number")}${field("OIL CAPACITY (L)", "oilCapacity", "320", "number")}${field("OIL LESS (L)", "oilLess", "12", "number")}</div></div>
+        ${field("REMARKS", "assessmentRemarks", "Replace HV coils and inspect bushing condition", "text")}
+        <div class="notice"><strong>Workflow:</strong> Received → Assessment → Repair In Progress. A transformer in repair may return for another assessment; only then mark Repaired.</div>
+        <div class="card"><h4>Assessment history</h4><p>${transformer.rounds} saved round${transformer.rounds === 1 ? "" : "s"} · transformer states and rounds are independent.</p>${go("View round history", "assessment-history", "outline")}</div>
+        <div class="actions">${["Received", "Assessment"].includes(transformer.status) ? btn("Save assessment", "save-assessment", "outline") : ""}${transformer.status === "Assessment" && transformer.rounds === 1 ? btn("Start repair", "start-repair", "primary") : ""}${canRepaired ? btn("Save & mark Repaired", "mark-repaired", "green") : ""}${transformer.status === "Repair In Progress" ? btn("Start assessment round 2", "second-assessment", "copper") : ""}</div>`;
+    }
+
+    function renderDcs() {
+      return `${pageHeading("Delivery challans", "TGSPDCL · repaired units only")}
+        <div class="notice"><strong>Eligibility:</strong> a DC can include Repaired transformers only, from the selected SPM Center. Upload the signed challan before marking delivered.</div>
+        <button class="btn primary full" data-go="dc-form">+ Create delivery challan</button>
+        ${sectionLabel("CHALLANS")}
+        ${app.dcs.length ? app.dcs.map((dc, index) => `<article class="card"><div class="row"><h4>${escapeHtml(dc.number)} · ${escapeHtml(dc.center)}</h4>${statusPill(dc.delivered ? "Delivered" : "Awaiting signed copy")}</div><p>${dc.units.length} units · ${escapeHtml(dc.date)} · ${dc.drums} empty drums</p><div class="actions"><button class="btn outline" data-action="open-dc" data-index="${index}">Open / regenerate PDF</button></div></article>`).join("") : `<div class="card empty">No delivery challans yet. Create a DC from repaired transformers.</div>`}`;
+    }
+
+    function renderDcForm() {
+      const reserved = reservedDcUnits();
+      const eligible = allTransformers().filter((transformer) => transformer.status === "Repaired" && !reserved.includes(transformer.id));
+      const centers = [...new Set(eligible.map((transformer) => transformer.center))];
+      const center = centers.includes(app.selectedCenter) ? app.selectedCenter : centers[0];
+      if (center) app.selectedCenter = center;
+      return `${topActions("dispatches")}${pageHeading("New delivery challan", "Select repaired units from a single center")}
+        ${selectField("SPM CENTER", "dcCenter", centers.length ? centers : ["No eligible center"], center)}
+        ${field("DC DATE", "dcDate", "2026-10-15", "date")}
+        <div class="card"><div class="row"><h4>Eligible repaired transformers</h4><span class="pill green">${eligible.length} available</span></div>
+        ${eligible.filter((transformer) => transformer.center === center).length ? eligible.filter((transformer) => transformer.center === center).map((transformer) => `<label class="checkrow"><input type="checkbox" data-dc-unit="${escapeHtml(transformer.id)}" ${app.selectedUnits.has(transformer.id) ? "checked" : ""}><span><strong>${escapeHtml(transformer.id)} · ${escapeHtml(transformer.capacity)}</strong><small>${escapeHtml(transformer.serial)} · ${escapeHtml(transformer.tnote)} · ${escapeHtml(transformer.center)} · Repaired</small></span></label>`).join("") : `<p class="small">No Repaired units at this center. Complete an assessment and mark a transformer Repaired first.</p>`}
+        </div>
+        <div class="grid2">${selectField("EMPTY DRUMS RETURNED?", "drumFlag", ["No", "Yes"], "No")}${field("DRUM COUNT", "drumCount", "0", "number")}</div>
+        <div class="card"><h4>Delivery customer</h4><p>AE/SPM/${escapeHtml(app.selectedCenter)}/TGSPDCL · company address and GSTIN prefilled.</p></div>
+        ${btn(`Create DC for ${app.selectedUnits.size} selected units`, "create-dc", "primary full", eligible.length ? "" : "disabled")}
+        <p class="small">Adding a unit to a DC does not mark it delivered. Signed delivery proof is required to move status to Delivered.</p>`;
+    }
+
+    function renderDc() {
+      const dc = app.dcs[app.selectedDc];
+      if (!dc) return `${topActions("dispatches")}${pageHeading("Delivery challan")}<div class="card empty">Create a DC before opening details.</div>`;
+      return `${topActions("dispatches")}${pageHeading(`${escapeHtml(dc.number)} · ${escapeHtml(dc.center)}`, "Delivery proof and PDF")}
+        <div class="card"><div class="row"><h4>${dc.units.length} selected transformers</h4>${statusPill(dc.delivered ? "Delivered" : "Awaiting signed copy")}</div>
+          ${dc.units.map((unit) => `<p>${escapeHtml(unit)} · ${dc.delivered ? "Delivered" : "Repaired"}</p>`).join("")}
+          <p>${escapeHtml(dc.date)} · Empty drums: ${escapeHtml(dc.drums)}</p>
+          <div class="actions">${btn("Open PDF", "mock-open", "outline")}${btn("Regenerate PDF", "mock-open", "outline")}</div>
+        </div>
+        ${dc.delivered ? `<div class="notice">Signed copy: ${escapeHtml(dc.proof)} · units are Delivered and now eligible for government billing.</div>` : `<div class="card"><h4>Signed challan</h4><p>Required before delivery status changes.</p><div class="field"><label>UPLOAD SIGNED DC</label><input type="file" data-file="dc-proof" accept=".pdf,image/*"></div><p>${dc.proof ? `Selected: ${escapeHtml(dc.proof)}` : "No signed copy selected."}</p>${btn("Confirm delivery", "mark-delivered", "green full", dc.proof ? "" : "disabled")}</div>`}`;
+    }
+
+    function renderBills() {
+      return `${pageHeading("TGSPDCL bills", "Only Delivered, unbilled transformers")}
+        <input class="search" data-filter-cards placeholder="Search SAP no. / agreement / center" />
+        <div class="grid2"><div class="metric"><strong>${app.bills.filter((bill) => bill.status === "PENDING").length}</strong><span>Pending</span></div><div class="metric"><strong>${app.bills.filter((bill) => bill.status === "RECEIVED").length}</strong><span>Received</span></div><div class="metric"><strong>${app.bills.filter((bill) => bill.status === "GST_FILED").length}</strong><span>GST filed</span></div></div>
+        <div class="actions"><button class="btn primary full" data-go="bill-form">+ Create bill from delivered units</button></div>
+        ${sectionLabel("BILL REGISTER")}
+        ${app.bills.map((bill, index) => `<article class="card"><div class="row"><h4>${escapeHtml(bill.sap)} · ${escapeHtml(bill.center)}</h4>${statusPill(bill.status)}</div><p>${escapeHtml(bill.agreement)} · ${bill.units.length} transformers</p><p>₹${Number(bill.amount).toLocaleString("en-IN")} + GST ₹${Number(bill.gst).toLocaleString("en-IN")}</p><p>${escapeHtml(bill.date)} · ${bill.status === "GST_FILED" ? `Filed ${escapeHtml(bill.filingMonth)} · ${escapeHtml(bill.invoice)}` : bill.status === "RECEIVED" ? `Credited ${escapeHtml(bill.creditedDate)}` : "Attachments available"}</p><div class="actions"><button class="btn outline" data-action="open-bill" data-index="${index}">View / edit bill</button><button class="btn outline" data-action="export-bill" data-index="${index}">Export</button></div></article>`).join("")}
+        <div class="notice">Lifecycle: PENDING → RECEIVED (credited amount and date) → GST_FILED (filing month and invoice number).</div>`;
+    }
+
+    function renderBillForm() {
+      const editing = app.editingBill;
+      const bill = editing ? selectedBill() : null;
+      const delivered = allTransformers().filter((transformer) => transformer.status === "Delivered" && (!transformer.billed || bill?.units.includes(transformer.id)));
+      return `${topActions("bills")}${pageHeading(editing ? "Edit government bill" : "Create government bill", "Delivered transformers only · one bill per delivered unit")}
+        <div class="card"><h4>Delivered transformers</h4>${editing ? bill.units.map((unit) => `<p>${escapeHtml(unit)} · linked to this bill</p>`).join("") : delivered.length ? delivered.map((transformer) => `<label class="checkrow"><input type="checkbox" data-bill-unit="${escapeHtml(transformer.id)}" ${app.selectedBillUnits.has(transformer.id) ? "checked" : ""}><span><strong>${escapeHtml(transformer.id)} · ${escapeHtml(transformer.capacity)}</strong><small>${escapeHtml(transformer.center)} · ${escapeHtml(transformer.tnote)} · Delivered</small></span></label>`).join("") : `<p class="small">No delivered, unbilled transformers are available. Complete the DC and signed-delivery step first.</p>`}</div>
+        <div class="grid2">${field("SAP NUMBER", "sap", currentField("sap", bill?.sap || ""), "text", "SAP reference")}${field("AGREEMENT NUMBER", "agreement", currentField("agreement", bill?.agreement || ""), "text", "Agreement")}</div>
+        <div class="grid2">${field("BILL DATE", "billDate", currentField("billDate", bill?.date || "2026-10-15"), "date")}${field("AMOUNT (₹)", "billAmount", currentField("billAmount", bill?.amount || ""), "number", "Subtotal")}</div>
+        ${field("GST AMOUNT (₹)", "billGst", currentField("billGst", bill?.gst || ""), "number", "Tax amount")}
+        <div class="field"><label>SUPPORTING DOCUMENTS</label><input type="file" data-file="bill" multiple /></div>
+        <div class="notice">Bill data, selected transformer records, SAP / agreement references, attachments, and GST details are retained on the bill record.</div>
+        ${btn(editing ? "Save bill changes" : "Create pending bill", "create-bill", "primary full", editing || delivered.length ? "" : "disabled")}`;
+    }
+
+    function renderBill() {
+      const bill = selectedBill();
+      return `${topActions("bills")}${pageHeading(`${escapeHtml(bill.sap)} · ${escapeHtml(bill.center)}`, "TGSPDCL government bill")}
+        <div class="card"><div class="row"><h4>${escapeHtml(bill.agreement)}</h4>${statusPill(bill.status)}</div>
+        <p>${bill.units.map((unit) => escapeHtml(unit)).join(" · ")} · ${escapeHtml(bill.date)}</p><p>Subtotal ₹${Number(bill.amount).toLocaleString("en-IN")} · GST ₹${Number(bill.gst).toLocaleString("en-IN")}</p>
+        <p>Files: ${bill.files?.join(" · ") || "none"} · <button class="text-action" data-action="upload-attachment">add attachment</button><input hidden type="file" data-file="bill" multiple></p>
+        <div class="actions">${btn("Edit bill", "edit-bill", "outline")}${btn("Delete bill", "delete-bill", "danger")}${btn("Export Excel", "export-current-bill", "outline")}</div></div>
+        ${bill.status === "PENDING" ? `<div class="card"><h4>Record receipt</h4>${field("AMOUNT CREDITED (₹)", "creditedAmount", "", "number", "Must be greater than zero")}${field("CREDITED DATE", "creditedDate", "2026-10-15", "date")}${btn("Save as RECEIVED", "bill-received", "primary full")}</div>` : ""}
+        ${bill.status === "RECEIVED" ? `<div class="card"><h4>GST filing</h4><p>Credited ₹${Number(bill.credited || 0).toLocaleString("en-IN")} on ${escapeHtml(bill.creditedDate || "")}</p>${field("GST FILING MONTH", "filingMonth", "2026-10", "month")}${field("INVOICE NUMBER", "invoice", "", "text", "Tax invoice number")}${btn("Mark GST filed", "bill-gst-filed", "green full")}</div>` : ""}
+        ${bill.status === "GST_FILED" ? `<div class="notice">Credited ₹${Number(bill.credited || 0).toLocaleString("en-IN")} · ${escapeHtml(bill.creditedDate)} · GST filed ${escapeHtml(bill.filingMonth)} · invoice ${escapeHtml(bill.invoice)}</div>` : ""}`;
+    }
+
+    function renderPeople() {
+      return `${pageHeading("People & payroll", "Employees · attendance · monthly salary")}
+        <div class="notice"><strong>Today · ${app.employees.filter((employee) => employee.attendance === "Present").length} of ${app.employees.length} present.</strong> Tap clock in/out for a quick attendance record.</div>
+        <div class="actions">${go("Attendance & leave", "attendance", "primary")}${go("Monthly salary", "payroll", "outline")}<button class="btn outline" data-action="new-employee">+ Add employee</button></div>
+        ${sectionLabel("ACTIVE EMPLOYEES")}
+        ${app.employees.map((employee, index) => `<article class="card"><div class="row"><h4>${escapeHtml(employee.name)}</h4>${statusPill(employee.attendance)}</div><p>${escapeHtml(employee.code)} · ${escapeHtml(employee.role)}</p><p>${escapeHtml(employee.phone)} · Monthly salary ₹${Number(employee.salary).toLocaleString("en-IN")}</p><div class="actions"><button class="btn outline" data-action="open-employee" data-index="${index}">Employee details</button><button class="btn ${employee.attendance === "Present" && !employee.out ? "copper" : "green"}" data-action="clock-${index}">${employee.attendance === "Present" && !employee.out ? "Clock out" : "Clock in"}</button></div></article>`).join("")}
+        <div class="notice">Employee profiles include active status, contact details, photo, and up to five supporting documents.</div>`;
+    }
+
+    function renderEmployee() {
+      const employee = selectedEmployee();
+      return `${topActions("people")}${pageHeading(escapeHtml(employee.name), `${escapeHtml(employee.code)} · ${escapeHtml(employee.status)}`)}
+        <div class="card"><div class="row"><h4>${escapeHtml(employee.role)}</h4>${statusPill(employee.status)}</div><p>${escapeHtml(employee.phone)} · Monthly salary ₹${Number(employee.salary).toLocaleString("en-IN")}</p>
+        <p>Employee photo · identity / supporting records (up to five files)</p>
+        ${go("Edit employee profile", "employee-form", "outline")}
+        </div>
+        <div class="grid2"><button class="quick" data-go="attendance"><strong>Attendance</strong><span>Dates · times · leave · overtime</span></button><button class="quick" data-go="payroll"><strong>Salary</strong><span>Generate · mark received · export</span></button></div>
+        <div class="card"><h4>Today's attendance</h4><p>${escapeHtml(employee.attendance)} · In ${employee.in || "—"} · Out ${employee.out || "—"}</p><div class="actions"><button class="btn green" data-action="clock-${app.selectedEmployee}">${employee.attendance === "Present" && !employee.out ? "Clock out now" : "Clock in now"}</button><button class="btn outline" data-go="attendance">Edit date / time</button></div></div>
+        <div class="card"><h4>Employee files</h4><div class="field"><label>PHOTO OR DOCUMENTS (MAX 5)</label><input type="file" data-file="employee" multiple></div><p>${employee.files?.length ? escapeHtml(employee.files.join(" · ")) : "No supporting files added."}</p></div>`;
+    }
+
+    function renderEmployeeForm() {
+      const employee = selectedEmployee();
+      return `${topActions("people")}${pageHeading(app.isNewEmployee ? "Add employee" : "Employee profile", "Add or update an employee")}
+        ${field("EMPLOYEE NAME", "employeeName", app.isNewEmployee ? "" : employee.name, "text", "Full name")}
+        ${field("EMPLOYEE CODE", "employeeCode", app.isNewEmployee ? `DS/26-27/${String(app.employees.length + 1).padStart(3, "0")}` : employee.code, "text", "Unique employee code")}
+        ${field("PHONE", "employeePhone", app.isNewEmployee ? "" : employee.phone, "tel", "Mobile number")}
+        ${field("ROLE / DEPARTMENT", "employeeRole", app.isNewEmployee ? "" : employee.role, "text", "Workshop / technician")}
+        ${field("MONTHLY SALARY (₹)", "employeeSalary", app.isNewEmployee ? "" : employee.salary, "number")}
+        ${selectField("EMPLOYMENT STATUS", "employeeStatus", ["Active", "Inactive"], app.isNewEmployee ? "Active" : employee.status)}
+        <div class="field"><label>PHOTO + SUPPORTING DOCUMENTS (MAX 5)</label><input type="file" data-file="employee" multiple></div>
+        <p class="small">${escapeHtml((app.employeeFiles || (app.isNewEmployee ? [] : employee.files || [])).join(" · ") || "No files selected.")}</p>
+        ${btn("Save employee profile", "save-employee", "primary full")}`;
+    }
+
+    function renderAttendance() {
+      const employee = selectedEmployee();
+      return `${topActions("people")}${pageHeading("Attendance & leave", `Monthly view · ${escapeHtml(employee.name)}`)}
+        <div class="grid2">${selectField("EMPLOYEE", "attendanceEmployee", app.employees.map((item) => item.name), employee.name)}${field("MONTH", "attendanceMonth", "2026-10", "month")}</div>
+        ${field("ATTENDANCE DATE", "attendanceDate", currentField("attendanceDate", "2026-10-15"), "date")}
+        <div class="card"><div class="row"><h4>${escapeHtml(currentField("attendanceDate", "2026-10-15"))} · selected date</h4>${statusPill(employee.attendance)}</div>
+          <div class="grid2">${field("CLOCK IN", "clockIn", employee.in || "08:47", "time")}${field("CLOCK OUT", "clockOut", employee.out || "", "time")}</div>
+          ${field("OVERTIME (HOURS)", "overtime", employee.overtime, "number")}
+          <div class="actions"><button class="btn primary" data-action="save-attendance">Save attendance</button><button class="btn outline" data-action="clock-${app.selectedEmployee}">Clock in / out now</button></div>
+        </div>
+        <div class="card"><h4>Month overview</h4><p>Present 12 · Absent 1 · Leave 1 · Holidays ${app.holidays.length}</p>
+          <div class="actions">${btn("Mark selected date leave", "mark-leave", "outline")}${btn("Mark / unmark company holiday", "toggle-holiday", "outline")}</div>
+          <p>Dates can be edited manually. Holidays are shared across employee records.</p>
+        </div>
+        <div class="card"><h4>Recent records</h4><p>${escapeHtml(employee.attendanceDate || "15 Oct 2026")} · ${employee.attendance} · ${employee.in || "—"} to ${employee.out || "—"} · ${employee.overtime}h overtime</p><p>14 Oct · ${app.holidays.includes("2026-10-14") ? "Company holiday" : "Attendance not entered"}</p><p>Leave, overtime, clock times and date entries are included in monthly salary calculations.</p></div>
+        <div class="actions">${btn("Export attendance workbook", "export-attendance", "primary full")}</div>`;
+    }
+
+    function renderPayroll() {
+      const employee = selectedEmployee();
+      const index = app.selectedEmployee;
+      const generated = app.payrollStatus[index];
+      const absent = 1;
+      const salary = Math.max(0, Number(employee.salary) - Math.max(0, absent - 2) * Number(employee.salary) / 26) + 3600;
+      return `${topActions("people")}${pageHeading("Monthly salary", `October 2026 · ${escapeHtml(employee.name)}`)}
+        <div class="grid2">${selectField("EMPLOYEE", "payrollEmployee", app.employees.map((item) => item.name), employee.name)}${field("SALARY MONTH", "payrollMonth", "2026-10", "month")}</div>
+        <div class="card"><div class="row"><h4>${escapeHtml(employee.code)}</h4>${statusPill(generated)}</div><strong style="display:block;margin:10px 0;font-size:25px">₹${Math.round(salary).toLocaleString("en-IN")}</strong>
+          <p>Base salary ₹${Number(employee.salary).toLocaleString("en-IN")} · 12 present · 1 absence · ${app.holidays.length} company holiday(s)</p><p>Includes calculated overtime · review attendance and leave before generation.</p>
+        </div>
+        <div class="card"><h4>Calculation guide</h4><p>Holidays and up to two absences are paid; further absences deduct the daily rate. Overtime is paid hourly. Confirm actual company rules before implementation.</p></div>
+        <div class="actions">${btn(generated === "NOT GENERATED" ? "Generate salary" : "Recalculate salary", "generate-salary", "primary")}${btn("Mark salary received", "salary-received", "green")}${btn("Export salary workbook", "export-salary", "outline")}</div>`;
+    }
+
+    function renderMore() {
+      return `${pageHeading("More", "Find records and manage workshop references")}
+        <div class="grid2"><button class="quick" data-go="directory"><strong>Transformer directory</strong><span>Search, filter and page records</span></button><button class="quick" data-go="tnotes"><strong>RGP / service history</strong><span>Visits associated with a TNote</span></button><button class="quick" data-go="dispatches"><strong>Delivery challans</strong><span>PDFs and signed delivery proof</span></button><button class="quick" data-go="bills"><strong>Government bills</strong><span>SAP, agreement and GST filing</span></button></div>
+        <div class="card"><h4>Workflow rules</h4><p>Received → Assessment → Repair In Progress → Assessment (if required) → Repaired → Delivered → Billed.</p><p>Scrap is a separate transformer outcome. A TNote can have transformers in different states at the same time.</p></div>`;
+    }
+
+    function renderDirectory() {
+      const query = currentField("directoryQuery").toLowerCase();
+      const status = currentField("directoryState", "All");
+      const filtered = allTransformers().filter((transformer) =>
+        (status === "All" || transformer.status === status) &&
+        `${transformer.id} ${transformer.serial} ${transformer.tnote} ${transformer.center} ${transformer.status}`.toLowerCase().includes(query)
+      );
+      const pageSize = 8;
+      const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      app.directoryPage = Math.min(app.directoryPage, pages - 1);
+      const pageItems = filtered.slice(app.directoryPage * pageSize, (app.directoryPage + 1) * pageSize);
+      return `${topActions("more")}${pageHeading("Transformer directory", "Search all units by identifier, center or state")}
+        ${field("SEARCH DTR / SERIAL / TNOTE / CENTER", "directoryQuery", currentField("directoryQuery"), "search", "Search records")}
+        ${selectField("STATE", "directoryState", ["All", "Received", "Assessment", "Repair In Progress", "Repaired", "Delivered", "Billed", "Scrap"], status)}
+        <p class="small">Showing ${filtered.length ? app.directoryPage * pageSize + 1 : 0}–${Math.min(filtered.length, (app.directoryPage + 1) * pageSize)} of ${filtered.length} transformers</p>
+        <div id="directory-list">${pageItems.map((transformer) => `<article class="card"><div class="row"><h4>${escapeHtml(transformer.id)} · ${escapeHtml(transformer.capacity)}</h4>${statusPill(transformer.status)}</div><p>${escapeHtml(transformer.serial)} · ${escapeHtml(transformer.tnote)} · ${escapeHtml(transformer.center)}</p><button class="btn outline" data-action="directory-transformer" data-id="${escapeHtml(transformer.id)}">Open transformer</button></article>`).join("") || `<div class="card empty">No transformers match these filters.</div>`}</div>
+        <div class="actions">${btn("‹ Previous", "directory-prev", "outline", app.directoryPage ? "" : "disabled")}<span class="small">Page ${app.directoryPage + 1} of ${pages}</span>${btn("Next ›", "directory-next", "outline", app.directoryPage + 1 < pages ? "" : "disabled")}</div>`;
+    }
+
+    function renderAlerts() {
+      const newEnquiries = app.enquiries.filter((enquiry) => enquiry.status === "New").length;
+      return `${pageHeading("Notifications", "Quiet, in-app reminders")}
+        <article class="card attention"><div class="row"><h4>${newEnquiries} new customer enquiries</h4><span class="pill copper">${newEnquiries ? "NEW" : "ALL REVIEWED"}</span></div><p>Review the private-order inbox when convenient.</p>${go("Open enquiries", "orders", "primary")}</article>
+        ${app.tnotes.filter((tnote) => waitingCount(tnote)).slice(0, 5).map((tnote) => `<article class="card"><div class="row"><h4>${escapeHtml(tnote.id)} · ${escapeHtml(tnote.center)}</h4>${statusPill(`${waitingCount(tnote)} Received`)}</div><p>Transformers are waiting for assessment.</p><button class="btn outline" data-action="open-tnote" data-index="${app.tnotes.indexOf(tnote)}">Open TNote</button></article>`).join("")}
+        <p class="small">No blocking pop-ups. The badge shows the number of new enquiries; operational reminders stay in this inbox.</p>`;
+    }
+
+    const screens = {
+      home: ["Workshop", "Operations overview", renderHome],
+      orders: ["Private orders", "Enquiries · quotations · service bills", renderOrders],
+      enquiry: ["Enquiry", "Private customer details", renderEnquiry],
+      "enquiry-form": ["New enquiry", "Private customer request", renderEnquiryForm],
+      document: ["Document studio", "Quotation / service bill", renderDocument],
+      preview: ["Document preview", "Generated private document", renderPreview],
+      tnotes: ["TGSPDCL · TNotes", "TNote register and intake", renderTnotes],
+      tnote: ["TNote details", "Transformers and attachments", renderTnote],
+      "tnote-form": ["Receive TNote", "TGSPDCL intake", renderTnoteForm],
+      "tnote-edit": ["Edit TNote", "Update intake record", renderTnoteForm],
+      "transformer-form": ["Add transformer", "TNote intake", renderTransformerForm],
+      rgp: ["RGP / service visits", "Visit history and records", renderRgp],
+      transformer: ["Transformer assessment", "Transformer-level repair history", renderTransformer],
+      "assessment-history": ["Assessment history", "Prior inspection rounds", renderAssessmentHistory],
+      dispatches: ["Delivery challans", "Repaired units · delivery evidence", renderDcs],
+      "dc-form": ["Create delivery challan", "Repaired units only", renderDcForm],
+      dc: ["Delivery challan", "PDF and signed proof", renderDc],
+      bills: ["TGSPDCL bills", "Delivered units only", renderBills],
+      "bill-form": ["Create government bill", "Delivered units only", renderBillForm],
+      bill: ["Government bill", "Receipt and GST lifecycle", renderBill],
+      people: ["People & payroll", "Employees · attendance · salary", renderPeople],
+      employee: ["Employee profile", "Contact, work and files", renderEmployee],
+      "employee-form": ["Employee profile", "Add or edit employee", renderEmployeeForm],
+      attendance: ["Attendance & leave", "Monthly employee records", renderAttendance],
+      payroll: ["Monthly salary", "Generate and track receipt", renderPayroll],
+      more: ["More", "Search and workshop references", renderMore],
+      directory: ["Transformer directory", "Search and filter units", renderDirectory],
+      alerts: ["Notifications", "Enquiry and workshop reminders", renderAlerts]
+    };
+
+    function render() {
+      const [screenTitle, screenSubtitle, renderScreen] = screens[app.view] || screens.home;
+      title.textContent = screenTitle;
+      subtitle.textContent = screenSubtitle;
+      screen.innerHTML = renderScreen();
+      document.querySelector(".badge").textContent = app.enquiries.filter((enquiry) => enquiry.status === "New").length;
+      document.querySelectorAll(".navbtn").forEach((button) => button.classList.toggle("active", button.dataset.go === app.view || (button.dataset.go === "orders" && ["enquiry", "enquiry-form", "document", "preview"].includes(app.view)) || (button.dataset.go === "people" && ["employee", "employee-form", "attendance", "payroll"].includes(app.view))));
+      document.querySelectorAll("[data-field]").forEach((input) => {
+        if (app.fields?.[input.dataset.field] !== undefined) input.value = app.fields[input.dataset.field];
+        input.addEventListener("input", () => { app.fields = app.fields || {}; app.fields[input.dataset.field] = input.value; refreshDocumentTotal(); });
+      });
+      screen.querySelectorAll("[data-dc-unit]").forEach((input) => input.addEventListener("change", () => {
+        input.checked ? app.selectedUnits.add(input.dataset.dcUnit) : app.selectedUnits.delete(input.dataset.dcUnit);
+        const createButton = screen.querySelector("[data-action='create-dc']");
+        if (createButton) createButton.textContent = `Create DC for ${app.selectedUnits.size} selected units`;
+      }));
+      screen.querySelectorAll("[data-bill-unit]").forEach((input) => input.addEventListener("change", () => {
+        input.checked ? app.selectedBillUnits.add(input.dataset.billUnit) : app.selectedBillUnits.delete(input.dataset.billUnit);
+      }));
+      const total = screen.querySelector("#doc-total");
+      if (total) {
+        const subtotal = Number(currentField("docQty", "1")) * Number(currentField("docRate", "15000")) + app.extraLines.reduce((sum, line, index) => sum + Number(currentField(`line${index}Qty`, String(line.quantity))) * Number(currentField(`line${index}Rate`, String(line.rate))), 0);
+        total.textContent = `₹${Math.round(subtotal * (1 + Number(currentField("gst", "18")) / 100)).toLocaleString("en-IN")}`;
+      }
+    }
+
+    function setView(view) { app.view = view; window.scrollTo({ top: 0, behavior: "smooth" }); render(); }
+    function toast(message) {
+      const element = document.querySelector("#toast");
+      element.textContent = message;
+      element.hidden = false;
+      clearTimeout(app.toastTimer);
+      app.toastTimer = setTimeout(() => { element.hidden = true; }, 2600);
+    }
+    function addTransformer(tnote, data = {}) {
+      if (tnote.transformers.length >= 10) return false;
+      if (data.id && allTransformers().some((transformer) => transformer.id.toLowerCase() === data.id.toLowerCase())) return false;
+      tnote.transformers.push({ id: data.id || `DTR-${4110 + tnote.transformers.length}`, serial: data.serial || "SN-NEW", capacity: data.capacity || "250 kVA", status: "Received", rounds: 0 });
+      return true;
+    }
+    function currentField(name, fallback = "") { return app.fields?.[name] || fallback; }
+    function refreshDocumentTotal() {
+      if (app.view !== "document") return;
+      const total = screen.querySelector("#doc-total");
+      if (!total) return;
+      const subtotal = Number(currentField("docQty", "1")) * Number(currentField("docRate", "15000")) + app.extraLines.reduce((sum, line, index) => sum + Number(currentField(`line${index}Qty`, String(line.quantity))) * Number(currentField(`line${index}Rate`, String(line.rate))), 0);
+      total.textContent = `₹${Math.round(subtotal * (1 + Number(currentField("gst", "18")) / 100)).toLocaleString("en-IN")}`;
+    }
+    function findTransformer(id) {
+      for (const tnote of app.tnotes) {
+        const index = tnote.transformers.findIndex((transformer) => transformer.id === id);
+        if (index >= 0) return { tnoteIndex: app.tnotes.indexOf(tnote), index };
+      }
+      return null;
+    }
+
+    document.addEventListener("click", (event) => {
+      const goButton = event.target.closest("[data-go]");
+      if (goButton) {
+        if (goButton.dataset.type) app.documentType = goButton.dataset.type;
+        if (goButton.dataset.source) app.documentSource = goButton.dataset.source;
+        if (goButton.dataset.go === "document") {
+          app.documentSource = goButton.dataset.source || (app.view === "enquiry" ? "enquiry" : "adhoc");
+          if (app.editingDocument < 0) { app.fields = {}; app.extraLines = []; }
+        }
+        if (goButton.dataset.go === "tnote") app.selectedTnote = Number(goButton.closest("[data-index]")?.dataset.index ?? app.selectedTnote);
+        if (goButton.dataset.go === "dc-form") {
+          if (app.view === "tnote") app.selectedCenter = selectedTnote().center;
+          app.selectedUnits.clear(); app.fields = {};
+        }
+        if (goButton.dataset.go === "bill-form") { app.editingBill = false; app.selectedBillUnits.clear(); app.fields = {}; }
+        if (goButton.dataset.go === "tnote-form" || goButton.dataset.go === "enquiry-form") { app.fields = {}; app.attachedFile = ""; }
+        if (goButton.dataset.go === "employee-form" && !app.isNewEmployee) app.fields = {};
+        setView(goButton.dataset.go);
+        return;
+      }
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action.startsWith("contact-")) {
+        const index = Number(action.slice(8)); app.enquiries[index].status = "Contacted"; render(); toast("Enquiry marked as contacted."); return;
+      }
+      if (action === "orders-tab") { app.enquiryTab = button.dataset.value; render(); return; }
+      if (action === "document-type") { app.documentType = button.dataset.value; render(); return; }
+      if (action === "new-employee") { app.isNewEmployee = true; app.fields = {}; setView("employee-form"); return; }
+      if (action === "open-enquiry") { app.selectedEnquiry = Number(button.dataset.index); setView("enquiry"); return; }
+      if (action === "open-tnote") { app.selectedTnote = Number(button.dataset.index); setView("tnote"); return; }
+      if (action === "open-transformer") { app.selectedTransformer = Number(button.dataset.index); setView("transformer"); return; }
+      if (action === "open-employee") { app.selectedEmployee = Number(button.dataset.index); setView("employee"); return; }
+      if (action === "open-bill") { app.selectedBill = Number(button.dataset.index); setView("bill"); return; }
+      if (action === "open-dc") { app.selectedDc = Number(button.dataset.index); setView("dc"); return; }
+      if (action === "preview-document") { app.selectedBill = Number(button.dataset.index); setView("preview"); return; }
+      if (action.startsWith("clock-")) {
+        const index = Number(action.slice(6)); const employee = app.employees[index];
+        if (employee.attendance !== "Present") { employee.attendance = "Present"; employee.in = "09:00"; }
+        else if (!employee.out) employee.out = "17:30";
+        else employee.out = "";
+        render(); toast(employee.out ? "Clock-out recorded at 17:30." : `Attendance updated for ${employee.name}.`); return;
+      }
+      if (action === "save-enquiry") {
+        const customer = currentField("enqCustomer");
+        if (!customer) { toast("Enter a customer name before saving."); return; }
+        app.enquiries.unshift({ customer, contact: currentField("enqContact"), phone: currentField("enqPhone"), service: currentField("enqRequest"), status: "New", files: app.attachedFile ? 1 : 0 });
+        app.selectedEnquiry = 0; app.fields = {}; setView("enquiry"); toast("Enquiry saved."); return;
+      }
+      if (action === "generate-document") {
+        const customer = currentField("docCustomer");
+        if (!customer) { toast("Enter a customer name before generating."); return; }
+        const qty = Math.max(1, Number(currentField("docQty", "1"))); const rate = Math.max(0, Number(currentField("docRate", "15000")));
+        const lines = app.extraLines.map((line, index) => ({ description: currentField(`line${index}Description`, line.description), quantity: Math.max(1, Number(currentField(`line${index}Qty`, String(line.quantity)))), rate: Math.max(0, Number(currentField(`line${index}Rate`, String(line.rate)))) }));
+        const subtotal = qty * rate + lines.reduce((sum, line) => sum + line.quantity * line.rate, 0); const gstRate = Number(currentField("gst", "18")); const gst = subtotal * gstRate / 100;
+        const document = { type: app.documentType, customer, number: `${app.documentType === "Quotation" ? "QTN" : "BILL"}-26-${String(app.documents.length + 101).padStart(3, "0")}`, date: currentField("docDate", "2026-10-15"), description: [currentField("docService", "Transformer service"), ...lines.map((line) => line.description)].join(" · "), total: subtotal + gst, subtotal, gstRate, qty, rate, lines, terms: currentField("docTerms", "") };
+        if (app.editingDocument >= 0) {
+          app.documents[app.editingDocument] = { ...app.documents[app.editingDocument], ...document };
+          app.selectedBill = app.editingDocument;
+        } else {
+          app.documents.push(document);
+          app.selectedBill = app.documents.length - 1;
+        }
+        app.editingDocument = -1; setView("preview"); toast(`${document.type} generated in the prototype.`); return;
+      }
+      if (action === "add-line") {
+        const index = app.extraLines.length;
+        app.extraLines.push({ description: `Additional service ${index + 1}`, quantity: 1, rate: 5000 });
+        app.fields = app.fields || {};
+        app.fields[`line${index}Description`] = `Additional service ${index + 1}`;
+        app.fields[`line${index}Qty`] = "1";
+        app.fields[`line${index}Rate`] = "5000";
+        render(); toast("Additional service line added."); return;
+      }
+      if (action === "remove-line") { app.extraLines.splice(Number(button.dataset.index), 1); render(); return; }
+      if (action === "mock-open") { toast("Sample document action · no file is generated in this prototype."); return; }
+      if (action === "regenerate-document") { toast("Document regeneration action previewed."); return; }
+      if (action === "edit-document") {
+        const document = app.documents[app.selectedBill];
+        if (document) {
+          app.editingDocument = app.selectedBill;
+          app.documentType = document.type;
+          app.documentSource = "adhoc";
+          app.fields = { docCustomer: document.customer, docDate: document.date, docService: document.description.split(" · ")[0], docQty: String(document.qty || 1), docRate: String(document.rate || Math.round(Number(document.total) / 1.18)), gst: String(document.gstRate || 18), docTerms: document.terms || "" };
+          app.extraLines = document.lines || [];
+          app.extraLines.forEach((line, index) => {
+            app.fields[`line${index}Description`] = line.description;
+            app.fields[`line${index}Qty`] = String(line.quantity);
+            app.fields[`line${index}Rate`] = String(line.rate);
+          });
+        }
+        setView("document"); return;
+      }
+      if (action === "share-document") { toast("Share action previewed · no external app is opened."); return; }
+      if (action === "delete-document") {
+        app.documents.splice(app.selectedBill, 1); app.selectedBill = 0; setView("orders"); toast("Sample document deleted."); return;
+      }
+      if (action === "edit-tnote") { setView("tnote-edit"); return; }
+      if (action === "add-transformer") { app.fields = {}; setView("transformer-form"); return; }
+      if (action === "save-tnote") {
+        const id = currentField("tnoteId");
+        if (!id) { toast("Enter a TNote number before saving."); return; }
+        const data = { id, center: currentField("tnoteCenter", "Warangal"), date: currentField("tnoteDate", "2026-10-15"), files: app.attachedFile ? [app.attachedFile] : [], transformers: [] };
+        if (app.view === "tnote-edit") {
+          const current = selectedTnote(); current.id = id; current.center = data.center; current.date = data.date;
+        } else {
+          if (app.tnotes.filter((tnote) => waitingCount(tnote) > 0).length >= 5) { toast("Assess or progress a received transformer before adding a sixth open TNote."); return; }
+          if (app.tnotes.some((tnote) => tnote.id.toLowerCase() === id.toLowerCase())) { toast("That TNote number already exists."); return; }
+          const newTransformerId = currentField("newDtrId");
+          if (newTransformerId && allTransformers().some((transformer) => transformer.id.toLowerCase() === newTransformerId.toLowerCase())) { toast("That transformer ID already exists."); return; }
+          addTransformer(data, { id: newTransformerId, serial: currentField("newDtrSerial"), capacity: currentField("newDtrCapacity", "250 kVA") });
+          app.tnotes.unshift(data); app.selectedTnote = 0;
+        }
+        app.fields = {}; app.attachedFile = ""; setView("tnote"); toast("TNote saved."); return;
+      }
+      if (action === "save-transformer") {
+        const tnote = selectedTnote();
+        const id = currentField("newDtrId");
+        if (!id || !currentField("newDtrSerial")) { toast("Enter the transformer ID and serial number."); return; }
+        if (!addTransformer(tnote, { id, serial: currentField("newDtrSerial"), capacity: currentField("newDtrCapacity", "250 kVA") })) { toast(tnote.transformers.length >= 10 ? "A TNote cannot contain more than 10 transformers." : "That transformer ID already exists."); return; }
+        app.fields = {}; setView("tnote"); toast("Transformer added as Received."); return;
+      }
+      if (action === "delete-tnote") {
+        const tnote = selectedTnote();
+        if (tnote.transformers.some((transformer) => ["Delivered", "Billed"].includes(transformer.status))) { toast("Delivered or billed TNotes cannot be deleted."); return; }
+        app.tnotes.splice(app.selectedTnote, 1); app.selectedTnote = 0; setView("tnotes"); toast("Sample TNote deleted."); return;
+      }
+      if (action.includes("export")) { toast("Export action previewed · sample files are not generated."); return; }
+      if (action === "upload-attachment") { document.querySelector('input[type="file"]')?.click(); return; }
+      if (action === "save-rgp") {
+        const purpose = currentField("rgpPurpose");
+        if (!purpose) { toast("Enter the visit purpose before saving."); return; }
+        app.rgpVisits.unshift({ tnote: selectedTnote().id, center: selectedTnote().center, date: currentField("rgpDate", "2026-10-15"), purpose, notes: currentField("rgpNotes", "") });
+        app.fields = {}; setView("rgp"); toast("RGP / service visit saved."); return;
+      }
+      if (action === "save-assessment") {
+        const transformer = selectedTransformer();
+        if (transformer.status === "Received") transformer.status = "Assessment";
+        if (transformer.status === "Assessment") transformer.rounds = Math.max(1, transformer.rounds);
+        render(); toast("Assessment details saved for this transformer."); return;
+      }
+      if (action === "start-repair") {
+        const transformer = selectedTransformer();
+        if (transformer.status !== "Assessment" || transformer.rounds !== 1) { toast("Save the first assessment before starting repair."); return; }
+        transformer.status = "Repair In Progress";
+        render(); toast("Transformer moved to Repair In Progress."); return;
+      }
+      if (action === "second-assessment") {
+        const transformer = selectedTransformer();
+        if (transformer.status !== "Repair In Progress") { toast("Start repair before adding a second assessment."); return; }
+        transformer.status = "Assessment"; transformer.rounds += 1; render(); toast("Assessment round started; prior round remains in history."); return;
+      }
+      if (action === "mark-repaired") {
+        const transformer = selectedTransformer();
+        if (transformer.status !== "Assessment" || transformer.rounds < 2) { toast("Complete the repair-stage assessment before marking repaired."); return; }
+        transformer.status = "Repaired"; transformer.rounds = Math.max(2, transformer.rounds); render(); toast("Transformer is now eligible for a DC."); return;
+      }
+      if (action === "export-tnote") { app.selectedTnote = Number(button.dataset.index); toast("Joint-inspection assessment workbook export previewed."); return; }
+      if (action === "export-current-tnote") { toast("Assessment Excel export previewed."); return; }
+      if (action === "create-dc") {
+        const center = currentField("dcCenter", app.selectedCenter); const units = [...app.selectedUnits];
+        const reserved = app.dcs.filter((dc) => !dc.delivered).flatMap((dc) => dc.units);
+        const eligible = allTransformers().filter((item) => item.status === "Repaired" && item.center === center && !reserved.includes(item.id));
+        if (!units.length || units.some((unit) => !eligible.some((item) => item.id === unit))) { toast("Select one or more eligible Repaired units."); return; }
+        const dc = { number: `DC-26-${String(app.dcs.length + 101).padStart(3, "0")}`, center, units, date: currentField("dcDate", "2026-10-15"), drums: currentField("drumFlag", "No") === "Yes" ? currentField("drumCount", "0") : "0", proof: "", delivered: false };
+        app.dcs.unshift(dc); app.selectedDc = 0; app.selectedUnits.clear(); setView("dc"); toast("DC created. Transformers remain Repaired until signed delivery is confirmed."); return;
+      }
+      if (action === "mark-delivered") {
+        const dc = app.dcs[app.selectedDc];
+        if (!dc?.proof) { toast("Upload the signed challan before confirming delivery."); return; }
+        dc.delivered = true;
+        dc.units.forEach((unit) => { const found = findTransformer(unit); if (found) app.tnotes[found.tnoteIndex].transformers[found.index].status = "Delivered"; });
+        render(); toast("Signed DC saved. Selected transformers are now Delivered and billable."); return;
+      }
+      if (action === "create-bill") {
+        const amount = Number(currentField("billAmount", "0")); const gst = Number(currentField("billGst", "0"));
+        if (!currentField("sap") || !currentField("agreement") || amount <= 0) { toast("Enter SAP number, agreement number and a positive bill amount."); return; }
+        if (app.editingBill) {
+          const bill = selectedBill();
+          Object.assign(bill, { sap: currentField("sap"), agreement: currentField("agreement"), date: currentField("billDate", "2026-10-15"), amount, gst, files: [...(bill.files || []), ...(app.attachedFile ? [app.attachedFile] : [])] });
+          app.attachedFile = ""; app.editingBill = false; app.fields = {}; setView("bill"); toast("Government bill changes saved."); return;
+        }
+        const units = [...app.selectedBillUnits];
+        const eligible = allTransformers().filter((item) => item.status === "Delivered" && !item.billed);
+        if (!units.length || units.some((unit) => !eligible.some((item) => item.id === unit))) { toast("Select delivered, unbilled transformers before creating a bill."); return; }
+        const centers = [...new Set(eligible.filter((item) => units.includes(item.id)).map((item) => item.center))];
+        const bill = { sap: currentField("sap", ""), center: centers.length === 1 ? centers[0] : "Multiple centers", agreement: currentField("agreement", ""), date: currentField("billDate", "2026-10-15"), amount, gst, units, status: "PENDING", files: app.attachedFile ? [app.attachedFile] : [] };
+        app.bills.unshift(bill);
+        units.forEach((unit) => { const found = findTransformer(unit); if (found) { app.tnotes[found.tnoteIndex].transformers[found.index].billed = true; app.tnotes[found.tnoteIndex].transformers[found.index].status = "Billed"; } });
+        app.selectedBill = 0; app.selectedBillUnits.clear(); app.fields = {}; app.attachedFile = ""; setView("bill"); toast("Pending government bill created."); return;
+      }
+      if (action === "bill-received") {
+        const bill = selectedBill(); const amount = Number(currentField("creditedAmount", ""));
+        if (!(amount > 0) || !currentField("creditedDate")) { toast("Enter a credited amount greater than zero and the credited date."); return; }
+        bill.credited = amount; bill.creditedDate = currentField("creditedDate"); bill.status = "RECEIVED"; render(); toast("Bill marked RECEIVED."); return;
+      }
+      if (action === "bill-gst-filed") {
+        const bill = selectedBill();
+        if (!currentField("filingMonth") || !currentField("invoice")) { toast("Enter GST filing month and invoice number."); return; }
+        bill.filingMonth = currentField("filingMonth"); bill.invoice = currentField("invoice"); bill.status = "GST_FILED"; render(); toast("GST filing recorded."); return;
+      }
+      if (action === "edit-bill") {
+        const bill = selectedBill();
+        app.editingBill = true;
+        app.fields = { sap: bill.sap, agreement: bill.agreement, billDate: bill.date, billAmount: String(bill.amount), billGst: String(bill.gst) };
+        setView("bill-form"); return;
+      }
+      if (action === "delete-bill") {
+        const removed = app.bills.splice(app.selectedBill, 1)[0];
+        removed.units.forEach((unit) => {
+          if (!app.bills.some((bill) => bill.units.includes(unit))) {
+            const found = findTransformer(unit);
+            if (found) { app.tnotes[found.tnoteIndex].transformers[found.index].billed = false; app.tnotes[found.tnoteIndex].transformers[found.index].status = "Delivered"; }
+          }
+        });
+        app.selectedBill = 0; setView("bills"); toast("Sample bill deleted."); return;
+      }
+      if (action === "directory-prev") { app.directoryPage = Math.max(0, app.directoryPage - 1); render(); return; }
+      if (action === "directory-next") { app.directoryPage += 1; render(); return; }
+      if (action.startsWith("clock-")) return;
+      if (action === "save-attendance") {
+        const employee = selectedEmployee(); employee.in = currentField("clockIn", employee.in); employee.out = currentField("clockOut", employee.out); employee.overtime = currentField("overtime", employee.overtime); employee.attendanceDate = currentField("attendanceDate", "2026-10-15"); employee.attendance = "Present";
+        render(); toast("Attendance times and overtime saved."); return;
+      }
+      if (action === "mark-leave") { selectedEmployee().attendance = "Leave"; selectedEmployee().attendanceDate = currentField("attendanceDate", "2026-10-15"); render(); toast("Leave recorded for the selected employee and day."); return; }
+      if (action === "toggle-holiday") {
+        const holiday = currentField("attendanceDate", "2026-10-15"); app.holidays.includes(holiday) ? app.holidays.splice(app.holidays.indexOf(holiday), 1) : app.holidays.push(holiday);
+        render(); toast(`Shared holiday ${app.holidays.includes(holiday) ? "marked" : "unmarked"}.`); return;
+      }
+      if (action === "generate-salary") { app.payrollStatus[app.selectedEmployee] = "GENERATED"; render(); toast("Monthly salary calculated from sample attendance."); return; }
+      if (action === "salary-received") {
+        if (app.payrollStatus[app.selectedEmployee] === "NOT GENERATED") { toast("Generate the monthly salary before marking it received."); return; }
+        app.payrollStatus[app.selectedEmployee] = "RECEIVED"; render(); toast("Salary marked as received."); return;
+      }
+      if (action === "save-employee") {
+        const employee = { name: currentField("employeeName"), code: currentField("employeeCode"), phone: currentField("employeePhone"), role: currentField("employeeRole"), salary: Number(currentField("employeeSalary", "0")), status: currentField("employeeStatus", "Active"), attendance: "Not recorded", in: "", out: "", overtime: "0", files: app.employeeFiles || [] };
+        if (!employee.name || !employee.code) { toast("Enter the employee name and code."); return; }
+        if (app.isNewEmployee) {
+          app.employees.push(employee);
+          app.payrollStatus.push("NOT GENERATED");
+          app.selectedEmployee = app.employees.length - 1;
+          app.isNewEmployee = false;
+        } else {
+          const current = selectedEmployee();
+          Object.assign(current, { name: employee.name, code: employee.code, phone: employee.phone, role: employee.role, salary: employee.salary, status: employee.status, files: [...(current.files || []), ...(app.employeeFiles || [])].slice(0, 5) });
+        }
+        app.fields = {}; app.employeeFiles = []; app.attachedFile = ""; setView("employee"); toast("Employee profile saved."); return;
+      }
+      if (action === "directory-transformer") {
+        const found = findTransformer(button.dataset.id);
+        if (found) { app.selectedTnote = found.tnoteIndex; app.selectedTransformer = found.index; setView("transformer"); }
+      }
+    });
+
+    document.addEventListener("change", (event) => {
+      const input = event.target;
+      if (input.matches("[data-field='dcCenter']")) { app.selectedCenter = input.value; app.selectedUnits.clear(); render(); }
+      if (input.matches("[data-field='attendanceEmployee'], [data-field='payrollEmployee']")) {
+        app.selectedEmployee = Math.max(0, app.employees.findIndex((employee) => employee.name === input.value)); app.fields = {}; render();
+      }
+      if (input.matches("[data-field='directoryState']")) { app.directoryPage = 0; render(); }
+      if (input.matches("[data-file]") && input.files?.length) {
+        const names = [...input.files].map((file) => file.name);
+        if (input.dataset.file === "dc-proof") {
+          app.dcProof = names[0];
+          if (app.dcs[app.selectedDc]) app.dcs[app.selectedDc].proof = names[0];
+        } else if (input.dataset.file === "tnote" && app.view === "tnote-form") {
+          app.attachedFile = names.join(", ");
+        } else if (input.dataset.file === "tnote") {
+          selectedTnote().files.push(...names);
+        } else if (input.dataset.file === "bill" && app.view === "bill-form") {
+          app.attachedFile = names.join(", ");
+        } else if (input.dataset.file === "bill") {
+          const bill = selectedBill();
+          bill.files = [...(bill.files || []), ...names];
+        } else if (input.dataset.file === "employee" && names.length + (app.view === "employee-form" && !app.isNewEmployee ? selectedEmployee().files?.length || 0 : 0) > 5) {
+          toast("Employee photo and supporting files are limited to five documents.");
+          return;
+        } else if (input.dataset.file === "employee") {
+          if (app.view === "employee-form") app.employeeFiles = names;
+          else selectedEmployee().files = [...(selectedEmployee().files || []), ...names].slice(0, 5);
+        } else app.attachedFile = names.join(", ");
+        render(); toast("Selected file attached to the mock record.");
+      }
+    });
+
+    document.addEventListener("input", (event) => {
+      const input = event.target;
+      if (input.matches("[data-field='directoryQuery']")) {
+        const cursor = input.selectionStart;
+        app.directoryPage = 0;
+        render();
+        const updated = screen.querySelector("[data-field='directoryQuery']");
+        if (updated) { updated.focus(); updated.setSelectionRange(cursor, cursor); }
+      }
+      if (input.matches("[data-filter-cards]")) {
+        const query = input.value.toLowerCase();
+        screen.querySelectorAll(".card").forEach((card) => { card.hidden = !card.textContent.toLowerCase().includes(query); });
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

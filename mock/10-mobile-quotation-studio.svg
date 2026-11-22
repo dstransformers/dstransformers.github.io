@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="932" viewBox="0 0 430 932" role="img" aria-labelledby="title desc">
+  <title id="title">VSTMS mobile quotation and service bill editor</title>
+  <desc id="desc">Single-column mobile document studio for private quotations, ad-hoc quotes and service bills, with customer data, line items, GST, output format, totals, preview, generation, PDF regeneration and WhatsApp sharing.</desc>
+  <defs><linearGradient id="top" x2="1" y2="1"><stop stop-color="#172f44"/><stop offset="1" stop-color="#102338"/></linearGradient><filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#132b3d" flood-opacity=".08"/></filter><style>text{font-family:Inter,"Segoe UI",Arial,sans-serif}.ink{fill:#172e40}.muted{fill:#71808b}.white{fill:#fff}.tiny{font-size:10px}.sm{font-size:12px}.label{font-size:10px;font-weight:700;letter-spacing:.8px}.bold{font-weight:700}.med{font-weight:600}</style></defs>
+  <rect width="430" height="932" fill="#f3f5f2"/><rect width="430" height="112" fill="url(#top)"/>
+  <text x="20" y="23" class="tiny bold white">9:41</text><text x="20" y="62" font-size="19" class="bold white">Quotation studio</text><text x="20" y="84" class="tiny" fill="#ced9df">Private customer · ad-hoc documents</text>
+  <text x="20" y="138" class="label muted">DOCUMENT TYPE</text>
+  <rect x="18" y="151" width="394" height="43" rx="12" fill="#e8ebe7"/>
+  <rect x="23" y="156" width="187" height="33" rx="9" fill="#fff"/><text x="116" y="177" text-anchor="middle" class="sm bold ink">Quotation</text><text x="315" y="177" text-anchor="middle" class="sm med muted">Service bill</text>
+  <rect x="18" y="207" width="394" height="58" rx="12" fill="#eaf2ec"/>
+  <text x="34" y="230" class="tiny bold" fill="#47785e">STARTED FROM ENQUIRY · OPTIONAL</text>
+  <text x="34" y="250" class="sm bold ink">Sree Lakshmi Industries · 250 kVA</text>
+  <text x="20" y="296" class="sm bold ink">Customer &amp; equipment</text>
+  <rect x="18" y="308" width="394" height="46" rx="10" fill="#fff" stroke="#e2e7e2"/><text x="34" y="326" class="tiny bold muted">CUSTOMER NAME</text><text x="34" y="344" class="sm ink">Sree Lakshmi Industries</text>
+  <rect x="18" y="363" width="191" height="46" rx="10" fill="#fff" stroke="#e2e7e2"/><text x="32" y="381" class="tiny bold muted">CONTACT / MOBILE</text><text x="32" y="399" class="tiny ink">S. Ramesh · 98480 12345</text>
+  <rect x="217" y="363" width="195" height="46" rx="10" fill="#fff" stroke="#e2e7e2"/><text x="231" y="381" class="tiny bold muted">QUOTATION DATE</text><text x="231" y="399" class="sm ink">15 Oct 2026</text>
+  <rect x="18" y="418" width="191" height="46" rx="10" fill="#fff" stroke="#e2e7e2"/><text x="32" y="436" class="tiny bold muted">CAPACITY / MAKE</text><text x="32" y="454" class="tiny ink">250 kVA · Kirloskar</text>
+  <rect x="217" y="418" width="195" height="46" rx="10" fill="#fff" stroke="#e2e7e2"/><text x="231" y="436" class="tiny bold muted">SERIAL / LOCATION</text><text x="231" y="454" class="tiny ink">SN-8845 · Mallapur</text>
+  <text x="20" y="494" class="sm bold ink">Services &amp; pricing</text>
+  <rect x="18" y="506" width="394" height="67" rx="11" fill="#fff" stroke="#e2e7e2"/>
+  <text x="34" y="528" class="sm bold ink">Gasket changing</text><text x="34" y="547" class="tiny muted">Qty 1  ·  Rate ₹7,000</text><text x="394" y="547" text-anchor="end" class="tiny bold ink">₹7,000</text><text x="394" y="565" text-anchor="end" class="tiny bold" fill="#a45e39">Edit · Remove</text>
+  <rect x="18" y="580" width="394" height="67" rx="11" fill="#fff" stroke="#e2e7e2"/>
+  <text x="34" y="602" class="sm bold ink">Oil filtration</text><text x="34" y="621" class="tiny muted">Qty 1  ·  Rate ₹8,000</text><text x="394" y="621" text-anchor="end" class="tiny bold ink">₹8,000</text><text x="394" y="639" text-anchor="end" class="tiny bold" fill="#a45e39">Edit · Remove</text>
+  <rect x="18" y="654" width="394" height="42" rx="10" fill="#fff" stroke="#e2e7e2"/><text x="34" y="680" class="sm bold" fill="#a45e39">+ Add service / quantity / rate</text>
+  <rect x="18" y="706" width="394" height="91" rx="12" fill="#f8f6f1" stroke="#e7e4dc"/>
+  <text x="34" y="731" class="tiny muted">Financial year 2026–27 · Warranty / terms</text><text x="34" y="754" class="tiny ink">Subtotal</text><text x="394" y="754" text-anchor="end" class="tiny bold ink">₹15,000</text><text x="34" y="773" class="tiny ink">GST 18%</text><text x="394" y="773" text-anchor="end" class="tiny bold ink">₹2,700</text><text x="34" y="791" class="sm bold ink">Grand total</text><text x="394" y="791" text-anchor="end" class="sm bold ink">₹17,700</text>
+  <rect x="0" y="812" width="430" height="65" fill="#fff"/><line x1="0" y1="812" x2="430" y2="812" stroke="#e1e7e2"/>
+  <text x="20" y="837" class="tiny bold muted">OUTPUT</text><text x="20" y="859" class="tiny ink">PDF ●   PNG ○</text>
+  <rect x="229" y="823" width="183" height="43" rx="11" fill="#142b40"/><text x="320" y="850" text-anchor="middle" class="sm bold white">Generate document</text>
+  <text x="22" y="905" class="tiny muted">After generation: preview · open / download · regenerate · edit · delete · WhatsApp share.</text>
+</svg>

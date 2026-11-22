@@ -1,18 +1,23 @@
 package com.vstms.backend;
 
 import com.vstms.backend.model.TransformerDTO;
+import com.vstms.backend.model.AssessmentDetailsDTO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transformers")
 @Validated
-@CrossOrigin(origins = "*")
 public class TransformerController {
 
     @Autowired
@@ -32,6 +37,20 @@ public class TransformerController {
         return googleSheetsService.getTransformers(page, size, status, spmCenter, dtrNo, sNo, tNoteId, type, capacity);
     }
 
+    @GetMapping("/lookup")
+    public List<TransformerDTO> findByIdentity(
+            @RequestParam(required = false) String dtrNo,
+            @RequestParam(required = false) String sNo) {
+        if ((dtrNo == null || dtrNo.isBlank()) == (sNo == null || sNo.isBlank())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Provide exactly one of dtrNo or sNo.");
+        }
+        return googleSheetsService.findTransformersByIdentity(
+                dtrNo != null && !dtrNo.isBlank() ? "dtrNo" : "sNo",
+                dtrNo != null && !dtrNo.isBlank() ? dtrNo : sNo);
+    }
+
     @GetMapping("/summary")
     public SummaryResponse getSummary() {
         return googleSheetsService.getSummary();
@@ -41,18 +60,62 @@ public class TransformerController {
     public TransformerDTO createTransformer(@Valid @RequestBody CreateTransformerRequest request) {
         return googleSheetsService.createTransformer(
                 request.spmCenter(),
+                request.make(),
+                request.remarks(),
                 request.dtrNo(),
                 request.sNo(),
                 request.capacity(),
                 request.type(),
                 request.oilCapacity(),
-                request.tNoteId()
+                request.tNoteId(),
+                request.intakeType(),
+                request.requestId()
         );
+    }
+
+    @PostMapping("/batch")
+    public List<TransformerDTO> createTransformers(@Valid @RequestBody BatchCreateTransformerRequest request) {
+        List<Map<String, Object>> transformers = request.transformers().stream().map(transformer -> {
+            Map<String, Object> values = new HashMap<>();
+            values.put("spmCenter", transformer.spmCenter());
+            values.put("make", transformer.make());
+            values.put("remarks", transformer.remarks());
+            values.put("dtrNo", transformer.dtrNo());
+            values.put("sNo", transformer.sNo());
+            values.put("capacity", transformer.capacity());
+            values.put("type", transformer.type());
+            values.put("oilCapacity", transformer.oilCapacity());
+            values.put("tNoteId", transformer.tNoteId());
+            values.put("intakeType", transformer.intakeType());
+            values.put("requestId", transformer.requestId());
+            return values;
+        }).toList();
+        return googleSheetsService.createTransformers(transformers);
     }
 
     @PatchMapping("/{id}/status")
     public TransformerDTO updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
-        return googleSheetsService.updateTransformerStatus(id, request.status());
+        if ("Assesment".equalsIgnoreCase(request.status())
+                && request.assessmentDetails() == null
+                && !Boolean.TRUE.equals(request.backward())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Assessment details are required to move to Assessment.");
+        }
+        return googleSheetsService.updateTransformerStatus(
+                id, request.status(), request.assessmentDetails(), Boolean.TRUE.equals(request.backward()));
+    }
+
+    @PatchMapping("/{id}/assessment")
+    public TransformerDTO updateAssessment(
+            @PathVariable Long id,
+            @Valid @RequestBody AssessmentDetailsDTO assessmentDetails) {
+        return googleSheetsService.updateTransformerAssessment(id, assessmentDetails);
+    }
+
+    @DeleteMapping("/{id}/assessment")
+    public void deleteAssessment(@PathVariable Long id) {
+        googleSheetsService.deleteTransformerAssessment(id);
     }
 
     @PatchMapping("/{id}/deliver")
@@ -65,6 +128,11 @@ public class TransformerController {
         return googleSheetsService.billTransformer(id, request.sapNo());
     }
 
+    @PostMapping("/bill/batch")
+    public List<TransformerDTO> billTransformers(@Valid @RequestBody BatchBillRequest request) {
+        return googleSheetsService.billTransformers(request.transformerIds(), request.sapNo());
+    }
+
     @PutMapping("/{id}")
     public TransformerDTO updateTransformer(@PathVariable Long id, @Valid @RequestBody UpdateTransformerRequest request) {
         return googleSheetsService.updateTransformer(
@@ -74,8 +142,15 @@ public class TransformerController {
                 request.sNo(),
                 request.capacity(),
                 request.type(),
-                request.oilCapacity()
+                request.oilCapacity(),
+                request.make(),
+                request.remarks()
         );
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteTransformer(@PathVariable Long id) {
+        googleSheetsService.deleteTransformer(id);
     }
 
     @GetMapping("/{id}")
@@ -88,6 +163,11 @@ public class TransformerController {
         return googleSheetsService.getTransformersByDcNo(dcNo);
     }
 
+    @GetMapping("/by-dc")
+    public List<TransformerDTO> getTransformersByDcNumber(@RequestParam String dcNo) {
+        return googleSheetsService.getTransformersByDcNo(dcNo);
+    }
+
     @GetMapping("/bill/{sapNo}")
     public List<TransformerDTO> getTransformersBySapNo(@PathVariable String sapNo) {
         return googleSheetsService.getTransformersBySapNo(sapNo);
@@ -95,16 +175,25 @@ public class TransformerController {
 
     public record CreateTransformerRequest(
             @NotBlank String spmCenter,
+            String make,
+            String remarks,
             @NotBlank String dtrNo,
             @NotBlank String sNo,
             int capacity,
             @NotBlank String type,
             double oilCapacity,
-            Long tNoteId
+            Long tNoteId,
+            String intakeType,
+            String requestId
     ) {}
+
+            public record BatchCreateTransformerRequest(
+                @jakarta.validation.constraints.NotEmpty List<@Valid CreateTransformerRequest> transformers) {}
 
     public record UpdateTransformerRequest(
             @NotBlank String spmCenter,
+            String make,
+            String remarks,
             @NotBlank String dtrNo,
             @NotBlank String sNo,
             int capacity,
@@ -112,13 +201,28 @@ public class TransformerController {
             double oilCapacity
     ) {}
 
-    public record UpdateStatusRequest(@NotBlank String status) {}
+    public record UpdateStatusRequest(
+            @NotBlank String status,
+            @jakarta.validation.Valid AssessmentDetailsDTO assessmentDetails,
+            Boolean backward) {}
 
     public record DeliverRequest(@NotBlank String dcNo) {}
 
     public record BillRequest(@NotBlank String sapNo) {}
 
+        public record BatchBillRequest(
+            @NotBlank String sapNo,
+            @NotEmpty List<@NotNull @Positive Long> transformerIds) {}
+
     public record PagedResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}
 
-    public record SummaryResponse(long recieve, long assesment, long repairInProgress, long repaired, long delivered, long billed) {}
+    public record SummaryResponse(
+            long recieve,
+            long assesment,
+            long repairInProgress,
+            long repaired,
+            long readyToDeliver,
+            long delivered,
+            long billed,
+            long scrap) {}
 }

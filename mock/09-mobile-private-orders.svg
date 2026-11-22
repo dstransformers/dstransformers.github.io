@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="932" viewBox="0 0 430 932" role="img" aria-labelledby="title desc">
+  <title id="title">VSTMS mobile private customer orders</title>
+  <desc id="desc">Mobile private order inbox for creating, reviewing and filtering customer enquiries, opening attachments and starting quotations.</desc>
+  <defs><linearGradient id="top" x2="1" y2="1"><stop stop-color="#172f44"/><stop offset="1" stop-color="#102338"/></linearGradient><filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#132b3d" flood-opacity=".08"/></filter><style>text{font-family:Inter,"Segoe UI",Arial,sans-serif}.ink{fill:#172e40}.muted{fill:#71808b}.white{fill:#fff}.tiny{font-size:10px}.sm{font-size:12px}.label{font-size:10px;font-weight:700;letter-spacing:.8px}.bold{font-weight:700}.med{font-weight:600}</style></defs>
+  <rect width="430" height="932" fill="#f3f5f2"/><rect width="430" height="116" fill="url(#top)"/>
+  <text x="20" y="23" class="tiny bold white">9:41</text><text x="20" y="61" font-size="19" class="bold white">Private orders</text><text x="20" y="83" class="tiny" fill="#ced9df">Enquiries → quotation / ad-hoc bill</text>
+  <circle cx="383" cy="62" r="19" fill="#fff" opacity=".13"/><path d="M377 64v-5a6 6 0 0 1 12 0v5l3 4h-18z" fill="none" stroke="#fff" stroke-width="1.4"/><circle cx="396" cy="47" r="9" fill="#b65343"/><text x="396" y="50" text-anchor="middle" font-size="8" font-weight="700" class="white">3</text>
+  <rect x="18" y="98" width="394" height="45" rx="12" fill="#fff" stroke="#e1e7e2"/><circle cx="38" cy="120" r="6" fill="none" stroke="#71808b" stroke-width="1.4"/><path d="m42 124 4 4" stroke="#71808b" stroke-width="1.4"/><text x="58" y="124" class="sm muted">Search by customer, phone or enquiry</text>
+  <rect x="18" y="156" width="394" height="42" rx="12" fill="#e8ebe7"/>
+  <rect x="23" y="161" width="119" height="32" rx="9" fill="#fff"/><text x="82" y="181" text-anchor="middle" class="tiny bold ink">Enquiries · 3</text>
+  <text x="224" y="181" text-anchor="middle" class="tiny med muted">Quotations</text><text x="351" y="181" text-anchor="middle" class="tiny med muted">Service bills</text>
+  <rect x="18" y="212" width="394" height="56" rx="12" fill="#fbf1df"/>
+  <circle cx="39" cy="240" r="10" fill="#b65343"/><text x="39" y="244" text-anchor="middle" class="tiny bold white">3</text>
+  <text x="58" y="236" class="sm bold ink">3 new enquiries</text><text x="58" y="253" class="tiny muted">Review when convenient; nothing blocks your work.</text>
+  <rect x="18" y="281" width="394" height="40" rx="11" fill="#142b40"/>
+  <text x="215" y="306" text-anchor="middle" class="sm bold white">+ Add enquiry</text>
+  <text x="20" y="350" class="label muted">NEEDS REVIEW</text>
+  <rect x="18" y="362" width="394" height="109" rx="14" fill="#fff" stroke="#eadbce" filter="url(#sh)"/>
+  <rect x="18" y="362" width="5" height="109" rx="3" fill="#b8754f"/>
+  <circle cx="47" cy="391" r="17" fill="#f0e1d7"/><text x="47" y="395" text-anchor="middle" class="tiny bold" fill="#965a3b">SL</text>
+  <text x="76" y="388" class="sm bold ink">Sree Lakshmi Industries</text><text x="76" y="406" class="tiny muted">S. Ramesh · 98480 12345 · 10:42 AM</text>
+  <text x="36" y="433" class="tiny ink">Oil leakage · 250 kVA · 2 attachments</text>
+  <rect x="260" y="447" width="137" height="30" rx="9" fill="#b8754f"/><text x="328" y="467" text-anchor="middle" class="tiny bold white">Review enquiry</text>
+  <rect x="18" y="481" width="394" height="99" rx="14" fill="#fff" stroke="#e3e8e3"/>
+  <circle cx="47" cy="510" r="17" fill="#e6eee8"/><text x="47" y="514" text-anchor="middle" class="tiny bold" fill="#47785e">MP</text>
+  <text x="76" y="507" class="sm bold ink">Metro Power Systems</text><text x="76" y="525" class="tiny muted">Oil filtration · 500 kVA · Yesterday</text>
+  <text x="36" y="550" class="tiny ink">Contacted · transformer photo attached</text>
+  <text x="385" y="566" text-anchor="end" class="tiny bold" fill="#a45e39">Open details  →</text>
+  <rect x="18" y="590" width="394" height="99" rx="14" fill="#fff" stroke="#e3e8e3"/>
+  <circle cx="47" cy="619" r="17" fill="#e8edf3"/><text x="47" y="623" text-anchor="middle" class="tiny bold" fill="#31566e">VE</text>
+  <text x="76" y="616" class="sm bold ink">Vijaya Electricals</text><text x="76" y="634" class="tiny muted">Transformer repair · 100 kVA · 13 Oct</text>
+  <text x="36" y="659" class="tiny ink">Email, contact details and service request</text>
+  <text x="385" y="675" text-anchor="end" class="tiny bold" fill="#a45e39">Open details  →</text>
+  <rect x="18" y="705" width="394" height="119" rx="14" fill="#f8f6f1" stroke="#e7e4dc"/>
+  <text x="36" y="733" class="sm bold ink">Convert an enquiry</text>
+  <text x="36" y="754" class="tiny muted">Review details and files, then start a quotation</text>
+  <text x="36" y="771" class="tiny muted">with the customer, capacity, make and services filled in.</text>
+  <rect x="36" y="784" width="175" height="29" rx="8" fill="#142b40"/><text x="123" y="803" text-anchor="middle" class="tiny bold white">Generate quotation</text>
+  <text x="228" y="803" class="tiny bold" fill="#a45e39">Mark contacted</text>
+  <text x="20" y="850" class="tiny muted">Filters: date · status · customer · phone · capacity · make · service</text>
+  <rect x="0" y="877" width="430" height="55" fill="#fff"/><line x1="0" y1="877" x2="430" y2="877" stroke="#e3e8e3"/>
+  <rect x="125" y="886" width="86" height="38" rx="10" fill="#eaf0eb"/><text x="168" y="910" text-anchor="middle" class="tiny bold" fill="#315e48">Orders</text>
+  <text x="62" y="910" text-anchor="middle" class="tiny muted">Home</text><text x="270" y="910" text-anchor="middle" class="tiny muted">People</text><text x="375" y="910" text-anchor="middle" class="tiny muted">More</text>
+</svg>
